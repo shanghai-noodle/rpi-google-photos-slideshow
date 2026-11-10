@@ -1,0 +1,25 @@
+[Unit]
+Description=Raspberry Pi Native Google Photos Slideshow (RAM-only, Zero SD Wear)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+SupplementaryGroups=video render
+WorkingDirectory=/home/pi/rpi-google-photos-slideshow
+# Auto-detects Wayland/X11 Desktop or direct KMS/DRM / Framebuffer
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Nice=-5
+# Starts in Demo Showcase Mode until configured via the Web Portal (http://<pi-ip>:8080)
+ExecStart=/usr/bin/python3 -B /home/pi/rpi-google-photos-slideshow/slideshow.py --duration 15 --rotate 0 --landscape-mode collage --quiet
+Restart=always
+RestartSec=5
+# Do NOT write stdout/stderr to the SD card or journald; logs live in /dev/shm/slideshow.log (RAM)
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target
+Alias=photoframe.service
