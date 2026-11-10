@@ -44,8 +44,6 @@ _LOWMEM_PROFILE: Dict[str, Any] = {
 HARDWARE_PROFILES: Dict[str, Dict[str, Any]] = {
     "standard": _STANDARD_PROFILE,
     "lowmem": _LOWMEM_PROFILE,
-    "pi2": _STANDARD_PROFILE,
-    "pizero": _LOWMEM_PROFILE,
 }
 
 
@@ -55,7 +53,7 @@ def detect_hardware_profile(
     meminfo_path: str = "/proc/meminfo",
 ) -> Tuple[str, Dict[str, Any]]:
     """Detects whether the system is a low-memory Linux device (<=600MB RAM) or standard multi-core system."""
-    if requested in ("standard", "lowmem", "pi2", "pizero"):
+    if requested in ("standard", "lowmem"):
         return requested, HARDWARE_PROFILES[requested]
 
     machine = (machine_override if machine_override is not None else platform.machine()).lower()

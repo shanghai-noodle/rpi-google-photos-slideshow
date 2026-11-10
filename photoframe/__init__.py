@@ -29,7 +29,7 @@ from .web_portal import (
     create_portal_handler,
     start_web_config_server,
 )
-from .app import PiSlideshowApp, SlideshowApp, main, parse_args
+from .app import SlideshowApp, main, parse_args
 
 __all__ = [
     "__version__",
@@ -52,7 +52,6 @@ __all__ = [
     "create_portal_handler",
     "start_web_config_server",
     "SlideshowApp",
-    "PiSlideshowApp",
     "parse_args",
     "main",
 ]

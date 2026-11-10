@@ -1131,17 +1131,13 @@ class SlideshowApp:
         logger.info("Slideshow terminated cleanly.")
 
 
-# Backward-compatible alias
-PiSlideshowApp = SlideshowApp
-
-
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Linux Native Google Photos Slideshow (100% RAM logging & caching, zero disk/flash wear)"
     )
     parser.add_argument(
         "-p", "--profile",
-        choices=["auto", "standard", "lowmem", "pi2", "pizero"],
+        choices=["auto", "standard", "lowmem"],
         default="auto",
         help=(
             "Hardware optimization profile: "

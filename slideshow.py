@@ -21,7 +21,6 @@ from photoframe import (
     FrameConfigStore,
     GooglePhotosMixin,
     PhotoManager,
-    PiSlideshowApp,
     SlideshowApp,
     __author__,
     __created_with__,
@@ -56,7 +55,6 @@ __all__ = [
     "create_portal_handler",
     "start_web_config_server",
     "SlideshowApp",
-    "PiSlideshowApp",
     "parse_args",
     "main",
 ]
