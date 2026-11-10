@@ -859,23 +859,31 @@ class PhotoManager(GooglePhotosMixin):
         """Builds the list of video playback descriptors for any collage tiles that hold videos."""
         video_list: List[Dict[str, Any]] = []
         total_tiles = len(group)
-        for idx, (_, mp4_path) in enumerate(group):
+        for idx, (pil_img, mp4_path) in enumerate(group):
             if not mp4_path or idx >= len(tile_rects):
                 continue
             tx, ty, tw, th = tile_rects[idx]
-            if inset_border and tw > 8 and th > 8:
-                vx = tx + 2
-                vy = ty + 2
-                vw = max(2, ((tw - 4) // 2) * 2)
-                vh = max(2, ((th - 4) // 2) * 2)
+            inset = 2 if (inset_border and tw > 8 and th > 8) else 0
+            if inset > 0:
+                vx = tx + inset
+                vy = ty + inset
+                vw = max(2, ((tw - 2 * inset) // 2) * 2)
+                vh = max(2, ((th - 2 * inset) // 2) * 2)
             else:
                 vx = tx
                 vy = ty
                 vw = max(2, (tw // 2) * 2)
                 vh = max(2, (th // 2) * 2)
+            centering = (
+                self._compute_core_content_centering(pil_img, tw, th)
+                if pil_img is not None
+                else (0.50, 0.50)
+            )
             info: Dict[str, Any] = {
                 "mp4_path": mp4_path,
                 "rect": (vx, vy, vw, vh),
+                "centering": centering,
+                "inset": inset,
                 "fps": self.video_fps,
                 "tile_index": idx + 1,
                 "total_tiles": total_tiles,

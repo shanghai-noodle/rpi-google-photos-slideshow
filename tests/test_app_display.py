@@ -121,6 +121,23 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         self.assertEqual((sx, sy, sw, sh), (100, 1080 - 514, 600, 500))
         self.assertIn("transpose=2", vf)
 
+        # Subject-aware centering + 2px border inset alignment (eliminates poster-to-video crop jump)
+        sx_i, sy_i, sw_i, sh_i, vf_i = app0._map_canvas_rect_to_screen(
+            16, 16, 496, 396, centering=(0.50, 0.38), inset=2
+        )
+        self.assertEqual((sx_i, sy_i, sw_i, sh_i), (16, 16, 496, 396))
+        self.assertIn("scale=500:400:force_original_aspect_ratio=increase", vf_i)
+        self.assertIn("crop=496:396:(in_w-500)*0.5000+2:(in_h-400)*0.3800+2", vf_i)
+
+        # Verify stop_video_playback increments _video_gen to prevent stale reader_worker frames
+        gen_before = app0._video_gen
+        app0._latest_video_frame = b"123"
+        app0._video_eof = True
+        app0.stop_video_playback()
+        self.assertEqual(app0._video_gen, gen_before + 1)
+        self.assertIsNone(app0._latest_video_frame)
+        self.assertFalse(app0._video_eof)
+
     def test_night_mode_schedule_parsing_and_overnight_evaluation(self):
         """
         Verifies `_parse_time_str` (both 24-hour and AM/PM formats) and `is_within_night_schedule`

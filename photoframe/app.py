@@ -88,11 +88,14 @@ class PiSlideshowApp:
         # Active FFmpeg video playback state (streams directly from /dev/shm)
         self._video_proc: Optional[subprocess.Popen] = None
         self._video_playing = False
+        self._video_gen = 0
         self._video_screen_rect: Tuple[int, int, int, int] = (0, 0, 0, 0)
+        self._video_corner_stamps: List[Tuple[Any, Tuple[int, int]]] = []
         self._video_fps = int(self.hw_profile.get("video_fps", 18))
         self._latest_video_frame: Optional[bytes] = None
         self._video_eof = False
         self._pending_slide_videos: Deque[Dict[str, Any]] = collections.deque()
+        self._base_screen_surf: Optional[Any] = None
 
         # Night mode sleep schedule (black screen to save power & eliminate glare)
         self.night_mode_enabled = not args.disable_night_mode
@@ -272,14 +275,35 @@ class PiSlideshowApp:
     # Hardware-Accelerated FFmpeg Video Streaming (Direct to Rotated Screen)
     # --------------------------------------------------------------------------
 
-    def _map_canvas_rect_to_screen(self, vx: int, vy: int, vw: int, vh: int) -> Tuple[int, int, int, int, str]:
+    def _map_canvas_rect_to_screen(
+        self,
+        vx: int,
+        vy: int,
+        vw: int,
+        vh: int,
+        centering: Tuple[float, float] = (0.50, 0.50),
+        inset: int = 0,
+    ) -> Tuple[int, int, int, int, str]:
         """
         Maps a video rectangle `(vx, vy, vw, vh)` on `self.canvas` (`canvas_w x canvas_h`)
         to the rotated physical `self.screen` (`screen_w x screen_h`), returning
         `(sx, sy, sw, sh, ffmpeg_vf_filter)`.
+        Uses the same subject-aware `(cx, cy)` centering and tile border inset as
+        `PhotoManager._paste_rounded_tile` so the first video frame aligns pixel-for-pixel
+        with the static poster thumbnail without jumping.
         """
         fps = self._video_fps
-        scale_part = f"fps={fps},scale={vw}:{vh}:force_original_aspect_ratio=increase:flags=fast_bilinear,crop={vw}:{vh}"
+        cx = max(0.0, min(1.0, float(centering[0]))) if centering and len(centering) >= 2 else 0.50
+        cy = max(0.0, min(1.0, float(centering[1]))) if centering and len(centering) >= 2 else 0.50
+        ins = max(0, int(inset))
+        scale_w = vw + 2 * ins
+        scale_h = vh + 2 * ins
+        crop_x = f"(in_w-{scale_w})*{cx:.4f}+{ins}" if ins > 0 else f"(in_w-out_w)*{cx:.4f}"
+        crop_y = f"(in_h-{scale_h})*{cy:.4f}+{ins}" if ins > 0 else f"(in_h-out_h)*{cy:.4f}"
+        scale_part = (
+            f"fps={fps},scale={scale_w}:{scale_h}:force_original_aspect_ratio=increase:flags=fast_bilinear,"
+            f"crop={vw}:{vh}:{crop_x}:{crop_y}"
+        )
         if self.rotation == 270:
             # 270 deg CCW == 90 deg CW (FFmpeg transpose=1)
             sx = self.canvas_h - (vy + vh)
@@ -296,10 +320,49 @@ class PiSlideshowApp:
             return sx, sy, vw, vh, f"{scale_part},hflip,vflip"
         return vx, vy, vw, vh, scale_part
 
+    def _build_video_corner_stamps(
+        self, sx: int, sy: int, sw: int, sh: int, inset: int
+    ) -> List[Tuple[Any, Tuple[int, int]]]:
+        """
+        Extracts the four 8x8 rounded-border corner stamps from `self._base_screen_surf`
+        so blitting rectangular video frames at `(sx, sy, sw, sh)` preserves the crisp
+        `radius=10` 2px white rounded tile border and outer bokeh corners.
+        """
+        if (
+            inset <= 0
+            or not PYGAME_AVAILABLE
+            or self._base_screen_surf is None
+            or sw < 16
+            or sh < 16
+        ):
+            return []
+        stamps: List[Tuple[Any, Tuple[int, int]]] = []
+        patch_sz = 8
+        r_sq = 6.8 * 6.8
+        corners = [
+            (sx, sy, 7.0, 7.0),
+            (sx + sw - patch_sz, sy, 0.0, 7.0),
+            (sx, sy + sh - patch_sz, 7.0, 0.0),
+            (sx + sw - patch_sz, sy + sh - patch_sz, 0.0, 0.0),
+        ]
+        try:
+            for cx_pos, cy_pos, arc_x, arc_y in corners:
+                stamp = pygame.Surface((patch_sz, patch_sz), pygame.SRCALPHA)
+                stamp.blit(self._base_screen_surf, (0, 0), (cx_pos, cy_pos, patch_sz, patch_sz))
+                for py in range(patch_sz):
+                    dy = py - arc_y
+                    for px in range(patch_sz):
+                        dx = px - arc_x
+                        if (dx * dx + dy * dy) < r_sq:
+                            stamp.set_at((px, py), (0, 0, 0, 0))
+                stamps.append((stamp, (cx_pos, cy_pos)))
+        except Exception:
+            return []
+        return stamps
+
     def stop_video_playback(self, clear_queue: bool = True):
+        self._video_gen += 1
         self._video_playing = False
-        self._latest_video_frame = None
-        self._video_eof = False
         if clear_queue:
             self._pending_slide_videos.clear()
         proc = self._video_proc
@@ -310,6 +373,9 @@ class PiSlideshowApp:
                 proc.wait(timeout=1.0)
             except Exception:
                 pass
+        self._latest_video_frame = None
+        self._video_eof = False
+        self._video_corner_stamps = []
 
     def start_slide_videos(self, video_list: Optional[List[Dict[str, Any]]]):
         self.stop_video_playback(clear_queue=True)
@@ -327,12 +393,17 @@ class PiSlideshowApp:
                 continue
 
             vx, vy, vw, vh = video_info["rect"]
+            centering = video_info.get("centering", (0.50, 0.50))
+            inset = int(video_info.get("inset", 0))
             tile_idx = video_info.get("tile_index", 1)
             total_tiles = video_info.get("total_tiles", 1)
             play_sec = float(video_info.get("max_seconds", self.max_video_seconds))
             self._video_fps = int(video_info.get("fps", self._video_fps))
-            sx, sy, sw, sh, vf_filter = self._map_canvas_rect_to_screen(vx, vy, vw, vh)
+            sx, sy, sw, sh, vf_filter = self._map_canvas_rect_to_screen(
+                vx, vy, vw, vh, centering=centering, inset=inset
+            )
             self._video_screen_rect = (sx, sy, sw, sh)
+            self._video_corner_stamps = self._build_video_corner_stamps(sx, sy, sw, sh, inset)
             frame_bytes_len = sw * sh * 3
 
             cmd = [
@@ -354,6 +425,7 @@ class PiSlideshowApp:
                 logger.warning("Failed to start ffmpeg video playback: %s", e)
                 continue
 
+            gen = self._video_gen
             self._video_proc = proc
             self._video_playing = True
             self._video_eof = False
@@ -362,17 +434,17 @@ class PiSlideshowApp:
                 tile_idx, total_tiles, vw, vh, vx, vy, self._video_fps, play_sec
             )
 
-            def reader_worker(p: subprocess.Popen, nbytes: int, fps: int):
+            def reader_worker(p: subprocess.Popen, nbytes: int, fps: int, expected_gen: int):
                 frame_interval = 1.0 / max(1, fps)
                 next_frame_t = time.time()
                 try:
-                    while self._video_playing and p.poll() is None and p.stdout:
+                    while self._video_playing and self._video_gen == expected_gen and p.poll() is None and p.stdout:
                         if self.is_paused:
                             time.sleep(0.1)
                             next_frame_t = time.time()
                             continue
                         buf = p.stdout.read(nbytes)
-                        if not buf or len(buf) < nbytes:
+                        if not buf or len(buf) < nbytes or self._video_gen != expected_gen or not self._video_playing:
                             break
                         self._latest_video_frame = buf
                         now = time.time()
@@ -383,10 +455,10 @@ class PiSlideshowApp:
                 except Exception:
                     pass
                 finally:
-                    if self._video_proc is p:
+                    if self._video_proc is p and self._video_gen == expected_gen:
                         self._video_eof = True
 
-            threading.Thread(target=reader_worker, args=(proc, frame_bytes_len, self._video_fps), daemon=True).start()
+            threading.Thread(target=reader_worker, args=(proc, frame_bytes_len, self._video_fps, gen), daemon=True).start()
             return True
         return False
 
@@ -448,9 +520,15 @@ class PiSlideshowApp:
             logger.debug("Failed to compose transition surface: %s", e)
             return None
 
-    def _run_slide_transition(self, prev_surf: Any, next_surf: Any) -> bool:
+    def _run_slide_transition(
+        self,
+        prev_surf: Any,
+        next_surf: Any,
+        prev_screen_surf: Optional[Any] = None,
+    ) -> bool:
         """
-        Animates the transition between `prev_surf` and `next_surf` on `self.screen`.
+        Animates the transition between `prev_surf` (or `prev_screen_surf` containing the
+        latest rendered video frame) and `next_surf` on `self.screen`.
         When `self.transition == 'none'` (the default) or running headlessly, returns False
         immediately so `render_frame()` performs an instant cut with zero overhead.
         """
@@ -459,7 +537,7 @@ class PiSlideshowApp:
             or self.screen is None
             or not PYGAME_AVAILABLE
             or self.is_night_mode
-            or prev_surf is None
+            or (prev_surf is None and prev_screen_surf is None)
             or next_surf is None
         ):
             return False
@@ -468,7 +546,7 @@ class PiSlideshowApp:
         if effect == "random":
             effect = random.choice(("fade", "fade-black", "slide-left", "slide-right", "slide-up", "wipe"))
 
-        prev_s = self._compose_screen_surface(prev_surf)
+        prev_s = prev_screen_surf if prev_screen_surf is not None else self._compose_screen_surface(prev_surf)
         next_s = self._compose_screen_surface(next_surf)
         if prev_s is None or next_s is None:
             return False
@@ -550,11 +628,12 @@ class PiSlideshowApp:
         if not self.photo_manager:
             return
         prev_surf = self.current_photo_surf
+        prev_screen_surf = self._base_screen_surf.copy() if self._base_screen_surf is not None else None
         next_surf, next_vids = self.photo_manager.advance_slide()
         if next_surf:
             self.current_photo_surf = next_surf
             self.current_video_list = next_vids
-            self._run_slide_transition(prev_surf, next_surf)
+            self._run_slide_transition(prev_surf, next_surf, prev_screen_surf=prev_screen_surf)
             self.full_redraw_needed = True
             self.render_frame()
             if next_vids:
@@ -566,11 +645,12 @@ class PiSlideshowApp:
         if not self.photo_manager:
             return
         prev_surf = self.current_photo_surf
+        prev_screen_surf = self._base_screen_surf.copy() if self._base_screen_surf is not None else None
         prev_slide_surf, prev_vids = self.photo_manager.previous_slide()
         if prev_slide_surf:
             self.current_photo_surf = prev_slide_surf
             self.current_video_list = prev_vids
-            self._run_slide_transition(prev_surf, prev_slide_surf)
+            self._run_slide_transition(prev_surf, prev_slide_surf, prev_screen_surf=prev_screen_surf)
             self.full_redraw_needed = True
             self.render_frame()
             if prev_vids:
@@ -634,18 +714,38 @@ class PiSlideshowApp:
                 rotated = pygame.transform.rotate(self.canvas, self.rotation)
                 self.screen.blit(rotated, (0, 0))
 
+            try:
+                self._base_screen_surf = self.screen.copy()
+            except Exception:
+                self._base_screen_surf = None
+
             pygame.display.flip()
+            if self._base_screen_surf is not None:
+                try:
+                    self.screen.blit(self._base_screen_surf, (0, 0))
+                except Exception:
+                    pass
             self.full_redraw_needed = False
             return
 
-        # Fast-path live video frame blit directly onto rotated screen
+        # Fast-path live video frame blit via coherent `_base_screen_surf` (eliminates
+        # hardware DOUBLEBUF page-flipping tearing / stale backbuffer flashes and
+        # preserves the final video frame when switching tiles or slides)
         if self._video_playing and not self.is_night_mode and self._latest_video_frame is not None:
             frame_bytes = self._latest_video_frame
             self._latest_video_frame = None
             sx, sy, sw, sh = self._video_screen_rect
             try:
                 vid_surf = pygame.image.frombuffer(frame_bytes, (sw, sh), "RGB")
-                self.screen.blit(vid_surf, (sx, sy))
+                if self._base_screen_surf is not None:
+                    self._base_screen_surf.blit(vid_surf, (sx, sy))
+                    for stamp_surf, stamp_pos in self._video_corner_stamps:
+                        self._base_screen_surf.blit(stamp_surf, stamp_pos)
+                    if self.rotation == 0 and self.photo_manager and self.photo_manager.is_demo_mode:
+                        self._draw_demo_setup_pill(self._base_screen_surf)
+                    self.screen.blit(self._base_screen_surf, (0, 0))
+                else:
+                    self.screen.blit(vid_surf, (sx, sy))
                 pygame.display.flip()
             except Exception as e:
                 logger.debug("Video frame blit error: %s", e)
