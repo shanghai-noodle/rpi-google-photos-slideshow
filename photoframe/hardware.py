@@ -125,6 +125,12 @@ def setup_ram_logging(
 
     if log_path and log_path.lower() != "none":
         try:
+            if os.path.isfile(log_path):
+                with open(log_path, "r", encoding="utf-8", errors="ignore") as rf:
+                    existing = rf.read()
+                if "[PiSlideshow]" in existing:
+                    with open(log_path, "w", encoding="utf-8") as wf:
+                        wf.write(existing.replace("[PiSlideshow]", "[Slideshow]"))
             fh = CappedRamFileHandler(log_path, maxBytes=max_mb * 1024 * 1024, backupCount=0, encoding="utf-8")
             fh.setLevel(level)
             fh.setFormatter(fmt)
