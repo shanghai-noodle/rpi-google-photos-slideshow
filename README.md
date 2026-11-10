@@ -69,6 +69,7 @@ python3 -B slideshow.py --duration 15 --rotate 0 --landscape-mode collage --web-
 ```
 
 1. Open **`http://<your-pi-ip>:8080`** in any phone or desktop browser on your network.
+   > **⚠️ Firewall Reminder**: The Web Control Portal uses TCP port **`8080`** by default. If you have a firewall enabled on your Raspberry Pi (such as `ufw` or `iptables`/`nftables`) or Wi-Fi router AP isolation, make sure incoming LAN traffic on port `8080` is allowed (e.g., `sudo ufw allow 8080/tcp`).
 2. Sign in with the default password **`admin`** (you can change the password under **Security & Change Password**).
 3. Paste your **Google Photos Shared Album URL** (`https://photos.app.goo.gl/...`), choose your preferred collage layout, screen rotation (`0°`, `90°`, `180°`, or `270°`), and Night Mode schedule, then click **Save & Apply Settings**.
 
