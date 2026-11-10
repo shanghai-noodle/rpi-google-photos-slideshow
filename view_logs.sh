@@ -1,7 +1,7 @@
 #!/bin/bash
 LOG_FILE="/dev/shm/slideshow.log"
 echo "=============================================================================="
-echo "🍓 Raspberry Pi Google Photos Slideshow - RAM Log Viewer (/dev/shm/slideshow.log)"
+echo "🖼️ Linux Google Photos Slideshow - RAM Log Viewer (/dev/shm/slideshow.log)"
 echo "=============================================================================="
 PID=$(pgrep -f "python3.*main.py|python3.*slideshow.py" || true)
 if [ -n "$PID" ]; then

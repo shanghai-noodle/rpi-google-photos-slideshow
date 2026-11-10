@@ -1,5 +1,5 @@
 """
-Native Raspberry Pi Display Controller (KMSDRM + Rotation + Video + Night Mode)
+Native Linux Display Controller (Wayland / X11 / KMSDRM + Rotation + Video + Night Mode)
 and CLI entry point.
 """
 
@@ -30,7 +30,7 @@ from .hardware import (
 from .web_portal import start_web_config_server
 
 
-class PiSlideshowApp:
+class SlideshowApp:
     VALID_TRANSITIONS = (
         "none",
         "fade",
@@ -157,7 +157,7 @@ class PiSlideshowApp:
         """
         When launched via SSH or systemd without DISPLAY/WAYLAND_DISPLAY set,
         inspects /run/user/<uid> and /tmp/.X11-unix to detect an active local
-        Wayland or X11 desktop session on the Raspberry Pi.
+        Wayland or X11 desktop session on the Linux host.
         """
         uid = os.getuid() if hasattr(os, "getuid") else 1000
         runtime_dir = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{uid}"
@@ -925,7 +925,7 @@ class PiSlideshowApp:
             "demo": "Switched to built-in Demo Showcase Pack!",
             "test_videos": "Queued video tile test sequence.",
             "restart": "Restarting slideshow service...",
-            "reboot": "Rebooting Raspberry Pi now...",
+            "reboot": "Rebooting device now...",
         }
         if action not in valid:
             return f"Unknown action: {action}"
@@ -1131,19 +1131,23 @@ class PiSlideshowApp:
         logger.info("Slideshow terminated cleanly.")
 
 
+# Backward-compatible alias
+PiSlideshowApp = SlideshowApp
+
+
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Raspberry Pi Native Google Photos Slideshow (100% RAM logging & caching, zero SD card wear)"
+        description="Linux Native Google Photos Slideshow (100% RAM logging & caching, zero disk/flash wear)"
     )
     parser.add_argument(
         "-p", "--profile",
-        choices=["auto", "pi2", "pizero"],
+        choices=["auto", "standard", "lowmem", "pi2", "pizero"],
         default="auto",
         help=(
             "Hardware optimization profile: "
-            "'auto' (detects Pi Zero vs Pi 2+ via CPU arch & RAM), "
-            "'pi2' (quad-core / 1GB+ RAM, full 1080x1920 CDN fetch), "
-            "or 'pizero' (single-core ARMv6 / 512MB RAM / USB Wi-Fi optimization)"
+            "'auto' (detects standard vs low-memory system via CPU arch & RAM), "
+            "'standard' (multi-core / 1GB+ RAM, full 1080x1920 CDN fetch), "
+            "or 'lowmem' (single-core / <=600MB RAM / low-power Wi-Fi optimization)"
         ),
     )
     parser.add_argument(
@@ -1191,7 +1195,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "-t", "--transition",
-        choices=list(PiSlideshowApp.VALID_TRANSITIONS),
+        choices=list(SlideshowApp.VALID_TRANSITIONS),
         default="none",
         help=(
             "Slide transition effect: "
@@ -1339,7 +1343,7 @@ def main():
         logger.critical("Another slideshow instance is already running (holding /tmp/slideshow.lock). Exiting.")
         sys.exit(1)
 
-    app = PiSlideshowApp(args, hw_profile=hw_profile)
+    app = SlideshowApp(args, hw_profile=hw_profile)
 
     def _sig_handler(signum, frame):
         logger.info("Signal %s received; shutting down...", signum)

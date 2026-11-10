@@ -1,1 +1,1 @@
-"""Unit test suite for the Raspberry Pi Google Photos Slideshow (`photoframe` package)."""
+"""Unit test suite for the Linux Google Photos Slideshow (`photoframe` package)."""

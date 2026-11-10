@@ -72,7 +72,7 @@ class PhotoManager(GooglePhotosMixin):
     ):
         self.target_w = target_w
         self.target_h = target_h
-        self.hw_profile = hw_profile or HARDWARE_PROFILES["pi2"]
+        self.hw_profile = hw_profile or HARDWARE_PROFILES["standard"]
         self.cdn_scale = float(self.hw_profile.get("cdn_scale", 1.0))
         cdn_max = max(320, int(round(max(self.target_w, self.target_h) * self.cdn_scale)))
         self.cdn_w = cdn_max
@@ -273,7 +273,7 @@ class PhotoManager(GooglePhotosMixin):
         Computes a subject-aware `(cx, cy)` centering point in `[0.0, 1.0]` for `ImageOps.fit`
         by combining a fast 48x48 edge/detail energy centroid with an ergonomic photographic
         prior (protecting upper-middle faces/heads in portraits and foreground/horizon detail
-        in landscapes). Runs in <0.4ms on Raspberry Pi.
+        in landscapes). Runs in <0.4ms on embedded Linux systems.
         """
         is_port = img.height > img.width
         prior_x = 0.50

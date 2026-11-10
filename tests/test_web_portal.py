@@ -8,7 +8,7 @@ import unittest
 import urllib.error
 import urllib.request
 
-from photoframe.app import PiSlideshowApp, parse_args
+from photoframe.app import SlideshowApp, parse_args
 from photoframe.config import FrameConfigStore
 from photoframe.hardware import HARDWARE_PROFILES
 from photoframe.web_portal import (
@@ -99,7 +99,7 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
         settings save & sanitization, remote actions, password change, and logout.
         """
         args = parse_args([])
-        app = PiSlideshowApp(args, hw_profile=HARDWARE_PROFILES["pi2"], config_store=self.store)
+        app = SlideshowApp(args, hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
         handler_cls = create_portal_handler(app, self.store, login_fail_delay=0.0)
         server = _ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
         port = server.server_address[1]

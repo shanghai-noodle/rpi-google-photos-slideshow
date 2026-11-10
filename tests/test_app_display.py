@@ -3,7 +3,7 @@ import os
 import tempfile
 import unittest
 
-from photoframe.app import PiSlideshowApp, parse_args
+from photoframe.app import SlideshowApp, parse_args
 from photoframe.collage import PhotoManager
 from photoframe.config import FrameConfigStore
 from photoframe.hardware import (
@@ -36,7 +36,7 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         self.assertEqual(args.language, "en")
         self.assertEqual(args.album, "demo")
 
-        app = PiSlideshowApp(args, hw_profile=HARDWARE_PROFILES["pi2"], config_store=self.store)
+        app = SlideshowApp(args, hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
         self.assertEqual(app.rotation, 0)
         self.assertEqual(app.transition, "none")
         self.assertEqual((app.canvas_w, app.canvas_h), (1920, 1080))
@@ -48,11 +48,11 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         'wipe', 'random') can be configured via CLI and updated live via Web Portal settings.
         """
         args = parse_args([])
-        app = PiSlideshowApp(args, hw_profile=HARDWARE_PROFILES["pi2"], config_store=self.store)
+        app = SlideshowApp(args, hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
         self.assertEqual(app.transition, "none")
         self.assertEqual(app.get_current_settings_dict()["transition"], "none")
 
-        for mode in PiSlideshowApp.VALID_TRANSITIONS:
+        for mode in SlideshowApp.VALID_TRANSITIONS:
             app.update_and_persist_settings({"transition": mode})
             app._process_web_actions()
             self.assertEqual(app.transition, mode)
@@ -65,7 +65,7 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         `app.rotation`, `app.canvas_w`, `app.canvas_h`, and `photo_manager.target_w/h`.
         """
         args = parse_args([])
-        app = PiSlideshowApp(args, hw_profile=HARDWARE_PROFILES["pi2"], config_store=self.store)
+        app = SlideshowApp(args, hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
         app.photo_manager = PhotoManager(
             app.canvas_w,
             app.canvas_h,
@@ -94,7 +94,7 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         """
         # 0° (1920x1080 canvas)
         args0 = parse_args(["--rotate", "0"])
-        app0 = PiSlideshowApp(args0, hw_profile=HARDWARE_PROFILES["pi2"], config_store=self.store)
+        app0 = SlideshowApp(args0, hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
         sx, sy, sw, sh, vf = app0._map_canvas_rect_to_screen(14, 14, 800, 520)
         self.assertEqual((sx, sy, sw, sh), (14, 14, 800, 520))
         self.assertNotIn("transpose", vf)
@@ -102,21 +102,21 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
 
         # 180° (1920x1080 canvas inverted)
         args180 = parse_args(["--rotate", "180"])
-        app180 = PiSlideshowApp(args180, hw_profile=HARDWARE_PROFILES["pi2"], config_store=self.store)
+        app180 = SlideshowApp(args180, hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
         sx, sy, sw, sh, vf = app180._map_canvas_rect_to_screen(14, 14, 800, 520)
         self.assertEqual((sx, sy, sw, sh), (1920 - 814, 1080 - 534, 800, 520))
         self.assertIn("hflip,vflip", vf)
 
         # 270° (1080x1920 portrait canvas on 1920x1080 physical display)
         args270 = parse_args(["--rotate", "270"])
-        app270 = PiSlideshowApp(args270, hw_profile=HARDWARE_PROFILES["pi2"], config_store=self.store)
+        app270 = SlideshowApp(args270, hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
         sx, sy, sw, sh, vf = app270._map_canvas_rect_to_screen(14, 100, 500, 600)
         self.assertEqual((sx, sy, sw, sh), (1920 - 700, 14, 600, 500))
         self.assertIn("transpose=1", vf)
 
         # 90° (1080x1920 portrait flipped canvas on 1920x1080 physical display)
         args90 = parse_args(["--rotate", "90"])
-        app90 = PiSlideshowApp(args90, hw_profile=HARDWARE_PROFILES["pi2"], config_store=self.store)
+        app90 = SlideshowApp(args90, hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
         sx, sy, sw, sh, vf = app90._map_canvas_rect_to_screen(14, 100, 500, 600)
         self.assertEqual((sx, sy, sw, sh), (100, 1080 - 514, 600, 500))
         self.assertIn("transpose=2", vf)
@@ -143,12 +143,12 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         Verifies `_parse_time_str` (both 24-hour and AM/PM formats) and `is_within_night_schedule`
         across overnight (`22:00` -> `06:00`) and daytime (`09:00` -> `17:00`) windows.
         """
-        self.assertEqual(PiSlideshowApp._parse_time_str("22:30", 0, 0), datetime.time(22, 30))
-        self.assertEqual(PiSlideshowApp._parse_time_str("10:15pm", 0, 0), datetime.time(22, 15))
-        self.assertEqual(PiSlideshowApp._parse_time_str("6am", 0, 0), datetime.time(6, 0))
+        self.assertEqual(SlideshowApp._parse_time_str("22:30", 0, 0), datetime.time(22, 30))
+        self.assertEqual(SlideshowApp._parse_time_str("10:15pm", 0, 0), datetime.time(22, 15))
+        self.assertEqual(SlideshowApp._parse_time_str("6am", 0, 0), datetime.time(6, 0))
 
         args = parse_args(["--night-start", "22:00", "--night-end", "06:00"])
-        app = PiSlideshowApp(args, hw_profile=HARDWARE_PROFILES["pi2"], config_store=self.store)
+        app = SlideshowApp(args, hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
 
         self.assertTrue(app.is_within_night_schedule(datetime.datetime(2026, 11, 9, 23, 15)))
         self.assertTrue(app.is_within_night_schedule(datetime.datetime(2026, 11, 9, 2, 30)))
@@ -156,13 +156,13 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         self.assertFalse(app.is_within_night_schedule(datetime.datetime(2026, 11, 9, 14, 0)))
 
     def test_hardware_profiles_and_capped_ram_file_handler(self):
-        key_pi2, prof_pi2 = detect_hardware_profile("pi2")
-        self.assertEqual(key_pi2, "pi2")
-        self.assertEqual(prof_pi2["cdn_scale"], 1.0)
+        key_std, prof_std = detect_hardware_profile("standard")
+        self.assertEqual(key_std, "standard")
+        self.assertEqual(prof_std["cdn_scale"], 1.0)
 
-        key_zero, prof_zero = detect_hardware_profile("pizero")
-        self.assertEqual(key_zero, "pizero")
-        self.assertLess(prof_zero["cdn_scale"], 1.0)
+        key_low, prof_low = detect_hardware_profile("lowmem")
+        self.assertEqual(key_low, "lowmem")
+        self.assertLess(prof_low["cdn_scale"], 1.0)
 
         log_path = os.path.join(self.tmp_dir.name, "ram_test.log")
         handler = CappedRamFileHandler(log_path, maxBytes=200, backupCount=0, encoding="utf-8")

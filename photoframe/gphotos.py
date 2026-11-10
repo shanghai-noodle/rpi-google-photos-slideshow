@@ -646,7 +646,7 @@ class GooglePhotosMixin:
                 else:
                     img = Image.open(source)
             else:
-                req = urllib.request.Request(source, headers={"User-Agent": "Mozilla/5.0 (Raspberry Pi)"})
+                req = urllib.request.Request(source, headers={"User-Agent": "Mozilla/5.0 (X11; Linux)"})
                 with urllib.request.urlopen(req, context=self.ssl_ctx, timeout=self.http_timeout) as res:
                     data = res.read()
                 img = Image.open(io.BytesIO(data))
@@ -684,7 +684,7 @@ class GooglePhotosMixin:
         ram_mp4_path = os.path.join(RAM_DIR, f"slide_vid_{slot}.mp4")
 
         try:
-            req = urllib.request.Request(stream_url, headers={"User-Agent": "Mozilla/5.0 (Raspberry Pi)"})
+            req = urllib.request.Request(stream_url, headers={"User-Agent": "Mozilla/5.0 (X11; Linux)"})
             max_bytes = 20 * 1024 * 1024
             total = 0
             tmp_path = f"{ram_mp4_path}.part"

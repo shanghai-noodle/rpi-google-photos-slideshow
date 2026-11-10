@@ -1,8 +1,8 @@
 """
-Hardware Profile Detection & RAM-Only Logging (Zero SD Card Wear)
-=================================================================
-Auto-detects Raspberry Pi Zero (ARMv6 / <=600MB RAM) vs Raspberry Pi 2/3/4/5
-(multi-core / >=1GB RAM) and configures capped rotating logs in `/dev/shm`.
+Hardware Profile Detection & RAM-Only Logging (Zero Disk/Flash Wear)
+====================================================================
+Auto-detects low-memory / single-core Linux systems (<=600MB RAM) vs standard
+multi-core Linux systems (>=1GB RAM) and configures capped rotating logs in `/dev/shm`.
 """
 
 from __future__ import annotations
@@ -15,31 +15,37 @@ import platform
 import sys
 from typing import Any, Dict, Optional, Tuple
 
+_STANDARD_PROFILE: Dict[str, Any] = {
+    "name": "Standard Multi-Core Linux System (1GB+ RAM)",
+    "portrait_queue_max": 8,
+    "landscape_queue_max": 8,
+    "slide_history_max": 3,
+    "cdn_scale": 1.0,
+    "http_timeout": 8.0,
+    "sync_sleep_sec": 0.05,
+    "ram_log_max_mb": 2,
+    "loop_hz": 10,
+    "video_fps": 18,
+}
+
+_LOWMEM_PROFILE: Dict[str, Any] = {
+    "name": "Low-Memory / Single-Core Linux System (<=600MB RAM)",
+    "portrait_queue_max": 4,
+    "landscape_queue_max": 4,
+    "slide_history_max": 1,
+    "cdn_scale": 0.75,
+    "http_timeout": 10.0,
+    "sync_sleep_sec": 0.25,
+    "ram_log_max_mb": 1,
+    "loop_hz": 5,
+    "video_fps": 12,
+}
+
 HARDWARE_PROFILES: Dict[str, Dict[str, Any]] = {
-    "pi2": {
-        "name": "Raspberry Pi 2+ (Multi-Core / 1GB+ RAM)",
-        "portrait_queue_max": 8,
-        "landscape_queue_max": 8,
-        "slide_history_max": 3,
-        "cdn_scale": 1.0,
-        "http_timeout": 8.0,
-        "sync_sleep_sec": 0.05,
-        "ram_log_max_mb": 2,
-        "loop_hz": 10,
-        "video_fps": 18,
-    },
-    "pizero": {
-        "name": "Raspberry Pi Zero (Single-Core ARMv6 / 512MB RAM / USB Wi-Fi)",
-        "portrait_queue_max": 4,
-        "landscape_queue_max": 4,
-        "slide_history_max": 1,
-        "cdn_scale": 0.75,
-        "http_timeout": 10.0,
-        "sync_sleep_sec": 0.25,
-        "ram_log_max_mb": 1,
-        "loop_hz": 5,
-        "video_fps": 12,
-    },
+    "standard": _STANDARD_PROFILE,
+    "lowmem": _LOWMEM_PROFILE,
+    "pi2": _STANDARD_PROFILE,
+    "pizero": _LOWMEM_PROFILE,
 }
 
 
@@ -48,8 +54,8 @@ def detect_hardware_profile(
     machine_override: Optional[str] = None,
     meminfo_path: str = "/proc/meminfo",
 ) -> Tuple[str, Dict[str, Any]]:
-    """Detects whether the system is a Pi Zero (armv6l / <=600MB RAM) or Pi 2+."""
-    if requested in ("pi2", "pizero"):
+    """Detects whether the system is a low-memory Linux device (<=600MB RAM) or standard multi-core system."""
+    if requested in ("standard", "lowmem", "pi2", "pizero"):
         return requested, HARDWARE_PROFILES[requested]
 
     machine = (machine_override if machine_override is not None else platform.machine()).lower()
@@ -66,15 +72,15 @@ def detect_hardware_profile(
             pass
 
     if "armv6" in machine or total_ram_mb <= 600:
-        return "pizero", HARDWARE_PROFILES["pizero"]
-    return "pi2", HARDWARE_PROFILES["pi2"]
+        return "lowmem", HARDWARE_PROFILES["lowmem"]
+    return "standard", HARDWARE_PROFILES["standard"]
 
 
 RAM_DIR = "/dev/shm" if (os.path.isdir("/dev/shm") and os.access("/dev/shm", os.W_OK)) else "/tmp"
 DEFAULT_RAM_LOG = os.path.join(RAM_DIR, "slideshow.log")
 DEFAULT_RAM_CACHE = os.path.join(RAM_DIR, "gphotos_cache.json")
 
-logger = logging.getLogger("PiSlideshow")
+logger = logging.getLogger("Slideshow")
 
 
 class CappedRamFileHandler(RotatingFileHandler):
@@ -91,7 +97,7 @@ class CappedRamFileHandler(RotatingFileHandler):
             try:
                 ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 mb = max(1, self.maxBytes // (1024 * 1024))
-                self.stream.write(f"[{ts}] [INFO] [PiSlideshow] Log reached {mb}MB RAM cap; rotated in memory.\n")
+                self.stream.write(f"[{ts}] [INFO] [Slideshow] Log reached {mb}MB RAM cap; rotated in memory.\n")
                 self.stream.flush()
             except Exception:
                 pass
@@ -102,7 +108,7 @@ def setup_ram_logging(
     max_mb: int = 2,
     debug: bool = False,
     quiet: bool = False,
-    profile_key: str = "pi2",
+    profile_key: str = "standard",
     profile_info: Optional[Dict[str, Any]] = None,
 ):
     """Configures logging strictly in RAM (/dev/shm or /tmp tmpfs) + optional stdout."""
@@ -137,7 +143,7 @@ def setup_ram_logging(
     logging.getLogger("PIL").setLevel(logging.WARNING)
     prof_desc = (profile_info or {}).get("name", profile_key)
     logger.info("=" * 68)
-    logger.info("🍓 Starting Raspberry Pi Native Google Photos Slideshow (RAM-Only)")
+    logger.info("🖼️ Starting Linux Native Google Photos Slideshow (RAM-Only)")
     logger.info("⚙️  Hardware Profile: [%s] %s", profile_key, prof_desc)
     logger.info("📝 RAM Log File: %s (Max: %dMB, tmpfs in memory)", log_path, max_mb)
     logger.info("=" * 68)

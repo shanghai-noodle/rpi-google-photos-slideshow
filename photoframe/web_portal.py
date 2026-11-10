@@ -16,7 +16,7 @@ from .config import FrameConfigStore
 from .hardware import logger
 
 if TYPE_CHECKING:
-    from .app import PiSlideshowApp
+    from .app import SlideshowApp
 
 SUPPORTED_LANGUAGES = ("en", "zh", "ja", "ko", "es", "de")
 
@@ -174,7 +174,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   <!-- MAIN DASHBOARD VIEW -->
   <div id="app-view" class="hidden">
     <header>
-      <h1 data-i18n="portal_title">🖼️ Pi Photo Frame Portal</h1>
+      <h1 data-i18n="portal_title">🖼️ Photo Frame Control Portal</h1>
       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
         <select id="header-lang-select" onchange="setLanguage(this.value, true, true)" style="width:auto; padding:5px 10px; font-size:0.8rem;">
           <option value="en">🌐 English</option>
@@ -393,7 +393,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       <pre class="log-box" id="log-box">Loading RAM log...</pre>
       <div class="btn-grid" style="margin-top: 14px;">
         <button class="warn" onclick="confirmSystemAction('restart')" data-i18n="btn_restart">♻️ Restart Slideshow</button>
-        <button class="danger" onclick="confirmSystemAction('reboot')" data-i18n="btn_reboot">⚡ Reboot Raspberry Pi</button>
+        <button class="danger" onclick="confirmSystemAction('reboot')" data-i18n="btn_reboot">⚡ Reboot Device</button>
       </div>
     </div>
   </div>
@@ -409,7 +409,7 @@ const I18N = {
     lbl_password: "Password",
     ph_password: "Enter password",
     btn_signin: "Sign In",
-    portal_title: "🖼️ Pi Photo Frame Portal",
+    portal_title: "🖼️ Photo Frame Control Portal",
     btn_signout: "Sign Out",
     default_pw_banner: "⚠️ You are currently using the default password (<b>admin</b>). Scroll down to <b>Security & Change Password</b> to set a custom password.",
     sec_remote: "⚡ Quick Remote Controls",
@@ -483,7 +483,7 @@ const I18N = {
     sec_system: "🛠️ System Control & RAM Log",
     btn_refresh_log: "🔄 Refresh Log",
     btn_restart: "♻️ Restart Slideshow",
-    btn_reboot: "⚡ Reboot Raspberry Pi",
+    btn_reboot: "⚡ Reboot Device",
     badge_night: "🌙 Night Mode (Sleeping)",
     badge_paused: "⏸️ Paused",
     badge_active: "🟢 Active (Playing)",
@@ -498,7 +498,7 @@ const I18N = {
     msg_pw_mismatch: "New passwords do not match",
     msg_pw_updated: "✅ Password updated successfully! Your session remains active.",
     confirm_restart: "Restart the slideshow service now?",
-    confirm_reboot: "Reboot the Raspberry Pi now? The screen will reconnect in ~35 seconds."
+    confirm_reboot: "Reboot the device now? The screen will reconnect in ~35 seconds."
   },
   zh: {
     login_title: "🔒 数码相框管理登录",
@@ -506,7 +506,7 @@ const I18N = {
     lbl_password: "管理密码",
     ph_password: "请输入密码",
     btn_signin: "登录",
-    portal_title: "🖼️ 树莓派数码相框控制台",
+    portal_title: "🖼️ 数码相框控制台",
     btn_signout: "退出登录",
     default_pw_banner: "⚠️ 您当前使用的是默认密码 (<b>admin</b>)。请向下滚动至 <b>安全与修改密码</b> 设置自定义密码。",
     sec_remote: "⚡ 快捷远程控制",
@@ -580,7 +580,7 @@ const I18N = {
     sec_system: "🛠️ 系统控制与内存日志",
     btn_refresh_log: "🔄 刷新日志",
     btn_restart: "♻️ 重启幻灯片服务",
-    btn_reboot: "⚡ 重启树莓派设备",
+    btn_reboot: "⚡ 重启设备",
     badge_night: "🌙 夜间休眠中",
     badge_paused: "⏸️ 已暂停",
     badge_active: "🟢 正在播放",
@@ -595,7 +595,7 @@ const I18N = {
     msg_pw_mismatch: "两次输入的新密码不一致",
     msg_pw_updated: "✅ 密码更新成功！当前登录会话保持有效。",
     confirm_restart: "确定要立即重启幻灯片服务吗？",
-    confirm_reboot: "确定要立即重启树莓派吗？屏幕将在约 35 秒后重新连接。"
+    confirm_reboot: "确定要立即重启设备吗？屏幕将在约 35 秒后重新连接。"
   },
   ja: {
     login_title: "🔒 フォトフレーム ログイン",
@@ -603,7 +603,7 @@ const I18N = {
     lbl_password: "パスワード",
     ph_password: "パスワードを入力",
     btn_signin: "ログイン",
-    portal_title: "🖼️ Pi フォトフレーム管理ポータル",
+    portal_title: "🖼️ フォトフレーム管理ポータル",
     btn_signout: "ログアウト",
     default_pw_banner: "⚠️ 現在、初期パスワード (<b>admin</b>) を使用しています。下の<b>セキュリティとパスワード変更</b>から変更してください。",
     sec_remote: "⚡ クイックリモコン操作",
@@ -677,7 +677,7 @@ const I18N = {
     sec_system: "🛠️ システム管理 & RAMログ",
     btn_refresh_log: "🔄 ログ更新",
     btn_restart: "♻️ スライドショー再起動",
-    btn_reboot: "⚡ Raspberry Pi を再起動",
+    btn_reboot: "⚡ デバイスを再起動",
     badge_night: "🌙 ナイトモード（スリープ中）",
     badge_paused: "⏸️ 一時停止中",
     badge_active: "🟢 再生中 (Active)",
@@ -692,7 +692,7 @@ const I18N = {
     msg_pw_mismatch: "新しいパスワードが一致しません",
     msg_pw_updated: "✅ パスワードを更新しました！セッションは維持されます。",
     confirm_restart: "スライドショーサービスを今すぐ再起動しますか？",
-    confirm_reboot: "Raspberry Pi を今すぐ再起動しますか？約35秒後に再接続されます。"
+    confirm_reboot: "デバイスを今すぐ再起動しますか？約35秒後に再接続されます。"
   },
   ko: {
     login_title: "🔒 디지털 액자 로그인",
@@ -700,7 +700,7 @@ const I18N = {
     lbl_password: "비밀번호",
     ph_password: "비밀번호 입력",
     btn_signin: "로그인",
-    portal_title: "🖼️ 라즈베리 파이 액자 제어 포털",
+    portal_title: "🖼️ 디지털 액자 제어 포털",
     btn_signout: "로그아웃",
     default_pw_banner: "⚠️ 현재 기본 비밀번호(<b>admin</b>)를 사용 중입니다. 아래 <b>보안 및 비밀번호 변경</b>에서 새 비밀번호를 설정하세요.",
     sec_remote: "⚡ 빠른 원격 제어",
@@ -774,7 +774,7 @@ const I18N = {
     sec_system: "🛠️ 시스템 제어 및 RAM 로그",
     btn_refresh_log: "🔄 로그 새로고침",
     btn_restart: "♻️ 슬라이드쇼 재시작",
-    btn_reboot: "⚡ 라즈베리 파이 재부팅",
+    btn_reboot: "⚡ 기기 재부팅",
     badge_night: "🌙 야간 모드 (절전 중)",
     badge_paused: "⏸️ 일시정지됨",
     badge_active: "🟢 재생 중 (Active)",
@@ -789,7 +789,7 @@ const I18N = {
     msg_pw_mismatch: "새 비밀번호가 일치하지 않습니다",
     msg_pw_updated: "✅ 비밀번호가 성공적으로 변경되었습니다!",
     confirm_restart: "슬라이드쇼 서비스를 지금 재시작하시겠습니까?",
-    confirm_reboot: "라즈베리 파이를 지금 재부팅하시겠습니까? 약 35초 후 다시 연결됩니다."
+    confirm_reboot: "기기를 지금 재부팅하시겠습니까? 약 35초 후 다시 연결됩니다."
   },
   es: {
     login_title: "🔒 Acceso al Marco Digital",
@@ -797,7 +797,7 @@ const I18N = {
     lbl_password: "Contraseña",
     ph_password: "Ingresa la contraseña",
     btn_signin: "Iniciar Sesión",
-    portal_title: "🖼️ Portal del Marco Digital Pi",
+    portal_title: "🖼️ Portal del Marco Digital",
     btn_signout: "Cerrar Sesión",
     default_pw_banner: "⚠️ Estás usando la contraseña predeterminada (<b>admin</b>). Desplázate a <b>Seguridad y Contraseña</b> para cambiarla.",
     sec_remote: "⚡ Controles Remotos Rápidos",
@@ -871,7 +871,7 @@ const I18N = {
     sec_system: "🛠️ Control del Sistema y Registro RAM",
     btn_refresh_log: "🔄 Actualizar Registro",
     btn_restart: "♻️ Reiniciar Presentación",
-    btn_reboot: "⚡ Reiniciar Raspberry Pi",
+    btn_reboot: "⚡ Reiniciar dispositivo",
     badge_night: "🌙 Modo Nocturno (En Reposo)",
     badge_paused: "⏸️ En Pausa",
     badge_active: "🟢 Activo (Reproduciendo)",
@@ -886,7 +886,7 @@ const I18N = {
     msg_pw_mismatch: "Las contraseñas nuevas no coinciden",
     msg_pw_updated: "✅ ¡Contraseña actualizada correctamente! Tu sesión sigue activa.",
     confirm_restart: "¿Reiniciar el servicio de presentación ahora?",
-    confirm_reboot: "¿Reiniciar la Raspberry Pi ahora? La pantalla se reconectará en ~35 segundos."
+    confirm_reboot: "¿Reiniciar el dispositivo ahora? La pantalla se reconectará en ~35 segundos."
   },
   de: {
     login_title: "🔒 Bilderrahmen-Anmeldung",
@@ -894,7 +894,7 @@ const I18N = {
     lbl_password: "Passwort",
     ph_password: "Passwort eingeben",
     btn_signin: "Anmelden",
-    portal_title: "🖼️ Pi Bilderrahmen-Steuerportal",
+    portal_title: "🖼️ Bilderrahmen-Steuerportal",
     btn_signout: "Abmelden",
     default_pw_banner: "⚠️ Sie verwenden derzeit das Standardpasswort (<b>admin</b>). Scrollen Sie zu <b>Sicherheit & Passwort ändern</b>, um ein eigenes Passwort festzulegen.",
     sec_remote: "⚡ Schnellsteuerung",
@@ -968,7 +968,7 @@ const I18N = {
     sec_system: "🛠️ Systemsteuerung & RAM-Protokoll",
     btn_refresh_log: "🔄 Protokoll aktualisieren",
     btn_restart: "♻️ Diashow neu starten",
-    btn_reboot: "⚡ Raspberry Pi neu starten",
+    btn_reboot: "⚡ Gerät neu starten",
     badge_night: "🌙 Nachtmodus (Schlafend)",
     badge_paused: "⏸️ Pausiert",
     badge_active: "🟢 Aktiv (Wiedergabe)",
@@ -983,7 +983,7 @@ const I18N = {
     msg_pw_mismatch: "Neue Passwörter stimmen nicht überein",
     msg_pw_updated: "✅ Passwort erfolgreich aktualisiert! Ihre Sitzung bleibt aktiv.",
     confirm_restart: "Diashow-Dienst jetzt neu starten?",
-    confirm_reboot: "Raspberry Pi jetzt neu starten? Der Bildschirm verbindet sich in ca. 35 Sekunden neu."
+    confirm_reboot: "Gerät jetzt neu starten? Der Bildschirm verbindet sich in ca. 35 Sekunden neu."
   }
 };
 
@@ -1292,7 +1292,7 @@ class _ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 
 def create_portal_handler(
-    app: "PiSlideshowApp",
+    app: "SlideshowApp",
     config_store: FrameConfigStore,
     login_fail_delay: float = 1.0,
 ) -> Type[http.server.BaseHTTPRequestHandler]:
@@ -1435,7 +1435,7 @@ def create_portal_handler(
     return PortalHandler
 
 
-def start_web_config_server(app: "PiSlideshowApp", config_store: FrameConfigStore, port: int = 8080):
+def start_web_config_server(app: "SlideshowApp", config_store: FrameConfigStore, port: int = 8080):
     if port <= 0:
         return
 

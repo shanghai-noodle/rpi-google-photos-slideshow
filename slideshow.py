@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Raspberry Pi Native Google Photos Slideshow (v1.0.0)
-====================================================
+Linux Native Google Photos Slideshow (v1.0.0)
+=============================================
 Thin CLI entry point & backward-compatible re-export module for the modular
 `photoframe` package.
 
@@ -22,6 +22,7 @@ from photoframe import (
     GooglePhotosMixin,
     PhotoManager,
     PiSlideshowApp,
+    SlideshowApp,
     __author__,
     __created_with__,
     __version__,
@@ -54,6 +55,7 @@ __all__ = [
     "WEB_PORTAL_HTML",
     "create_portal_handler",
     "start_web_config_server",
+    "SlideshowApp",
     "PiSlideshowApp",
     "parse_args",
     "main",

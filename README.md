@@ -1,4 +1,4 @@
-# 🖼️ Raspberry Pi Native Google Photos Slideshow
+# 🖼️ Linux Native Google Photos Slideshow
 
 [![Version](https://img.shields.io/badge/version-v1.0.0-38bdf8)](https://github.com/shanghai-noodle/rpi-google-photos-slideshow)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg)](LICENSE)
@@ -6,7 +6,7 @@
 
 **[English](README.md) | [简体中文](README.zh-CN.md)**
 
-A lightweight, native Linux / Raspberry Pi digital photo frame application that streams directly from a **Google Photos Shared Album** (or built-in **30-item Demo Showcase Pack**) with **9 even-gap portrait & landscape collage templates**, **subject-aware center cropping**, **live FFmpeg video tiles**, a **password-protected 6-language Web Control Portal**, and **zero SD card wear** (`100%` RAM logging & caching).
+A lightweight, native Linux digital photo frame application (`x86_64` & `ARM64`/`ARMv7`) that streams directly from a **Google Photos Shared Album** (or built-in **30-item Demo Showcase Pack**) with **9 even-gap portrait & landscape collage templates**, **subject-aware center cropping**, **live FFmpeg video tiles**, a **password-protected 6-language Web Control Portal**, and **zero disk/flash wear** (`100%` RAM logging & caching).
 
 > ✨ **Created with Google Antigravity** by **shanghai-noodle**.
 
@@ -31,28 +31,46 @@ A lightweight, native Linux / Raspberry Pi digital photo frame application that 
 - **🎬 Live Video Streaming in Any Tile (`--videos play | skip | still`)**:
   - Automatically detects videos in Google Photos shared albums (`76647426` metadata key) and local `.mp4`/`.mov` files.
   - Prefetches transcoded MP4 streams (`=m18`) into `/dev/shm` (`tmpfs` RAM disk) and streams them smoothly via `ffmpeg` directly into any single or multi-tile collage slot (sequencing multiple video tiles on the same slide one after another).
-- **🌐 Password-Protected Local Web Configuration Portal (`http://<pi-ip>:8080`)**:
+- **🌐 Password-Protected Local Web Configuration Portal (`http://<device-ip>:8080`)**:
   - **Multi-Language UI**: Full localization for **English**, **中文 (Chinese)**, **日本語 (Japanese)**, **한국어 (Korean)**, **Español (Spanish)**, and **Deutsch (German)**.
   - **Security**: Protected by `PBKDF2-HMAC-SHA256` password hashing (default password: `admin`, changeable in the Web UI).
-  - **Live Remote Control & Settings**: Change the Google Photos shared album URL, switch collage layouts, adjust slide/video durations, toggle or disable Night Mode, advance/pause slides, switch to the built-in **Demo Showcase Pack**, view live RAM logs, restart the slideshow, or reboot the Raspberry Pi.
+  - **Live Remote Control & Settings**: Change the Google Photos shared album URL, switch collage layouts, adjust slide/video durations, toggle or disable Night Mode, advance/pause slides, switch to the built-in **Demo Showcase Pack**, view live RAM logs, restart the slideshow, or reboot the device.
 - **✨ Built-in AI-Generated Demo Showcase Pack (`demo_media/`)**:
   - **AI-Generated Media Note**: All bundled Demo Showcase images and videos in `demo_media/` are AI-generated using **Google Gemini & Veo** (**24 photorealistic photos** — 12 cats & dogs + 12 urban landscaping & architectural parks across Portrait `3:4` and Landscape `16:9` — plus **5 lively 10-second Gemini Veo MP4 videos**). Everything is 100% original and MIT-licensed, so a newly installed device works out of the box—even offline—before a personal Google Photos album is configured. Includes automatic fallback to local `demo_media/` photos if any remote URL ever fails.
-- **🛡️ Zero SD Card Wear & 24/7 USB Wi-Fi Keepalive**:
+- **🛡️ Zero Disk/Flash Wear & 24/7 USB Wi-Fi Keepalive**:
   - Disables `.pyc` bytecode writes (`sys.dont_write_bytecode = True`), logs strictly to `/dev/shm/slideshow.log` (capped at 2 MB in RAM), and caches album URLs in `/dev/shm/gphotos_cache.json`.
-  - Includes a built-in USB Wi-Fi keepalive daemon (`iw dev wlan0 set power_save off` + 45-second gateway heartbeat) so USB Wi-Fi dongles never enter sleep mode during Night Mode.
+  - Includes a built-in USB Wi-Fi keepalive daemon (`iw dev wlan0 set power_save off` + 45-second gateway heartbeat) so wireless adapters never enter sleep mode during Night Mode.
 
 ---
 
 ## 🛠️ Step-by-Step Installation & Setup
 
 ### 1. Install System Dependencies
-On Raspberry Pi OS (Lite or Desktop) or Ubuntu/Debian:
+On **Debian / Ubuntu / Linux Mint / Armbian** (and other `apt`-based Linux distributions):
 
 ```bash
 sudo apt update
 sudo apt install -y git python3-pygame python3-pil ffmpeg libegl1 libgbm1 libgles2 libgl1-mesa-dri
 sudo usermod -aG video,render $USER
 ```
+
+> **💡 Note for Other Linux Distributions**:
+> The application runs natively on any modern Linux distribution (Wayland, X11 Desktop, or headless KMS/DRM console). On non-Debian distributions, install the equivalent packages using your system package manager before running `./install_service.sh`:
+> - **Fedora / RHEL / CentOS Stream / AlmaLinux / Rocky Linux (`dnf`)**:
+>   ```bash
+>   sudo dnf install -y git python3-pygame python3-pillow ffmpeg mesa-libEGL mesa-libgbm mesa-libGLES mesa-dri-drivers
+>   sudo usermod -aG video,render $USER
+>   ```
+> - **Arch Linux / Manjaro / EndeavourOS (`pacman`)**:
+>   ```bash
+>   sudo pacman -S --needed git python-pygame python-pillow ffmpeg mesa
+>   sudo usermod -aG video,render $USER
+>   ```
+> - **openSUSE Tumbleweed / Leap (`zypper`)**:
+>   ```bash
+>   sudo zypper install -y git python3-pygame python3-Pillow ffmpeg Mesa-libEGL1 libgbm1 Mesa-libGLESv2-2
+>   sudo usermod -aG video,render $USER
+>   ```
 
 ### 2. Clone the Repository
 ```bash
@@ -68,13 +86,13 @@ Start the slideshow (boots into **Demo Showcase Mode** at `0°` horizontal `1920
 python3 -B slideshow.py --duration 15 --rotate 0 --landscape-mode collage --web-port 8080
 ```
 
-1. Open **`http://<your-pi-ip>:8080`** in any phone or desktop browser on your network.
-   > **⚠️ Firewall Reminder**: The Web Control Portal uses TCP port **`8080`** by default. If you have a firewall enabled on your Raspberry Pi (such as `ufw` or `iptables`/`nftables`) or Wi-Fi router AP isolation, make sure incoming LAN traffic on port `8080` is allowed (e.g., `sudo ufw allow 8080/tcp`).
+1. Open **`http://<your-device-ip>:8080`** in any phone or desktop browser on your network.
+   > **⚠️ Firewall Reminder**: The Web Control Portal uses TCP port **`8080`** by default. If you have a firewall enabled on your Linux host (such as `ufw`, `firewalld`, or `iptables`/`nftables`) or Wi-Fi router AP isolation, make sure incoming LAN traffic on port `8080` is allowed (e.g., `sudo ufw allow 8080/tcp` or `sudo firewall-cmd --add-port=8080/tcp --permanent && sudo firewall-cmd --reload`).
 2. Sign in with the default password **`admin`** (you can change the password under **Security & Change Password**).
 3. Paste your **Google Photos Shared Album URL** (`https://photos.app.goo.gl/...`), choose your preferred collage layout, screen rotation (`0°`, `90°`, `180°`, or `270°`), and Night Mode schedule, then click **Save & Apply Settings**.
 
 ### 4. Auto-Start on Boot (`systemd` Service)
-To run the photo frame automatically on boot without X11/Desktop overhead, run the included installer script (it automatically detects your username and repository path):
+To run the photo frame automatically on boot, run the included installer script (it automatically detects your username, repository path, and package manager):
 
 ```bash
 ./install_service.sh
@@ -82,7 +100,7 @@ To run the photo frame automatically on boot without X11/Desktop overhead, run t
 
 *(Or manually copy the unit file)*:
 ```bash
-sed -i "s|/home/pi/rpi-google-photos-slideshow|$(pwd)|g; s|User=pi|User=$USER|g" slideshow.service
+sed -i "s|/opt/photo-slideshow|$(pwd)|g; s|User=linuxuser|User=$USER|g" slideshow.service
 sudo cp slideshow.service /etc/systemd/system/slideshow.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now slideshow.service
@@ -98,7 +116,7 @@ sudo systemctl status slideshow.service
 
 ## 🚀 Quick Start & Command-Line Usage
 
-Start the slideshow (boots into **Demo Showcase Mode** by default until you set your album in the Web Portal at `http://<pi-ip>:8080`):
+Start the slideshow (boots into **Demo Showcase Mode** by default until you set your album in the Web Portal at `http://<device-ip>:8080`):
 
 ```bash
 python3 -B slideshow.py \
@@ -122,7 +140,7 @@ python3 -B slideshow.py \
 
 | Flag | Default | Description |
 | :--- | :--- | :--- |
-| `-p`, `--profile` | `auto` | Hardware profile: `auto` (detects Pi Zero vs Pi 2+), `pi2` (1GB+ RAM, full `1080×1920` fetch), or `pizero` (512MB RAM / single-core ARMv6 / USB Wi-Fi tuning) |
+| `-p`, `--profile` | `auto` | Hardware profile: `auto` (detects standard vs low-memory system), `standard` (1GB+ RAM, full `1080×1920` fetch), or `lowmem` (<=600MB RAM / single-core tuning) |
 | `-a`, `--album` | `demo` | Google Photos shared album URL (`https://photos.app.goo.gl/...`), ID, or `demo` (built-in 30-item showcase pack) |
 | `--web-port` | `8080` | Port for the password-protected local Web Configuration Portal (`0` to disable) |
 | `-d`, `--duration` | `15.0` | Seconds to display each slide |
@@ -171,12 +189,12 @@ Run the included helper script to check process status and tail the RAM log (`/d
 ├── slideshow.py              # CLI entry point & backward-compatible re-export module
 ├── photoframe/               # Core modular Python package
 │   ├── __init__.py           # Package exports & version metadata (v1.0.0)
-│   ├── hardware.py           # Pi Zero / Pi 2+ auto-detection & capped RAM logging
+│   ├── hardware.py           # Hardware profile auto-detection & capped RAM logging
 │   ├── config.py             # FrameConfigStore (PBKDF2-HMAC-SHA256 auth & persistent JSON settings)
 │   ├── gphotos.py            # GooglePhotosMixin (shared album scraper, RPC paginator & RAM cache)
 │   ├── collage.py            # PhotoManager (9 even-gap templates & subject-aware smart cropper)
 │   ├── web_portal.py         # Multi-language Web Control Portal (en, zh, ja, ko, es, de)
-│   └── app.py                # PiSlideshowApp (KMSDRM display, rotation, FFmpeg video & Night Mode)
+│   └── app.py                # SlideshowApp (Wayland/X11/KMSDRM display, rotation, FFmpeg video & Night Mode)
 ├── tests/                    # 100% offline headless unit test suite
 │   ├── test_collage.py       # Collage geometry, aspect ratio & subject-aware center-crop tests
 │   ├── test_web_portal.py    # PBKDF2 auth, session cookies, 6-language i18n & HTTP API tests
