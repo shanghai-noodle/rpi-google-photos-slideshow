@@ -21,6 +21,19 @@ _STATE_LOCK = threading.Lock()
 _DESIRED_BASE_NAME = "photoframe"
 _ACTIVE_MDNS_HOSTNAME = MDNS_HOSTNAME
 _CONFIG_GENERATION = 0
+_DISCOVERED_LAN_IPS = set()
+
+
+def get_discovered_lan_ips() -> List[str]:
+    with _STATE_LOCK:
+        return sorted(_DISCOVERED_LAN_IPS)
+
+
+def _record_discovered_ip(ip_str: str, my_ip: str = "") -> None:
+    if not ip_str or ip_str in ("127.0.0.1", "0.0.0.0", "localhost", my_ip):
+        return
+    with _STATE_LOCK:
+        _DISCOVERED_LAN_IPS.add(ip_str)
 
 
 def normalize_mdns_base_name(name: Optional[str]) -> str:
@@ -240,6 +253,7 @@ def _probe_hostname_conflict(
             break
 
         for rr_name, record_ip in parse_mdns_a_records(data):
+            _record_discovered_ip(record_ip, my_ip)
             if rr_name == target_lower and record_ip not in (my_ip, "127.0.0.1", "0.0.0.0"):
                 return True
     return False
@@ -315,6 +329,7 @@ def start_mdns_responder(
 
             _broadcast_announcement(active_host, my_ip)
             last_defend_time = 0.0
+            last_periodic_announce = time.monotonic()
 
             while True:
                 with _STATE_LOCK:
@@ -331,7 +346,13 @@ def start_mdns_responder(
                     _set_active_mdns_hostname(active_host)
                     last_defend_time = 0.0
                     _broadcast_announcement(active_host, my_ip)
+                    last_periodic_announce = time.monotonic()
                     logger.info("🌐 mDNS hostname updated live: http://%s:8080 -> %s", active_host, my_ip)
+
+                now_mono = time.monotonic()
+                if now_mono - last_periodic_announce >= 20.0:
+                    last_periodic_announce = now_mono
+                    _broadcast_announcement(active_host, ip_provider())
 
                 sock.settimeout(0.5)
                 try:
@@ -351,6 +372,7 @@ def start_mdns_responder(
                 # 1. Handle incoming mDNS responses (QR=1) -> continuous conflict defense
                 if (flags & 0x8000) != 0:
                     for rr_name, record_ip in parse_mdns_a_records(data):
+                        _record_discovered_ip(record_ip, my_ip)
                         if rr_name == target_lower and record_ip not in (my_ip, "127.0.0.1", "0.0.0.0"):
                             now = time.monotonic()
                             # Tie-breaker: higher IP yields immediately, or yield if peer ignored our defense

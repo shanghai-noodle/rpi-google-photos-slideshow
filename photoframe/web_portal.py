@@ -17,6 +17,7 @@ import urllib.parse
 from typing import TYPE_CHECKING, Any, Dict, Optional, Type
 
 from .config import FrameConfigStore
+from .fleet import FleetManager, verify_peer_request
 from .hardware import logger
 from .mdns import MDNS_HOSTNAME, get_active_mdns_hostname, start_mdns_responder
 
@@ -147,6 +148,38 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   }
   #login-view { max-width: 400px; margin: 60px auto; }
   .hidden { display: none !important; }
+  .fleet-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+    gap: 10px; margin-top: 10px;
+  }
+  .fleet-pill {
+    background: var(--input-bg); border: 1.5px solid var(--card-border);
+    border-radius: 11px; padding: 10px 12px; cursor: pointer;
+    transition: all 0.15s ease; position: relative; text-align: left;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .fleet-pill:hover { border-color: #475569; background: #152036; }
+  .fleet-pill.selected {
+    border-color: var(--accent); background: rgba(56, 189, 248, 0.12);
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35);
+  }
+  .fleet-pill-top {
+    display: flex; align-items: center; justify-content: space-between;
+    font-weight: 700; font-size: 0.9rem; color: #f8fafc; gap: 6px;
+  }
+  .fleet-pill-meta { font-size: 0.75rem; color: #93c5fd; font-weight: 500; }
+  .fleet-pill-sub { font-size: 0.74rem; color: var(--muted); }
+  .fleet-remove-btn {
+    background: transparent; border: none; color: var(--muted);
+    padding: 0 4px; font-size: 0.95rem; line-height: 1; cursor: pointer;
+  }
+  .fleet-remove-btn:hover { color: var(--danger); background: transparent; }
+  .target-banner {
+    margin-top: 10px; padding: 9px 12px; border-radius: 9px;
+    font-size: 0.83rem; font-weight: 600;
+    background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3);
+    color: #bae6fd;
+  }
 </style>
 </head>
 <body>
@@ -200,6 +233,23 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       ⚠️ You are currently using the default password (<b>admin</b>). Scroll down to <b>Security & Password</b> to set a custom password.
     </div>
 
+    <!-- MULTI-FRAME LAN FLEET SELECTOR BAR -->
+    <div class="card" id="fleet-card">
+      <h2>
+        <span data-i18n="sec_fleet">🖧 Connected Photo Frames (LAN Fleet)</span>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" onclick="scanFleetNodes()" id="btn-scan-fleet" style="padding:5px 10px; font-size:0.78rem;" data-i18n="btn_scan_fleet">🔍 Scan LAN</button>
+          <button type="button" onclick="toggleAddPeerRow()" style="padding:5px 10px; font-size:0.78rem;" data-i18n="btn_add_peer">➕ Add IP</button>
+        </div>
+      </h2>
+      <div id="add-peer-row" class="hidden" style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+        <input type="text" id="add-peer-input" style="flex:1; min-width:200px;" data-i18n-placeholder="ph_add_peer" placeholder="192.168.86.x or photoframe-2.local:8080">
+        <button type="button" class="primary" onclick="addManualPeer()" data-i18n="btn_connect_peer">Connect Frame</button>
+      </div>
+      <div id="fleet-nodes-grid" class="fleet-grid"></div>
+      <div id="active-target-banner" class="target-banner"></div>
+    </div>
+
     <!-- LIVE STATUS & REMOTE ACTIONS -->
     <div class="card">
       <h2 data-i18n="sec_remote">⚡ Quick Remote Controls</h2>
@@ -239,11 +289,16 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       <form id="settings-form" onsubmit="saveSettings(event)">
         <div class="form-grid">
           <div class="form-group full">
-            <label for="cfg-album" data-i18n="lbl_album">Google Photos Shared Album URL (leave blank or 'demo' for Demo Showcase Pack)</label>
-            <input type="text" id="cfg-album" data-i18n-placeholder="ph_album" placeholder="https://photos.app.goo.gl/... (or leave blank for Demo Showcase)">
+            <label for="cfg-album" id="lbl-album-dynamic" data-i18n="lbl_album">Google Photos Shared Album URL (leave blank or 'demo' for Demo Showcase Pack)</label>
+            <input type="text" id="cfg-album" oninput="autoExtractBaiduPwd()" data-i18n-placeholder="ph_album" placeholder="https://photos.app.goo.gl/... (or leave blank for Demo Showcase)">
             <div style="font-size: 0.78rem; color: var(--muted); margin-top: 2px;" data-i18n="demo_ai_note">
               ✨ Note: Built-in Demo Showcase images and videos are AI-generated with Google Gemini &amp; Veo.
             </div>
+          </div>
+
+          <div class="form-group hidden" id="group-pwd">
+            <label for="cfg-pwd" data-i18n="lbl_pwd">Baidu Pan Extract Code (pwd / 提取码)</label>
+            <input type="text" id="cfg-pwd" maxlength="16" data-i18n-placeholder="ph_pwd" placeholder="4-char code (e.g. i5pp)">
           </div>
 
           <div class="form-group">
@@ -396,6 +451,32 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       </form>
     </div>
 
+    <!-- APP AUTO-UPDATE & MANUAL APK UPLOAD (Shown when managing Android TV frames) -->
+    <div class="card hidden" id="card-apk-update">
+      <h2>
+        <span data-i18n="sec_update">📦 App Auto-Update &amp; APK Installer (Android TV)</span>
+        <span id="stat-app-version" class="badge" style="font-size:0.78rem;">v1.0.0</span>
+      </h2>
+      <div class="form-grid">
+        <div class="form-group full">
+          <label for="cfg-update-url" data-i18n="lbl_update_url">APK Update Download Link (checked on startup &amp; every 6h)</label>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <input type="text" id="cfg-update-url" style="flex:1; min-width:240px;" placeholder="https://github.com/shanghai-noodle/androidTV-photo-slideshow-releases/releases/latest/download/...">
+            <button type="button" class="primary" onclick="checkUpdateNow()" data-i18n="btn_check_update">🔍 Save Link &amp; Check Update Now</button>
+          </div>
+          <div id="stat-update-status" style="font-size:0.8rem; color:var(--muted); margin-top:4px;">—</div>
+        </div>
+        <div class="form-group full" style="margin-top:6px;">
+          <label for="apk-file-input" data-i18n="lbl_apk_upload">Or Upload &amp; Install APK File Directly from Browser</label>
+          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <input type="file" id="apk-file-input" accept=".apk,application/vnd.android.package-archive" style="flex:1; min-width:220px; padding:7px;">
+            <button type="button" id="btn-upload-apk" class="success" onclick="uploadAndInstallApk()" data-i18n="btn_upload_apk">📲 Upload &amp; Install APK</button>
+          </div>
+        </div>
+      </div>
+      <div id="update-confirm-banner" class="confirm-banner"></div>
+    </div>
+
     <!-- SYSTEM POWER & RAM LOGS -->
     <div class="card">
       <h2>
@@ -512,7 +593,26 @@ const I18N = {
     msg_pw_mismatch: "New passwords do not match",
     msg_pw_updated: "✅ Password updated successfully! Your session remains active.",
     confirm_restart: "Restart the slideshow service now?",
-    confirm_reboot: "Reboot the device now? The screen will reconnect in ~35 seconds."
+    confirm_reboot: "Reboot the device now? The screen will reconnect in ~35 seconds.",
+    sec_fleet: "🖧 Connected Photo Frames (LAN Fleet)",
+    btn_scan_fleet: "🔍 Scan LAN",
+    btn_add_peer: "➕ Add IP",
+    ph_add_peer: "192.168.86.x or photoframe-2.local:8080",
+    btn_connect_peer: "Connect Frame",
+    fleet_all_frames: "🌐 All Frames ({count})",
+    fleet_all_sub: "Smart Broadcast to all online frames",
+    fleet_this_frame: "This Frame",
+    target_controlling_self: "🎯 Controlling: {host} ({ip} — This Frame)",
+    target_controlling_peer: "🎯 Controlling Remote Frame: {host} ({ip}) — Single-Login LAN Trust",
+    target_controlling_all: "🌐 Broadcast Mode: Actions & shared settings apply to all {count} online frames simultaneously!",
+    lbl_pwd: "Baidu Pan Extract Code (pwd / 提取码)",
+    ph_pwd: "4-char code (optional if ?pwd= is in URL)",
+    sec_update: "📦 App Auto-Update & APK Installer (Android TV)",
+    lbl_update_url: "APK Update Download Link (checked on startup & every 6h)",
+    btn_check_update: "🔍 Save Link & Check Update Now",
+    lbl_apk_upload: "Or Upload & Install APK File Directly from Browser",
+    btn_upload_apk: "📲 Upload & Install APK",
+    msg_select_apk: "Please choose an .apk file first"
   },
   zh: {
     login_title: "🔒 数码相框管理登录",
@@ -611,7 +711,26 @@ const I18N = {
     msg_pw_mismatch: "两次输入的新密码不一致",
     msg_pw_updated: "✅ 密码更新成功！当前登录会话保持有效。",
     confirm_restart: "确定要立即重启幻灯片服务吗？",
-    confirm_reboot: "确定要立即重启设备吗？屏幕将在约 35 秒后重新连接。"
+    confirm_reboot: "确定要立即重启设备吗？屏幕将在约 35 秒后重新连接。",
+    sec_fleet: "🖧 局域网已连接相框 (多设备集群管理)",
+    btn_scan_fleet: "🔍 扫描局域网",
+    btn_add_peer: "➕ 手动添加 IP",
+    ph_add_peer: "192.168.86.x 或 photoframe-2.local:8080",
+    btn_connect_peer: "连接相框",
+    fleet_all_frames: "🌐 全部相框 ({count} 台)",
+    fleet_all_sub: "智能广播同步至所有在线相框",
+    fleet_this_frame: "当前相框",
+    target_controlling_self: "🎯 当前控制：{host} ({ip} — 本机相框)",
+    target_controlling_peer: "🎯 正在远程管理：{host} ({ip}) — 免重复登录",
+    target_controlling_all: "🌐 全局广播模式：远程控制与通用设置将同时应用至全部 {count} 台在线相框！",
+    lbl_pwd: "百度网盘提取码 (pwd)",
+    ph_pwd: "4 位提取码（若链接含 ?pwd= 可留空）",
+    sec_update: "📦 应用自动更新与 APK 安装 (Android TV)",
+    lbl_update_url: "APK 更新下载链接（启动时及每 6 小时自动检测）",
+    btn_check_update: "🔍 保存链接并立即检查更新",
+    lbl_apk_upload: "或直接从浏览器上传并安装本地 .apk 安装包",
+    btn_upload_apk: "📲 上传并安装 APK",
+    msg_select_apk: "请先选择一个 .apk 安装包文件"
   },
   ja: {
     login_title: "🔒 フォトフレーム ログイン",
@@ -710,7 +829,26 @@ const I18N = {
     msg_pw_mismatch: "新しいパスワードが一致しません",
     msg_pw_updated: "✅ パスワードを更新しました！セッションは維持されます。",
     confirm_restart: "スライドショーサービスを今すぐ再起動しますか？",
-    confirm_reboot: "デバイスを今すぐ再起動しますか？約35秒後に再接続されます。"
+    confirm_reboot: "デバイスを今すぐ再起動しますか？約35秒後に再接続されます。",
+    sec_fleet: "🖧 接続済みフォトフレーム (LAN一括管理)",
+    btn_scan_fleet: "🔍 LANスキャン",
+    btn_add_peer: "➕ IP追加",
+    ph_add_peer: "192.168.86.x または photoframe-2.local:8080",
+    btn_connect_peer: "接続",
+    fleet_all_frames: "🌐 すべてのフレーム ({count})",
+    fleet_all_sub: "オンラインの全フレームに一括適用",
+    fleet_this_frame: "このフレーム",
+    target_controlling_self: "🎯 操作中: {host} ({ip} — このフレーム)",
+    target_controlling_peer: "🎯 リモート操作中: {host} ({ip}) — 再ログイン不要",
+    target_controlling_all: "🌐 一括配信モード: 操作と共通設定が全 {count} 台のフレームに同時適用されます！",
+    lbl_pwd: "Baidu Pan 抽出コード (pwd)",
+    ph_pwd: "4文字のコード（URLに ?pwd= がある場合は省略可）",
+    sec_update: "📦 アプリ自動更新 & APK インストーラー (Android TV)",
+    lbl_update_url: "APK 更新ダウンロードリンク",
+    btn_check_update: "🔍 リンクを保存して今すぐ更新確認",
+    lbl_apk_upload: "またはブラウザから .apk ファイルを直接アップロードしてインストール",
+    btn_upload_apk: "📲 APK をアップロードしてインストール",
+    msg_select_apk: "先に .apk ファイルを選択してください"
   },
   ko: {
     login_title: "🔒 디지털 액자 로그인",
@@ -809,7 +947,26 @@ const I18N = {
     msg_pw_mismatch: "새 비밀번호가 일치하지 않습니다",
     msg_pw_updated: "✅ 비밀번호가 성공적으로 변경되었습니다!",
     confirm_restart: "슬라이드쇼 서비스를 지금 재시작하시겠습니까?",
-    confirm_reboot: "기기를 지금 재부팅하시겠습니까? 약 35초 후 다시 연결됩니다."
+    confirm_reboot: "기기를 지금 재부팅하시겠습니까? 약 35초 후 다시 연결됩니다.",
+    sec_fleet: "🖧 연결된 디지털 액자 (LAN 통합 관리)",
+    btn_scan_fleet: "🔍 LAN 스캔",
+    btn_add_peer: "➕ IP 추가",
+    ph_add_peer: "192.168.86.x 또는 photoframe-2.local:8080",
+    btn_connect_peer: "연결",
+    fleet_all_frames: "🌐 모든 액자 ({count})",
+    fleet_all_sub: "온라인 상태인 모든 액자에 동시 적용",
+    fleet_this_frame: "현재 액자",
+    target_controlling_self: "🎯 제어 중: {host} ({ip} — 현재 액자)",
+    target_controlling_peer: "🎯 원격 액자 제어 중: {host} ({ip}) — 추가 로그인 불필요",
+    target_controlling_all: "🌐 전체 브로드캐스트 모드: 원격 제어 및 공통 설정이 {count}대 액자 전체에 동시에 적용됩니다!",
+    lbl_pwd: "Baidu Pan 추출 코드 (pwd)",
+    ph_pwd: "4자리 코드 (URL에 ?pwd= 포함 시 생략 가능)",
+    sec_update: "📦 앱 자동 업데이트 및 APK 설치 (Android TV)",
+    lbl_update_url: "APK 업데이트 다운로드 링크",
+    btn_check_update: "🔍 링크 저장 및 지금 업데이트 확인",
+    lbl_apk_upload: "또는 브라우저에서 .apk 파일을 직접 업로드하여 설치",
+    btn_upload_apk: "📲 APK 업로드 및 설치",
+    msg_select_apk: "먼저 .apk 파일을 선택하세요"
   },
   es: {
     login_title: "🔒 Acceso al Marco Digital",
@@ -908,7 +1065,26 @@ const I18N = {
     msg_pw_mismatch: "Las contraseñas nuevas no coinciden",
     msg_pw_updated: "✅ ¡Contraseña actualizada correctamente! Tu sesión sigue activa.",
     confirm_restart: "¿Reiniciar el servicio de presentación ahora?",
-    confirm_reboot: "¿Reiniciar el dispositivo ahora? La pantalla se reconectará en ~35 segundos."
+    confirm_reboot: "¿Reiniciar el dispositivo ahora? La pantalla se reconectará en ~35 segundos.",
+    sec_fleet: "🖧 Marcos Conectados en Red (Flota LAN)",
+    btn_scan_fleet: "🔍 Escanear LAN",
+    btn_add_peer: "➕ Añadir IP",
+    ph_add_peer: "192.168.86.x o photoframe-2.local:8080",
+    btn_connect_peer: "Conectar",
+    fleet_all_frames: "🌐 Todos los Marcos ({count})",
+    fleet_all_sub: "Difusión inteligente a todos los marcos activos",
+    fleet_this_frame: "Este Marco",
+    target_controlling_self: "🎯 Controlando: {host} ({ip} — Este Marco)",
+    target_controlling_peer: "🎯 Controlando Marco Remoto: {host} ({ip}) — Sin inicio de sesión adicional",
+    target_controlling_all: "🌐 Modo Difusión: ¡Las acciones y ajustes compartidos se aplicarán a los {count} marcos activos simultáneamente!",
+    lbl_pwd: "Código de Extracción Baidu Pan (pwd)",
+    ph_pwd: "Código de 4 caracteres (opcional si ?pwd= está en la URL)",
+    sec_update: "📦 Actualización Automática e Instalador APK (Android TV)",
+    lbl_update_url: "Enlace de Descarga de Actualización APK",
+    btn_check_update: "🔍 Guardar Enlace y Buscar Actualización",
+    lbl_apk_upload: "O Subir e Instalar Archivo .apk Directamente desde el Navegador",
+    btn_upload_apk: "📲 Subir e Instalar APK",
+    msg_select_apk: "Por favor selecciona un archivo .apk primero"
   },
   de: {
     login_title: "🔒 Bilderrahmen-Anmeldung",
@@ -1007,13 +1183,36 @@ const I18N = {
     msg_pw_mismatch: "Neue Passwörter stimmen nicht überein",
     msg_pw_updated: "✅ Passwort erfolgreich aktualisiert! Ihre Sitzung bleibt aktiv.",
     confirm_restart: "Diashow-Dienst jetzt neu starten?",
-    confirm_reboot: "Gerät jetzt neu starten? Der Bildschirm verbindet sich in ca. 35 Sekunden neu."
+    confirm_reboot: "Gerät jetzt neu starten? Der Bildschirm verbindet sich in ca. 35 Sekunden neu.",
+    sec_fleet: "🖧 Verbundene Bilderrahmen (LAN-Flotte)",
+    btn_scan_fleet: "🔍 LAN scannen",
+    btn_add_peer: "➕ IP hinzufügen",
+    ph_add_peer: "192.168.86.x oder photoframe-2.local:8080",
+    btn_connect_peer: "Verbinden",
+    fleet_all_frames: "🌐 Alle Rahmen ({count})",
+    fleet_all_sub: "Smart-Broadcast an alle aktiven Rahmen",
+    fleet_this_frame: "Dieser Rahmen",
+    target_controlling_self: "🎯 Steuerung: {host} ({ip} — Dieser Rahmen)",
+    target_controlling_peer: "🎯 Fernsteuerung: {host} ({ip}) — Kein separates Login nötig",
+    target_controlling_all: "🌐 Broadcast-Modus: Aktionen & gemeinsame Einstellungen gelten gleichzeitig für alle {count} Rahmen!",
+    lbl_pwd: "Baidu Pan Extraktionscode (pwd)",
+    ph_pwd: "4-stelliger Code (optional wenn ?pwd= in URL)",
+    sec_update: "📦 App-Auto-Update & APK-Installation (Android TV)",
+    lbl_update_url: "APK-Update-Download-Link",
+    btn_check_update: "🔍 Link speichern & jetzt auf Update prüfen",
+    lbl_apk_upload: "Oder .apk-Datei direkt über den Browser hochladen & installieren",
+    btn_upload_apk: "📲 APK hochladen & installieren",
+    msg_select_apk: "Bitte wählen Sie zuerst eine .apk-Datei aus"
   }
 };
 
 let currentLang = localStorage.getItem('frame_lang') || 'en';
 let formPopulated = false;
 let lastStatusSnapshot = null;
+let selectedTarget = 'self';
+let fleetNodes = [];
+let activeTargetEdition = 'gphotos';
+let activeTargetPlatform = 'linux';
 
 function t(key, vars = {}) {
   const dict = I18N[currentLang] || I18N.en;
@@ -1022,6 +1221,17 @@ function t(key, vars = {}) {
     str = str.replace(`{${k}}`, v);
   }
   return str;
+}
+
+function autoExtractBaiduPwd() {
+  const albumEl = document.getElementById('cfg-album');
+  const pwdEl = document.getElementById('cfg-pwd');
+  if (!albumEl || !pwdEl) return;
+  const raw = albumEl.value || '';
+  const m = raw.match(/[?&]pwd=([a-zA-Z0-9]{4})/) || raw.match(/(?:提取码|密码|pwd)\s*[:：=]?\s*([a-zA-Z0-9]{4})/i);
+  if (m && !pwdEl.value.trim()) {
+    pwdEl.value = m[1];
+  }
 }
 
 function setLanguage(lang, syncSelectors = true, userPicked = false) {
@@ -1052,6 +1262,158 @@ function setLanguage(lang, syncSelectors = true, userPicked = false) {
   });
   if (lastStatusSnapshot) {
     renderStatusSnapshot(lastStatusSnapshot);
+  }
+  if (fleetNodes && fleetNodes.length > 0) {
+    renderFleetBar(fleetNodes);
+  }
+}
+
+function renderFleetBar(nodes) {
+  fleetNodes = Array.isArray(nodes) ? nodes : [];
+  const grid = document.getElementById('fleet-nodes-grid');
+  const banner = document.getElementById('active-target-banner');
+  if (!grid) return;
+
+  const onlineNodes = fleetNodes.filter(n => n.online !== false);
+  const selfNode = fleetNodes.find(n => n.is_self) || fleetNodes[0] || {};
+  if (selectedTarget !== 'all' && selectedTarget !== 'self') {
+    const exists = fleetNodes.some(n => n.id === selectedTarget);
+    if (!exists) selectedTarget = 'self';
+  }
+
+  let html = '';
+  if (fleetNodes.length > 1) {
+    const isAll = (selectedTarget === 'all');
+    html += `<div class="fleet-pill ${isAll ? 'selected' : ''}" onclick="selectFleetTarget('all')">
+      <div class="fleet-pill-top">
+        <span>${t('fleet_all_frames', {count: onlineNodes.length})}</span>
+      </div>
+      <div class="fleet-pill-meta">⚡ Broadcast Mode</div>
+      <div class="fleet-pill-sub">${t('fleet_all_sub')}</div>
+    </div>`;
+  }
+
+  fleetNodes.forEach(node => {
+    const targetKey = node.is_self ? 'self' : node.id;
+    const isSelected = (selectedTarget === targetKey) || (node.is_self && selectedTarget === node.id);
+    const dot = node.online === false ? '🔴' : (node.is_night_mode ? '🌙' : (node.is_paused ? '⏸️' : '🟢'));
+    const platIcon = node.platform === 'android_tv' ? '📺 TV' : '🍓 Linux';
+    const edLabel = node.edition === 'baidupan' ? 'Baidu' : 'Google';
+    const selfTag = node.is_self ? ` <span style="font-size:0.72rem; color:#38bdf8;">(${t('fleet_this_frame')})</span>` : '';
+    const removeBtn = (!node.is_self && (node.is_manual || node.online === false))
+      ? `<button type="button" class="fleet-remove-btn" title="Remove" onclick="removePeer(event, '${node.id}')">&times;</button>`
+      : '';
+    const hostTitle = node.mdns_hostname || node.ip || node.id;
+    const mediaSummary = node.online === false
+      ? 'Offline'
+      : `${node.is_demo_mode ? '✨ Demo • ' : ''}${node.photo_count ?? 0} items • ${node.landscape_mode || 'collage'}`;
+    html += `<div class="fleet-pill ${isSelected ? 'selected' : ''}" onclick="selectFleetTarget('${targetKey}')">
+      <div class="fleet-pill-top">
+        <span>${dot} ${hostTitle}${selfTag}</span>
+        ${removeBtn}
+      </div>
+      <div class="fleet-pill-meta">${node.ip}:${node.port || 8080} • ${platIcon} (${edLabel}) • v${node.app_version || '1.0'}</div>
+      <div class="fleet-pill-sub">${mediaSummary}</div>
+    </div>`;
+  });
+  grid.innerHTML = html;
+
+  if (banner) {
+    if (selectedTarget === 'all') {
+      banner.textContent = t('target_controlling_all', {count: onlineNodes.length});
+    } else if (selectedTarget === 'self' || selectedTarget === selfNode.id) {
+      banner.textContent = t('target_controlling_self', {
+        host: selfNode.mdns_hostname || 'photoframe.local',
+        ip: selfNode.ip || '127.0.0.1'
+      });
+    } else {
+      const peer = fleetNodes.find(n => n.id === selectedTarget) || {};
+      banner.textContent = t('target_controlling_peer', {
+        host: peer.mdns_hostname || selectedTarget,
+        ip: peer.ip || selectedTarget
+      });
+    }
+  }
+
+  updateDynamicFormVisibility();
+}
+
+function updateDynamicFormVisibility() {
+  const hasBaiduInFleet = fleetNodes.some(n => n.edition === 'baidupan');
+  const hasTvInFleet = fleetNodes.some(n => n.platform === 'android_tv');
+  const showBaiduPwd = (selectedTarget === 'all' && hasBaiduInFleet) || (activeTargetEdition === 'baidupan');
+  const showTvApkCard = (selectedTarget === 'all' && hasTvInFleet) || (activeTargetPlatform === 'android_tv');
+
+  const pwdGroup = document.getElementById('group-pwd');
+  if (pwdGroup) pwdGroup.classList.toggle('hidden', !showBaiduPwd);
+
+  const apkCard = document.getElementById('card-apk-update');
+  if (apkCard) apkCard.classList.toggle('hidden', !showTvApkCard);
+
+  const devInput = document.getElementById('cfg-device-name');
+  if (devInput) {
+    devInput.disabled = (selectedTarget === 'all');
+  }
+}
+
+function selectFleetTarget(target) {
+  selectedTarget = target;
+  formPopulated = false;
+  renderFleetBar(fleetNodes);
+  fetchStatus(true, false);
+}
+
+async function scanFleetNodes() {
+  const btn = document.getElementById('btn-scan-fleet');
+  if (btn) btn.disabled = true;
+  try {
+    await fetchStatus(false, true);
+    showToast('LAN scan complete');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function toggleAddPeerRow() {
+  const row = document.getElementById('add-peer-row');
+  if (!row) return;
+  row.classList.toggle('hidden');
+  if (!row.classList.contains('hidden')) {
+    document.getElementById('add-peer-input')?.focus();
+  }
+}
+
+async function addManualPeer() {
+  const inp = document.getElementById('add-peer-input');
+  const host = (inp?.value || '').trim();
+  if (!host) return;
+  const res = await fetch('/api/fleet/add_peer', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({host})
+  });
+  const data = await res.json();
+  if (res.ok && data.ok) {
+    if (inp) inp.value = '';
+    document.getElementById('add-peer-row')?.classList.add('hidden');
+    if (data.fleet) renderFleetBar(data.fleet);
+    showToast(data.message || 'Frame connected');
+  } else {
+    showToast(data.error || 'Could not reach frame', true);
+  }
+}
+
+async function removePeer(ev, targetId) {
+  ev.stopPropagation();
+  const res = await fetch('/api/fleet/remove_peer', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({target: targetId})
+  });
+  const data = await res.json();
+  if (res.ok && data.ok) {
+    if (selectedTarget === targetId) selectedTarget = 'self';
+    if (data.fleet) renderFleetBar(data.fleet);
   }
 }
 
@@ -1089,6 +1451,15 @@ function renderStatusSnapshot(st) {
   if (hdrVerBadge && st.app_version) {
     hdrVerBadge.textContent = `v${st.app_version} (Build #${st.app_version_code ?? 1})`;
   }
+  const verBadge = document.getElementById('stat-app-version');
+  if (verBadge && st.app_version) {
+    const shaSuffix = st.app_sha256 ? ` • ${st.app_sha256}` : '';
+    verBadge.textContent = `v${st.app_version} (Build #${st.app_version_code ?? 1}${shaSuffix})`;
+  }
+  const upStatus = document.getElementById('stat-update-status');
+  if (upStatus && st.update_status) {
+    upStatus.textContent = st.update_status;
+  }
 }
 
 function showToast(msg, isError = false) {
@@ -1110,9 +1481,15 @@ function showInlineBanner(elId, msg, isError = false) {
   el._hideTimer = setTimeout(() => { el.style.display = 'none'; }, 7000);
 }
 
-async function fetchStatus(populateForm = false) {
+async function fetchStatus(populateForm = false, triggerScan = false) {
   try {
-    const res = await fetch('/api/status');
+    const q = new URLSearchParams();
+    if (selectedTarget && selectedTarget !== 'self' && selectedTarget !== 'all') {
+      q.set('target', selectedTarget);
+    }
+    if (triggerScan) q.set('scan', '1');
+    const url = '/api/status' + (q.toString() ? `?${q.toString()}` : '');
+    const res = await fetch(url);
     const data = await res.json();
     if (data.language && !localStorage.getItem('frame_lang_user_set')) {
       setLanguage(data.language);
@@ -1127,6 +1504,11 @@ async function fetchStatus(populateForm = false) {
     document.getElementById('app-view').classList.remove('hidden');
     document.getElementById('default-pw-banner').classList.toggle('hidden', !data.is_default_password);
 
+    activeTargetEdition = data.target_edition || data.status?.edition || 'gphotos';
+    activeTargetPlatform = data.target_platform || data.status?.platform || 'linux';
+    if (data.fleet) {
+      renderFleetBar(data.fleet);
+    }
     renderStatusSnapshot(data.status);
     document.getElementById('log-box').textContent = data.log_tail || '(No log entries)';
 
@@ -1136,6 +1518,8 @@ async function fetchStatus(populateForm = false) {
         setLanguage(cfg.language);
       }
       document.getElementById('cfg-album').value = (cfg.album && cfg.album !== 'demo') ? cfg.album : '';
+      const pwdEl = document.getElementById('cfg-pwd');
+      if (pwdEl) pwdEl.value = cfg.pwd || '';
       const devEl = document.getElementById('cfg-device-name');
       if (devEl) devEl.value = cfg.device_name || '';
       document.getElementById('cfg-language').value = cfg.language || currentLang || 'en';
@@ -1151,6 +1535,8 @@ async function fetchStatus(populateForm = false) {
       document.getElementById('cfg-night-enabled').checked = Boolean(cfg.night_mode_enabled);
       document.getElementById('cfg-night-start').value = cfg.night_start || '22:00';
       document.getElementById('cfg-night-end').value = cfg.night_end || '06:00';
+      const upUrlEl = document.getElementById('cfg-update-url');
+      if (upUrlEl) upUrlEl.value = cfg.update_url || '';
       formPopulated = true;
     }
   } catch (err) {
@@ -1184,11 +1570,16 @@ async function handleLogout() {
 }
 
 async function sendAction(action) {
-  const bodyObj = {action};
+  const bodyObj = {action, target: selectedTarget};
   if (action === 'resync') {
+    autoExtractBaiduPwd();
     const albumEl = document.getElementById('cfg-album');
+    const pwdEl = document.getElementById('cfg-pwd');
     if (albumEl && albumEl.value.trim()) {
       bodyObj.album = albumEl.value.trim();
+    }
+    if (pwdEl && pwdEl.value.trim()) {
+      bodyObj.pwd = pwdEl.value.trim();
     }
   }
   const res = await fetch('/api/action', {
@@ -1207,7 +1598,9 @@ async function sendAction(action) {
 
 function playDemoShowcase() {
   const albumEl = document.getElementById('cfg-album');
+  const pwdEl = document.getElementById('cfg-pwd');
   if (albumEl) albumEl.value = '';
+  if (pwdEl) pwdEl.value = '';
   sendAction('demo');
 }
 
@@ -1220,6 +1613,7 @@ function confirmSystemAction(action) {
 
 async function saveSettings(e) {
   e.preventDefault();
+  autoExtractBaiduPwd();
   const btn = document.getElementById('btn-save-settings');
   if (btn) {
     btn.disabled = true;
@@ -1230,7 +1624,9 @@ async function saveSettings(e) {
   setLanguage(selectedLang);
 
   const payload = {
+    target: selectedTarget,
     album: document.getElementById('cfg-album').value.trim(),
+    pwd: (document.getElementById('cfg-pwd')?.value || '').trim(),
     device_name: (document.getElementById('cfg-device-name')?.value || '').trim(),
     language: selectedLang,
     landscape_mode: document.getElementById('cfg-layout').value,
@@ -1245,6 +1641,7 @@ async function saveSettings(e) {
     night_mode_enabled: document.getElementById('cfg-night-enabled').checked,
     night_start: document.getElementById('cfg-night-start').value,
     night_end: document.getElementById('cfg-night-end').value,
+    update_url: (document.getElementById('cfg-update-url')?.value || '').trim(),
   };
   try {
     const res = await fetch('/api/settings', {
@@ -1258,13 +1655,15 @@ async function saveSettings(e) {
       const albumDesc = payload.album
         ? t('msg_source_album', {album: payload.album})
         : t('msg_source_demo');
-      const confirmMsg = t('msg_settings_saved_banner', {
-        time: nowStr,
-        source: albumDesc,
-        layout: payload.landscape_mode,
-        duration: payload.duration
-      });
-      showToast(t('btn_saved_settings'));
+      const confirmMsg = data.message && selectedTarget === 'all'
+        ? data.message
+        : t('msg_settings_saved_banner', {
+            time: nowStr,
+            source: albumDesc,
+            layout: payload.landscape_mode,
+            duration: payload.duration
+          });
+      showToast(data.message || t('btn_saved_settings'));
       showInlineBanner('settings-confirm-banner', confirmMsg, false);
       if (btn) {
         btn.textContent = t('btn_saved_settings');
@@ -1297,19 +1696,91 @@ async function changePassword(e) {
   const res = await fetch('/api/password', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({current_password, new_password})
+    body: JSON.stringify({target: selectedTarget, current_password, new_password})
   });
   const data = await res.json();
   if (res.ok && data.ok) {
     document.getElementById('pw-form').reset();
-    showToast(t('msg_pw_updated'));
-    showInlineBanner('pw-confirm-banner', t('msg_pw_updated'), false);
+    showToast(data.message || t('msg_pw_updated'));
+    showInlineBanner('pw-confirm-banner', data.message || t('msg_pw_updated'), false);
     fetchStatus(false);
   } else {
     const errMsg = data.error || 'Password update failed';
     showToast(errMsg, true);
     showInlineBanner('pw-confirm-banner', '⚠️ ' + errMsg, true);
   }
+}
+
+async function checkUpdateNow() {
+  const urlVal = (document.getElementById('cfg-update-url')?.value || '').trim();
+  const res = await fetch('/api/action', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({target: selectedTarget, action: 'check_update', album: urlVal})
+  });
+  const data = await res.json();
+  if (res.ok && data.ok) {
+    showToast(data.message || 'Checking for updates...');
+    showInlineBanner('update-confirm-banner', '🔍 ' + (data.message || 'Checking for updates...'), false);
+    setTimeout(() => fetchStatus(false), 1200);
+    setTimeout(() => fetchStatus(false), 3500);
+  } else {
+    showToast(data.error || 'Update check failed', true);
+  }
+}
+
+function uploadAndInstallApk() {
+  const fileInput = document.getElementById('apk-file-input');
+  const btn = document.getElementById('btn-upload-apk');
+  if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+    showToast(t('msg_select_apk'), true);
+    showInlineBanner('update-confirm-banner', '⚠️ ' + t('msg_select_apk'), true);
+    return;
+  }
+  const file = fileInput.files[0];
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Uploading 0%...';
+  }
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', `/api/update_upload?target=${encodeURIComponent(selectedTarget)}`, true);
+  xhr.setRequestHeader('Content-Type', 'application/vnd.android.package-archive');
+  xhr.upload.onprogress = function(ev) {
+    if (ev.lengthComputable && btn) {
+      const pct = Math.round((ev.loaded * 100) / ev.total);
+      btn.textContent = `⏳ Uploading ${pct}%...`;
+    }
+  };
+  xhr.onload = function() {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = t('btn_upload_apk');
+    }
+    try {
+      const data = JSON.parse(xhr.responseText || '{}');
+      if (xhr.status >= 200 && xhr.status < 300 && data.ok) {
+        showToast(data.message || 'APK uploaded & installing');
+        showInlineBanner('update-confirm-banner', '✅ ' + (data.message || 'APK uploaded & installing'), false);
+        fileInput.value = '';
+        setTimeout(() => fetchStatus(false), 1000);
+      } else {
+        const err = data.error || ('Upload failed (HTTP ' + xhr.status + ')');
+        showToast(err, true);
+        showInlineBanner('update-confirm-banner', '⚠️ ' + err, true);
+      }
+    } catch (e) {
+      showToast('Invalid response from server', true);
+    }
+  };
+  xhr.onerror = function() {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = t('btn_upload_apk');
+    }
+    showToast('Network error during APK upload', true);
+    showInlineBanner('update-confirm-banner', '⚠️ Network error during APK upload', true);
+  };
+  xhr.send(file);
 }
 
 setLanguage(currentLang);
@@ -1424,13 +1895,24 @@ def create_portal_handler(
     app: "SlideshowApp",
     config_store: FrameConfigStore,
     login_fail_delay: float = 1.0,
+    port: int = 8080,
 ) -> Type[http.server.BaseHTTPRequestHandler]:
     """
     Factory that returns a `BaseHTTPRequestHandler` class bound to `app` and `config_store`.
     Can be passed directly to `_ThreadingHTTPServer` in production or unit tests.
     """
+    fleet_manager = FleetManager(
+        app=app,
+        config_store=config_store,
+        port=port,
+        edition="gphotos",
+        platform="linux",
+        enable_background_scan=(login_fail_delay >= 0.5),
+    )
 
     class PortalHandler(http.server.BaseHTTPRequestHandler):
+        fleet = fleet_manager
+
         def log_message(self, format: str, *args: Any):
             # Silence access logs completely so zero disk/RAM log spam occurs
             pass
@@ -1448,8 +1930,12 @@ def create_portal_handler(
                 pass
             return ""
 
+        def _is_peer_authed(self) -> bool:
+            client_ip = self.client_address[0] if self.client_address else ""
+            return verify_peer_request(self.headers, client_ip)
+
         def _is_authenticated(self) -> bool:
-            return config_store.verify_session_token(self._get_session_token())
+            return config_store.verify_session_token(self._get_session_token()) or self._is_peer_authed()
 
         def _send_json(self, status_code: int, payload: Dict[str, Any], cookie_header: Optional[str] = None):
             body = json.dumps(payload).encode("utf-8")
@@ -1472,7 +1958,16 @@ def create_portal_handler(
             except Exception:
                 return {}
 
+        def _sync_bound_port(self):
+            try:
+                srv_port = int(self.server.server_address[1])
+                if srv_port > 0:
+                    fleet_manager.port = srv_port
+            except Exception:
+                pass
+
         def do_GET(self):
+            self._sync_bound_port()
             parsed = urllib.parse.urlparse(self.path)
             if parsed.path in ("/", "/index.html"):
                 body = WEB_PORTAL_HTML.encode("utf-8")
@@ -1482,6 +1977,10 @@ def create_portal_handler(
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 self.wfile.write(body)
+                return
+
+            if parsed.path == "/api/fleet/ping":
+                self._send_json(200, fleet_manager.build_ping_payload())
                 return
 
             if parsed.path == "/api/status":
@@ -1494,20 +1993,68 @@ def create_portal_handler(
                         "language": cur_settings.get("language", "en"),
                     })
                     return
+
+                qs = urllib.parse.parse_qs(parsed.query)
+                target = (qs.get("target", [""])[0] or "").strip()
+                trigger_scan = (qs.get("scan", ["0"])[0] == "1")
+
+                # Avoid recursive fleet scan when another peer is querying our /api/status
+                is_peer_call = self._is_peer_authed()
+                fleet_nodes = [] if is_peer_call else fleet_manager.get_fleet_nodes(trigger_scan=trigger_scan)
+
+                if target and not fleet_manager.is_self_target(target) and target != "all":
+                    remote = fleet_manager.get_target_status(target)
+                    if remote.get("ok"):
+                        self._send_json(200, {
+                            "authenticated": True,
+                            "is_default_password": config_store.is_default_password(),
+                            "language": cur_settings.get("language", "en"),
+                            "target": target,
+                            "target_edition": remote.get("edition", "gphotos"),
+                            "target_platform": remote.get("platform", "linux"),
+                            "status": remote["status"],
+                            "settings": remote["settings"],
+                            "log_tail": remote.get("log_tail", ""),
+                            "fleet": fleet_nodes,
+                        })
+                        return
+
+                st = app.get_status_snapshot()
                 self._send_json(200, {
                     "authenticated": True,
                     "is_default_password": config_store.is_default_password(),
                     "language": cur_settings.get("language", "en"),
-                    "status": app.get_status_snapshot(),
+                    "target": "self",
+                    "target_edition": st.get("edition", "gphotos"),
+                    "target_platform": st.get("platform", "linux"),
+                    "status": st,
                     "settings": cur_settings,
                     "log_tail": app.get_ram_log_tail(35),
+                    "fleet": fleet_nodes,
                 })
                 return
 
             self._send_json(404, {"error": "Not found"})
 
         def do_POST(self):
+            self._sync_bound_port()
             parsed = urllib.parse.urlparse(self.path)
+
+            if parsed.path == "/api/update_upload":
+                if not self._is_authenticated():
+                    self._send_json(401, {"ok": False, "error": "Authentication required"})
+                    return
+                qs = urllib.parse.parse_qs(parsed.query)
+                target = (qs.get("target", ["self"])[0] or "self").strip()
+                length = int(self.headers.get("Content-Length", "0") or "0")
+                if length <= 10240 or length > 160 * 1024 * 1024:
+                    self._send_json(400, {"ok": False, "error": f"Invalid APK size ({length} bytes)"})
+                    return
+                apk_bytes = self.rfile.read(length)
+                code, resp = fleet_manager.proxy_apk_upload(target, apk_bytes)
+                self._send_json(code, resp)
+                return
+
             data = self._read_json_body()
 
             if parsed.path == "/api/login":
@@ -1531,32 +2078,52 @@ def create_portal_handler(
                 self._send_json(401, {"ok": False, "error": "Authentication required"})
                 return
 
-            if parsed.path == "/api/password":
-                cur_pw = str(data.get("current_password", ""))
+            if parsed.path == "/api/fleet/add_peer":
+                host = str(data.get("host", "")).strip()
+                ok, msg, node = fleet_manager.add_manual_peer(host)
+                if ok:
+                    self._send_json(200, {"ok": True, "message": msg, "node": node, "fleet": fleet_manager.get_fleet_nodes()})
+                else:
+                    self._send_json(400, {"ok": False, "error": msg})
+                return
+
+            if parsed.path == "/api/fleet/remove_peer":
+                target = str(data.get("target", "")).strip()
+                fleet_manager.remove_peer(target)
+                self._send_json(200, {"ok": True, "fleet": fleet_manager.get_fleet_nodes()})
+                return
+
+            if parsed.path == "/api/fleet/sync_password":
                 new_pw = str(data.get("new_password", ""))
-                if not config_store.verify_password(cur_pw):
-                    self._send_json(400, {"ok": False, "error": "Current password is incorrect"})
-                    return
                 if len(new_pw) < 4:
                     self._send_json(400, {"ok": False, "error": "New password must be at least 4 characters"})
                     return
                 config_store.change_password(new_pw)
-                token = config_store.create_session_token()
-                cookie = f"frame_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000"
-                logger.info("🔐 Web portal password updated by user.")
-                self._send_json(200, {"ok": True}, cookie_header=cookie)
+                logger.info("🔐 Web portal password synced from LAN peer.")
+                self._send_json(200, {"ok": True})
+                return
+
+            if parsed.path == "/api/password":
+                target = str(data.get("target", "self")).strip()
+                cur_pw = str(data.get("current_password", ""))
+                new_pw = str(data.get("new_password", ""))
+                code, resp, cookie = fleet_manager.execute_password(target, cur_pw, new_pw)
+                self._send_json(code, resp, cookie_header=cookie)
                 return
 
             if parsed.path == "/api/settings":
-                msg = app.update_and_persist_settings(data)
-                self._send_json(200, {"ok": True, "message": msg})
+                target = str(data.get("target", "self")).strip()
+                code, resp = fleet_manager.execute_settings(target, data)
+                self._send_json(code, resp)
                 return
 
             if parsed.path == "/api/action":
+                target = str(data.get("target", "self")).strip()
                 action = str(data.get("action", ""))
                 album_arg = str(data.get("album", "")).strip()
-                msg = app.queue_web_action(action, album_arg=album_arg)
-                self._send_json(200, {"ok": True, "message": msg})
+                pwd_arg = str(data.get("pwd", "")).strip()
+                code, resp = fleet_manager.execute_action(target, action, album_arg=album_arg, pwd_arg=pwd_arg)
+                self._send_json(code, resp)
                 return
 
             self._send_json(404, {"error": "Unknown endpoint"})
@@ -1568,7 +2135,7 @@ def start_web_config_server(app: "SlideshowApp", config_store: FrameConfigStore,
     if port <= 0:
         return
 
-    handler_cls = create_portal_handler(app, config_store)
+    handler_cls = create_portal_handler(app, config_store, port=port)
     initial_host = getattr(app.args, "device_name", "") or MDNS_HOSTNAME
     start_mdns_responder(app._get_local_ip, hostname=initial_host)
 

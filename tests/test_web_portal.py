@@ -244,6 +244,104 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    def test_multi_frame_fleet_mesh_and_smart_broadcast(self):
+        """
+        Spins up two independent photo frame instances (`server_a` and `server_b`) with different
+        passwords and device names, connects `server_b` as a peer of `server_a`, and verifies:
+        - `/api/fleet/ping` discovery
+        - Single-login LAN Peer Trust (`X-PhotoFrame-Peer`) across different frame passwords
+        - Inspecting and modifying `server_b` directly from `server_a` (`target="127.0.0.1:<port_b>"`)
+        - Smart Broadcast (`target="all"`) applying shared settings to both frames while preserving
+          each frame's individual `device_name`
+        """
+        tmp_dir_b = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp_dir_b.cleanup)
+        store_b = FrameConfigStore(path=os.path.join(tmp_dir_b.name, "frame_config_b.json"))
+        store_b.change_password("DifferentSecretOnFrameB!")
+        store_b.update_settings({"device_name": "bedroom-frame", "duration": 10})
+        self.store.update_settings({"device_name": "living-room", "duration": 15})
+
+        app_a = SlideshowApp(parse_args([]), hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
+        app_b = SlideshowApp(parse_args([]), hw_profile=HARDWARE_PROFILES["standard"], config_store=store_b)
+
+        server_a = _ThreadingHTTPServer(("127.0.0.1", 0), create_portal_handler(app_a, self.store, login_fail_delay=0.0))
+        server_b = _ThreadingHTTPServer(("127.0.0.1", 0), create_portal_handler(app_b, store_b, login_fail_delay=0.0))
+        port_a = server_a.server_address[1]
+        port_b = server_b.server_address[1]
+
+        threading.Thread(target=server_a.serve_forever, daemon=True).start()
+        threading.Thread(target=server_b.serve_forever, daemon=True).start()
+        self.addCleanup(server_a. server_close)
+        self.addCleanup(server_a.shutdown)
+        self.addCleanup(server_b.server_close)
+        self.addCleanup(server_b.shutdown)
+
+        base_a = f"http://127.0.0.1:{port_a}"
+        peer_b_id = f"127.0.0.1:{port_b}"
+
+        def req_a(path: str, method: str = "GET", payload=None, cookie: str = ""):
+            headers = {}
+            data = None
+            if payload is not None:
+                data = json.dumps(payload).encode("utf-8")
+                headers["Content-Type"] = "application/json"
+            if cookie:
+                headers["Cookie"] = cookie
+            req = urllib.request.Request(f"{base_a}{path}", data=data, headers=headers, method=method)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return resp.status, json.loads(resp.read().decode("utf-8")), resp.headers.get("Set-Cookie", "")
+
+        # 1. Verify /api/fleet/ping works without auth
+        code, ping_a, _ = req_a("/api/fleet/ping")
+        self.assertEqual(code, 200)
+        self.assertEqual(ping_a["service"], "photoframe")
+        self.assertEqual(ping_a["edition"], "gphotos")
+        self.assertEqual(ping_a["device_name"], "living-room")
+
+        # 2. Log into Frame A only (using default 'admin' password)
+        code, _, set_cookie = req_a("/api/login", method="POST", payload={"password": "admin"})
+        self.assertEqual(code, 200)
+        cookie_a = set_cookie.split(";", 1)[0]
+
+        # 3. Add Frame B as a peer on Frame A (even though Frame B has a different password)
+        code, add_res, _ = req_a(
+            "/api/fleet/add_peer",
+            method="POST",
+            cookie=cookie_a,
+            payload={"host": peer_b_id},
+        )
+        self.assertEqual(code, 200)
+        self.assertTrue(add_res["ok"])
+        self.assertEqual(add_res["node"]["device_name"], "bedroom-frame")
+
+        # 4. Inspect Frame B's status & settings via Frame A (/api/status?target=127.0.0.1:<port_b>)
+        code, st_b, _ = req_a(f"/api/status?target={peer_b_id}", cookie=cookie_a)
+        self.assertEqual(code, 200)
+        self.assertEqual(st_b["settings"]["device_name"], "bedroom-frame")
+        self.assertEqual(st_b["settings"]["duration"], 10)
+
+        # 5. Smart Broadcast settings to "all" from Frame A -> updates duration on both A and B,
+        #    while preserving each frame's individual device_name!
+        code, bcast_res, _ = req_a(
+            "/api/settings",
+            method="POST",
+            cookie=cookie_a,
+            payload={
+                "target": "all",
+                "device_name": "should-not-overwrite-in-all-mode",
+                "duration": 42,
+                "transition": "fade",
+            },
+        )
+        self.assertEqual(code, 200)
+        self.assertTrue(bcast_res["ok"])
+        app_a._process_web_actions()
+        app_b._process_web_actions()
+        self.assertEqual(app_a.slide_duration, 42.0)
+        self.assertEqual(app_b.slide_duration, 42.0)
+        self.assertEqual(self.store.get_settings()["device_name"], "living-room")
+        self.assertEqual(store_b.get_settings()["device_name"], "bedroom-frame")
+
 
 if __name__ == "__main__":
     unittest.main()

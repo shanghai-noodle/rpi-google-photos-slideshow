@@ -999,6 +999,8 @@ class SlideshowApp:
             "app_version_code": build_num,
             "mdns_hostname": get_active_mdns_hostname(),
             "lan_ip": self._get_local_ip(),
+            "edition": "gphotos",
+            "platform": "linux",
         }
 
     def get_current_settings_dict(self) -> Dict[str, Any]:
