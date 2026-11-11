@@ -190,7 +190,16 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         """
         import threading
         import time
-        from photoframe.mdns import MDNS_HOSTNAME, build_mdns_a_response
+        from photoframe.mdns import (
+            MDNS_HOSTNAME,
+            build_mdns_a_response,
+            build_mdns_query,
+            format_mdns_hostname,
+            normalize_mdns_base_name,
+            parse_mdns_a_records,
+            select_non_conflicting_hostname,
+            set_mdns_base_name,
+        )
         from photoframe.qrcode_gen import encode_qr_matrix
 
         mat = encode_qr_matrix("http://192.168.86.42:8080")
@@ -204,6 +213,63 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         self.assertIsNotNone(pkt)
         self.assertIn(b"\nphotoframe\x05local\x00", pkt)
         self.assertTrue(pkt.endswith(b"\xc0\xa8\x56\x2a"))
+
+        # Verify A-record parser & query builder
+        parsed_records = parse_mdns_a_records(pkt)
+        self.assertEqual(parsed_records, [("photoframe.local", "192.168.86.42")])
+        q_pkt = build_mdns_query(0x0001, "photoframe-2.local")
+        self.assertIn(b"\x0cphotoframe-2\x05local\x00", q_pkt)
+        self.assertEqual(parse_mdns_a_records(q_pkt), [])
+
+        # Verify base name normalization and auto-numbering format
+        self.assertEqual(normalize_mdns_base_name(""), "photoframe")
+        self.assertEqual(normalize_mdns_base_name("Living Room.local"), "living-room")
+        self.assertEqual(format_mdns_hostname("photoframe", 1), "photoframe.local")
+        self.assertEqual(format_mdns_hostname("photoframe", 2), "photoframe-2.local")
+        self.assertEqual(format_mdns_hostname("Living Room", 3), "living-room-3.local")
+
+        # Verify automatic conflict resolution across multiple photo frames on the same LAN
+        class _FakeMdnsSocket:
+            def __init__(self, taken_map):
+                self.taken_map = taken_map
+                self.last_queried = None
+                self.replied = False
+
+            def sendto(self, data, addr):
+                # Extract queried name from packet
+                from photoframe.mdns import _read_dns_name
+                qname, _ = _read_dns_name(data, 12)
+                self.last_queried = qname.lower().strip(".")
+                self.replied = False
+
+            def settimeout(self, t):
+                pass
+
+            def recvfrom(self, bufsize):
+                import socket as _sock
+                if not self.replied and self.last_queried in self.taken_map:
+                    self.replied = True
+                    owner_ip = self.taken_map[self.last_queried]
+                    return build_mdns_a_response(0, owner_ip, hostname=self.last_queried), (owner_ip, 5353)
+                raise _sock.timeout()
+
+        fake_sock = _FakeMdnsSocket({
+            "photoframe.local": "192.168.86.53",
+            "photoframe-2.local": "192.168.86.52",
+        })
+        chosen_host, chosen_idx = select_non_conflicting_hostname(
+            fake_sock, "photoframe", "192.168.86.250", start_index=1, probe_duration_sec=0.05
+        )
+        self.assertEqual(chosen_host, "photoframe-3.local")
+        self.assertEqual(chosen_idx, 3)
+
+        # If our own IP owns photoframe.local, it is NOT a conflict
+        own_host, own_idx = select_non_conflicting_hostname(
+            fake_sock, "photoframe", "192.168.86.53", start_index=1, probe_duration_sec=0.05
+        )
+        self.assertEqual(own_host, "photoframe.local")
+        self.assertEqual(own_idx, 1)
+        set_mdns_base_name("photoframe")
 
         args = parse_args(["--album", "demo", "--rotate", "0"])
         app = SlideshowApp(args, hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)

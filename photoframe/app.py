@@ -27,7 +27,12 @@ from .hardware import (
     logger,
     setup_ram_logging,
 )
-from .mdns import MDNS_HOSTNAME
+from .mdns import (
+    MDNS_HOSTNAME,
+    get_active_mdns_hostname,
+    normalize_mdns_base_name,
+    set_mdns_base_name,
+)
 from .qrcode_gen import encode_qr_matrix
 from .web_portal import start_web_config_server
 
@@ -65,6 +70,8 @@ class SlideshowApp:
                     setattr(self.args, k, v)
             if "night_mode_enabled" in saved:
                 self.args.disable_night_mode = not bool(saved["night_mode_enabled"])
+
+        set_mdns_base_name(getattr(self.args, "device_name", "") or "photoframe")
 
         self.screen_w = args.width
         self.screen_h = args.height
@@ -753,7 +760,8 @@ class SlideshowApp:
             is_demo = bool(self.photo_manager and self.photo_manager.is_demo_mode)
             ip_str = self._get_local_ip()
             port = int(getattr(self.args, "web_port", 8080) or 8080)
-            cache_key = (is_demo, ip_str, port)
+            mdns_host = get_active_mdns_hostname()
+            cache_key = (is_demo, ip_str, port, mdns_host)
             if (
                 not hasattr(self, "_cached_demo_pill")
                 or self._cached_demo_pill is None
@@ -765,7 +773,7 @@ class SlideshowApp:
                 sub_font = pygame.font.SysFont("dejavusans,arial,sans-serif", 16, bold=False)
 
                 line1 = "Demo Mode (AI-Generated Media)" if is_demo else "Admin Web Control Portal"
-                line2 = f"Configure at http://{MDNS_HOSTNAME}:{port}"
+                line2 = f"Configure at http://{mdns_host}:{port}"
                 line3 = f"Fallback IP: http://{ip_str}:{port}  •  Scan QR →"
 
                 s1 = title_font.render(line1, True, (56, 189, 248))
@@ -822,6 +830,16 @@ class SlideshowApp:
         if not self._startup_overlay_expired and (time.time() - self.app_start_time) >= self.STARTUP_OVERLAY_DURATION_SEC:
             self._startup_overlay_expired = True
             if not (self.photo_manager and self.photo_manager.is_demo_mode):
+                self.full_redraw_needed = True
+
+        if self._should_show_portal_overlay():
+            expected_pill_key = (
+                bool(self.photo_manager and self.photo_manager.is_demo_mode),
+                self._get_local_ip(),
+                int(getattr(self.args, "web_port", 8080) or 8080),
+                get_active_mdns_hostname(),
+            )
+            if getattr(self, "_cached_demo_pill_key", None) != expected_pill_key:
                 self.full_redraw_needed = True
 
         if self.full_redraw_needed:
@@ -979,11 +997,14 @@ class SlideshowApp:
             "profile": self.hw_profile.get("name", "Auto"),
             "app_version": ver_str,
             "app_version_code": build_num,
+            "mdns_hostname": get_active_mdns_hostname(),
+            "lan_ip": self._get_local_ip(),
         }
 
     def get_current_settings_dict(self) -> Dict[str, Any]:
         return {
             "album": self.args.album,
+            "device_name": getattr(self.args, "device_name", ""),
             "language": getattr(self.args, "language", "en"),
             "landscape_mode": self.args.landscape_mode,
             "transition": self.transition,
@@ -1015,6 +1036,9 @@ class SlideshowApp:
         if "album" in data:
             raw_album = str(data["album"]).strip()
             clean["album"] = raw_album if raw_album else "demo"
+        if "device_name" in data:
+            raw_dev = str(data["device_name"]).strip()
+            clean["device_name"] = normalize_mdns_base_name(raw_dev) if raw_dev else ""
         if "language" in data and str(data["language"]) in ("en", "zh", "ja", "ko", "es", "de"):
             clean["language"] = str(data["language"])
         if "landscape_mode" in data and str(data["landscape_mode"]) in (
@@ -1148,6 +1172,10 @@ class SlideshowApp:
                 old_fit = getattr(self.args, "fit", "contain-blur")
                 for k, v in payload.items():
                     setattr(self.args, k, v)
+                if "device_name" in payload:
+                    set_mdns_base_name(getattr(self.args, "device_name", "") or "photoframe")
+                    self._cached_demo_pill = None
+                    self.full_redraw_needed = True
                 raw_trans = str(getattr(self.args, "transition", "none") or "none").strip().lower()
                 self.transition = raw_trans if raw_trans in self.VALID_TRANSITIONS else "none"
                 self.slide_duration = float(self.args.duration)
@@ -1413,6 +1441,12 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         type=int,
         default=8080,
         help="Port for password-protected local web configuration portal (default: 8080, 0 to disable)"
+    )
+    parser.add_argument(
+        "--device-name", "--hostname",
+        dest="device_name",
+        default="",
+        help="Optional custom mDNS base hostname (default: 'photoframe' -> photoframe.local, auto-numbers on LAN conflict)"
     )
     parser.add_argument(
         "--language",

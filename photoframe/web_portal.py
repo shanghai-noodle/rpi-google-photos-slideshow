@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Type
 
 from .config import FrameConfigStore
 from .hardware import logger
-from .mdns import MDNS_HOSTNAME, start_mdns_responder
+from .mdns import MDNS_HOSTNAME, get_active_mdns_hostname, start_mdns_responder
 
 if TYPE_CHECKING:
     from .app import SlideshowApp
@@ -189,6 +189,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
           <option value="es">🌐 Español</option>
           <option value="de">🌐 Deutsch</option>
         </select>
+        <span id="header-host-badge" class="badge" style="background:#0f172a; color:#38bdf8; border:1px solid #1e293b;">🌐 photoframe.local</span>
         <span id="header-version-badge" class="badge" style="background:#1e293b; color:#93c5fd; border:1px solid #334155;">v1.0.3</span>
         <span id="state-badge" class="badge">Loading...</span>
         <button onclick="handleLogout()" style="padding:6px 11px; font-size:0.8rem;" data-i18n="btn_signout">Sign Out</button>
@@ -243,6 +244,11 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
             <div style="font-size: 0.78rem; color: var(--muted); margin-top: 2px;" data-i18n="demo_ai_note">
               ✨ Note: Built-in Demo Showcase images and videos are AI-generated with Google Gemini &amp; Veo.
             </div>
+          </div>
+
+          <div class="form-group">
+            <label for="cfg-device-name" data-i18n="lbl_device_name">Device Hostname (.local — auto-numbers on conflict)</label>
+            <input type="text" id="cfg-device-name" data-i18n-placeholder="ph_device_name" placeholder="photoframe (or e.g. living-room)">
           </div>
 
           <div class="form-group">
@@ -435,6 +441,8 @@ const I18N = {
     sec_settings: "🎨 Album, Collage & Schedule Settings",
     lbl_album: "Google Photos Shared Album URL (leave blank or 'demo' for Demo Showcase Pack)",
     ph_album: "https://photos.app.goo.gl/... (or leave blank for Demo Showcase)",
+    lbl_device_name: "Device Hostname (.local — auto-numbers on conflict)",
+    ph_device_name: "photoframe (or e.g. living-room)",
     lbl_language: "Language",
     lbl_layout: "Layout / Collage Style",
     opt_layout_collage: "Collage Mix (All 9 Grids + Portrait Singles)",
@@ -532,6 +540,8 @@ const I18N = {
     sec_settings: "🎨 相册、拼图与定时设置",
     lbl_album: "Google 相册共享链接（留空或填 'demo' 将播放内置演示精选集）",
     ph_album: "https://photos.app.goo.gl/...（留空则播放内置演示）",
+    lbl_device_name: "局域网主机名 (.local — 冲突时自动编号)",
+    ph_device_name: "photoframe（或例如 living-room）",
     lbl_language: "界面语言 (Language)",
     lbl_layout: "幻灯片 / 拼图样式",
     opt_layout_collage: "智能拼图混排（全部 9 种网格 + 竖屏单张特写）",
@@ -629,6 +639,8 @@ const I18N = {
     sec_settings: "🎨 アルバム・コラージュ・スケジュール設定",
     lbl_album: "Google フォト共有アルバム URL（空欄または 'demo' で内蔵デモ再生）",
     ph_album: "https://photos.app.goo.gl/...（空欄でデモ再生）",
+    lbl_device_name: "デバイスホスト名 (.local — 重複時は自動採番)",
+    ph_device_name: "photoframe（例: living-room）",
     lbl_language: "表示言語 (Language)",
     lbl_layout: "レイアウト / コラージュスタイル",
     opt_layout_collage: "コラージュミックス（全9種グリッド + 縦画面シングル）",
@@ -726,6 +738,8 @@ const I18N = {
     sec_settings: "🎨 앨범, 콜라주 및 일정 설정",
     lbl_album: "Google 포토 공유 앨범 URL (비워두거나 'demo' 입력 시 데모 팩 재생)",
     ph_album: "https://photos.app.goo.gl/... (비워두면 데모 쇼케이스 재생)",
+    lbl_device_name: "기기 호스트 이름 (.local — 충돌 시 자동 번호 부여)",
+    ph_device_name: "photoframe (예: living-room)",
     lbl_language: "언어 (Language)",
     lbl_layout: "레이아웃 / 콜라주 스타일",
     opt_layout_collage: "콜라주 믹스 (9개 그리드 전체 + 세로 전체화면)",
@@ -823,6 +837,8 @@ const I18N = {
     sec_settings: "🎨 Configuración de Álbum, Collage y Horario",
     lbl_album: "URL del Álbum Compartido de Google Fotos (dejar vacío o 'demo' para el paquete Demo)",
     ph_album: "https://photos.app.goo.gl/... (o dejar vacío para Demo)",
+    lbl_device_name: "Nombre de Host (.local — numeración automática si hay conflicto)",
+    ph_device_name: "photoframe (o p. ej. sala-estar)",
     lbl_language: "Idioma (Language)",
     lbl_layout: "Estilo de Diseño / Collage",
     opt_layout_collage: "Mezcla de Collages (9 Cuadrículas + Individuales Verticales)",
@@ -920,6 +936,8 @@ const I18N = {
     sec_settings: "🎨 Album-, Collagen- & Zeitplaneinstellungen",
     lbl_album: "Google Fotos Geteilte Album-URL (leer lassen oder 'demo' für integriertes Demo-Paket)",
     ph_album: "https://photos.app.goo.gl/... (oder leer lassen für Demo-Paket)",
+    lbl_device_name: "Geräte-Hostname (.local — automatische Nummerierung bei Konflikt)",
+    ph_device_name: "photoframe (oder z. B. wohnzimmer)",
     lbl_language: "Sprache (Language)",
     lbl_layout: "Layout / Collagen-Stil",
     opt_layout_collage: "Collagen-Mix (Alle 9 Raster + Hochformat-Einzelbilder)",
@@ -1063,6 +1081,10 @@ function renderStatusSnapshot(st) {
   document.getElementById('stat-layout').textContent = `${st.landscape_mode} (${st.slide_duration}s)`;
   document.getElementById('stat-night').textContent = st.night_mode_enabled ? `${st.night_start} – ${st.night_end}` : t('stat_night_disabled');
   document.getElementById('stat-display').textContent = `${st.canvas_w}×${st.canvas_h} @ ${st.rotation}°`;
+  const hdrHostBadge = document.getElementById('header-host-badge');
+  if (hdrHostBadge && st.mdns_hostname) {
+    hdrHostBadge.textContent = `🌐 ${st.mdns_hostname}`;
+  }
   const hdrVerBadge = document.getElementById('header-version-badge');
   if (hdrVerBadge && st.app_version) {
     hdrVerBadge.textContent = `v${st.app_version} (Build #${st.app_version_code ?? 1})`;
@@ -1114,6 +1136,8 @@ async function fetchStatus(populateForm = false) {
         setLanguage(cfg.language);
       }
       document.getElementById('cfg-album').value = (cfg.album && cfg.album !== 'demo') ? cfg.album : '';
+      const devEl = document.getElementById('cfg-device-name');
+      if (devEl) devEl.value = cfg.device_name || '';
       document.getElementById('cfg-language').value = cfg.language || currentLang || 'en';
       document.getElementById('cfg-layout').value = cfg.landscape_mode || 'collage';
       document.getElementById('cfg-duration').value = cfg.duration ?? 15;
@@ -1207,6 +1231,7 @@ async function saveSettings(e) {
 
   const payload = {
     album: document.getElementById('cfg-album').value.trim(),
+    device_name: (document.getElementById('cfg-device-name')?.value || '').trim(),
     language: selectedLang,
     landscape_mode: document.getElementById('cfg-layout').value,
     duration: parseFloat(document.getElementById('cfg-duration').value),
@@ -1544,7 +1569,8 @@ def start_web_config_server(app: "SlideshowApp", config_store: FrameConfigStore,
         return
 
     handler_cls = create_portal_handler(app, config_store)
-    start_mdns_responder(app._get_local_ip, hostname=MDNS_HOSTNAME)
+    initial_host = getattr(app.args, "device_name", "") or MDNS_HOSTNAME
+    start_mdns_responder(app._get_local_ip, hostname=initial_host)
 
     def _server_worker():
         try:
@@ -1552,7 +1578,7 @@ def start_web_config_server(app: "SlideshowApp", config_store: FrameConfigStore,
             srv = _ThreadingHTTPServer(("0.0.0.0", port), handler_cls, ssl_context=ssl_ctx)
             logger.info(
                 "🌐 Password-protected Web Control Portal listening on http://%s:%d (http://0.0.0.0:%d)",
-                MDNS_HOSTNAME,
+                get_active_mdns_hostname(),
                 port,
                 port,
             )
