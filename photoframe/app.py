@@ -8,6 +8,7 @@ import collections
 import datetime
 import fcntl
 import os
+import platform
 import random
 import shutil
 import signal
@@ -50,6 +51,11 @@ class SlideshowApp:
     )
 
     STARTUP_OVERLAY_DURATION_SEC = 60.0
+    _LAN_IP_TTL_SEC = 5.0
+    _cached_lan_ip: str = "localhost"
+    _cached_lan_ip_ts: float = 0.0
+    _hw_h264_probed: bool = False
+    _hw_h264_codec: Optional[str] = None
 
     def __init__(
         self,
@@ -104,13 +110,15 @@ class SlideshowApp:
         self._video_gen = 0
         self._video_screen_rect: Tuple[int, int, int, int] = (0, 0, 0, 0)
         self._video_corner_stamps: List[Tuple[Any, Tuple[int, int]]] = []
-        self._video_fps = int(self.hw_profile.get("video_fps", 18))
-        self._latest_video_frame: Optional[Tuple[int, bytes]] = None
-        self._last_video_frame_bytes: Optional[bytes] = None
+        self._video_fps = int(self.hw_profile.get("video_fps", 24))
+        self._latest_video_frame: Optional[Tuple[int, Any]] = None
+        self._last_video_frame_bytes: Optional[Any] = None
         self._last_video_canvas_rect: Optional[Tuple[int, int, int, int]] = None
+        self._video_tile_surf: Optional[Any] = None
         self._video_eof = False
         self._pending_slide_videos: Deque[Dict[str, Any]] = collections.deque()
         self._base_screen_surf: Optional[Any] = None
+        self._last_pill_screen_rect: Optional[Tuple[int, int, int, int]] = None
 
         # Night mode sleep schedule (black screen to save power & eliminate glare)
         self.night_mode_enabled = not args.disable_night_mode
@@ -375,16 +383,111 @@ class SlideshowApp:
             return []
         return stamps
 
-    def _compose_video_tile_surface(self, frame_bytes: bytes) -> Optional[Any]:
+    @classmethod
+    def _detect_hw_h264_decoder(cls) -> Optional[str]:
         """
-        Builds a screen-oriented `(sw x sh)` surface for the active tile from raw RGB24
+        Probes once on ARM/AArch64 Raspberry Pi systems for the VideoCore V4L2 M2M
+        hardware H.264 decoder (`h264_v4l2m2m` via `/dev/video10`).
+        """
+        if cls._hw_h264_probed:
+            return cls._hw_h264_codec
+        cls._hw_h264_probed = True
+        cls._hw_h264_codec = None
+        try:
+            arch = platform.machine().lower()
+            if not arch.startswith(("arm", "aarch64")):
+                return None
+            if not os.path.exists("/dev/video10") or not shutil.which("ffmpeg"):
+                return None
+            out = subprocess.check_output(
+                ["ffmpeg", "-hide_banner", "-decoders"],
+                stderr=subprocess.DEVNULL,
+                timeout=3.0,
+            ).decode("utf-8", errors="ignore")
+            if "h264_v4l2m2m" in out:
+                cls._hw_h264_codec = "h264_v4l2m2m"
+                logger.info("Detected Raspberry Pi V4L2 M2M hardware H.264 decoder (h264_v4l2m2m).")
+        except Exception:
+            cls._hw_h264_codec = None
+        return cls._hw_h264_codec
+
+    def _select_video_pix_fmt(self, sw: int, sh: int) -> Tuple[str, int, Optional[Any]]:
+        """
+        Matches FFmpeg's rawvideo output pixel format to `self.screen`'s native 32-bit
+        memory layout (`bgr0` / `rgb0`) so SDL blits use pure `memcpy` instead of per-pixel
+        24->32 bit conversion on CPU. Falls back cleanly to `rgb24` (3 bytes/pixel).
+        """
+        if (
+            PYGAME_AVAILABLE
+            and self.screen is not None
+            and sys.byteorder == "little"
+            and sw > 0
+            and sh > 0
+        ):
+            try:
+                if self.screen.get_bitsize() == 32:
+                    masks = tuple(self.screen.get_masks()[:3])
+                    fmt = None
+                    if masks == (0xFF0000, 0x00FF00, 0x0000FF):
+                        fmt = "bgr0"
+                    elif masks == (0x0000FF, 0x00FF00, 0xFF0000):
+                        fmt = "rgb0"
+                    if fmt is not None:
+                        tile_surf = pygame.Surface((sw, sh))
+                        if tile_surf.get_bitsize() == 32 and tile_surf.get_pitch() == sw * 4:
+                            return fmt, 4, tile_surf
+            except Exception:
+                pass
+        return "rgb24", 3, None
+
+    @staticmethod
+    def _read_exact_into(stream: Any, buf: bytearray) -> bool:
+        """Reads exactly `len(buf)` bytes from `stream` into pre-allocated `buf` with zero heap churn."""
+        nbytes = len(buf)
+        mv = memoryview(buf)
+        got = 0
+        while got < nbytes:
+            n = stream.readinto(mv[got:])
+            if not n:
+                return False
+            got += n
+        return True
+
+    def _frame_bytes_to_surface(self, frame_bytes: Any, sw: int, sh: int) -> Optional[Any]:
+        """
+        Converts raw `frame_bytes` (`bgr0`/`rgb0` 32-bit or `rgb24` 24-bit) into a `(sw, sh)`
+        surface ready for fast blitting.
+        """
+        if not frame_bytes or sw <= 0 or sh <= 0:
+            return None
+        nlen = len(frame_bytes)
+        if nlen == sw * sh * 4:
+            tile_surf = self._video_tile_surf
+            if tile_surf is None or tile_surf.get_size() != (sw, sh) or tile_surf.get_pitch() != sw * 4:
+                tile_surf = pygame.Surface((sw, sh))
+                if tile_surf.get_bitsize() != 32 or tile_surf.get_pitch() != sw * 4:
+                    return pygame.image.frombuffer(frame_bytes, (sw, sh), "BGRA")
+                self._video_tile_surf = tile_surf
+            v = tile_surf.get_view("0")
+            mv = memoryview(v)
+            mv[:] = frame_bytes
+            del mv, v
+            return tile_surf
+        if nlen == sw * sh * 3:
+            return pygame.image.frombuffer(frame_bytes, (sw, sh), "RGB")
+        return None
+
+    def _compose_video_tile_surface(self, frame_bytes: Any) -> Optional[Any]:
+        """
+        Builds a screen-oriented `(sw x sh)` surface copy for the active tile from raw
         `frame_bytes`, with the rounded-border corner stamps re-applied.
-        Returns None if the buffer does not exactly match the active tile size.
+        Returns None if the buffer does not match the active tile dimensions.
         """
         sx, sy, sw, sh = self._video_screen_rect
-        if not frame_bytes or sw <= 0 or sh <= 0 or len(frame_bytes) != sw * sh * 3:
+        src_surf = self._frame_bytes_to_surface(frame_bytes, sw, sh)
+        if src_surf is None:
             return None
-        tile = pygame.image.frombuffer(frame_bytes, (sw, sh), "RGB").copy()
+        tile = src_surf.copy()
         for stamp_surf, (px, py) in self._video_corner_stamps:
             tile.blit(stamp_surf, (px - sx, py - sy))
         return tile
@@ -414,6 +517,19 @@ class SlideshowApp:
     def stop_video_playback(self, clear_queue: bool = True):
         if self._video_playing:
             self._freeze_last_video_frame_into_slide()
+            # Keep hardware DOUBLEBUF backbuffer coherent with frontbuffer at the stopped tile
+            if (
+                PYGAME_AVAILABLE
+                and self.screen is not None
+                and self._base_screen_surf is not None
+                and (self.screen.get_flags() & pygame.DOUBLEBUF)
+            ):
+                sx, sy, sw, sh = self._video_screen_rect
+                if sw > 0 and sh > 0:
+                    try:
+                        self.screen.blit(self._base_screen_surf, (sx, sy), (sx, sy, sw, sh))
+                    except Exception:
+                        pass
         self._video_gen += 1
         self._video_playing = False
         if clear_queue:
@@ -429,6 +545,7 @@ class SlideshowApp:
         self._latest_video_frame = None
         self._last_video_frame_bytes = None
         self._last_video_canvas_rect = None
+        self._video_tile_surf = None
         self._video_eof = False
         self._video_corner_stamps = []
 
@@ -438,6 +555,34 @@ class SlideshowApp:
             return
         self._pending_slide_videos = collections.deque(video_list)
         self._start_next_queued_video()
+
+    @staticmethod
+    def _build_ffmpeg_rawvideo_cmd(
+        mp4_path: str,
+        play_sec: float,
+        vf_filter: str,
+        pix_fmt: str,
+        hw_decoder: Optional[str] = None,
+    ) -> List[str]:
+        cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel", "error",
+        ]
+        if hw_decoder:
+            cmd.extend(["-c:v", hw_decoder])
+        else:
+            cmd.extend(["-threads", "0"])
+        cmd.extend([
+            "-t", f"{play_sec:.1f}",
+            "-i", mp4_path,
+            "-an",
+            "-vf", vf_filter,
+            "-f", "rawvideo",
+            "-pix_fmt", pix_fmt,
+            "pipe:1",
+        ])
+        return cmd
 
     def _start_next_queued_video(self) -> bool:
         self.stop_video_playback(clear_queue=False)
@@ -460,23 +605,21 @@ class SlideshowApp:
             self._video_screen_rect = (sx, sy, sw, sh)
             self._last_video_canvas_rect = (vx, vy, vw, vh)
             self._video_corner_stamps = self._build_video_corner_stamps(sx, sy, sw, sh, inset)
-            frame_bytes_len = sw * sh * 3
 
-            cmd = [
-                "ffmpeg",
-                "-hide_banner",
-                "-loglevel", "error",
-                "-t", f"{play_sec:.1f}",
-                "-i", mp4_path,
-                "-an",
-                "-vf", vf_filter,
-                "-f", "rawvideo",
-                "-pix_fmt", "rgb24",
-                "pipe:1",
-            ]
+            pix_fmt, bpp, tile_surf = self._select_video_pix_fmt(sw, sh)
+            self._video_tile_surf = tile_surf
+            frame_bytes_len = sw * sh * bpp
+
+            hw_dec = self._detect_hw_h264_decoder()
+            cmd = self._build_ffmpeg_rawvideo_cmd(mp4_path, play_sec, vf_filter, pix_fmt, hw_decoder=hw_dec)
 
             try:
-                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=frame_bytes_len * 2)
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    bufsize=frame_bytes_len * 2,
+                )
             except Exception as e:
                 logger.warning("Failed to start ffmpeg video playback: %s", e)
                 continue
@@ -486,28 +629,79 @@ class SlideshowApp:
             self._video_playing = True
             self._video_eof = False
             logger.info(
-                "▶️  Playing video in tile %d/%d (%dx%d at (%d,%d) @ %d FPS, max %.0fs)",
-                tile_idx, total_tiles, vw, vh, vx, vy, self._video_fps, play_sec
+                "▶️  Playing video in tile %d/%d (%dx%d at (%d,%d) @ %d FPS, fmt=%s, dec=%s, max %.0fs)",
+                tile_idx, total_tiles, vw, vh, vx, vy, self._video_fps, pix_fmt, hw_dec or "sw-mt", play_sec
             )
 
-            def reader_worker(p: subprocess.Popen, nbytes: int, fps: int, expected_gen: int):
+            def reader_worker(
+                initial_proc: subprocess.Popen,
+                nbytes: int,
+                fps: int,
+                expected_gen: int,
+                used_hw_dec: Optional[str],
+                src_mp4: str,
+                dur_sec: float,
+                vf_str: str,
+                pfmt: str,
+            ):
+                p = initial_proc
                 frame_interval = 1.0 / max(1, fps)
-                next_frame_t = time.time()
+                # 4 pre-allocated reusable buffers eliminate ~150 MB/s heap churn & GC pauses:
+                # 1 on screen (_last_video_frame_bytes), 1 queued (_latest_video_frame), 2 free.
+                buf_pool = [bytearray(nbytes) for _ in range(4)]
+                frame_idx = 0
+                next_frame_t = time.perf_counter() + frame_interval
                 try:
-                    while self._video_playing and self._video_gen == expected_gen and p.poll() is None and p.stdout:
+                    while self._video_playing and self._video_gen == expected_gen and p.stdout:
                         if self.is_paused:
-                            time.sleep(0.1)
-                            next_frame_t = time.time()
+                            time.sleep(0.05)
+                            next_frame_t = time.perf_counter() + frame_interval
                             continue
-                        buf = p.stdout.read(nbytes)
-                        if not buf or len(buf) < nbytes or self._video_gen != expected_gen or not self._video_playing:
+
+                        latest_pair = self._latest_video_frame
+                        busy_a = id(latest_pair[1]) if isinstance(latest_pair, tuple) and len(latest_pair) == 2 else 0
+                        busy_b = id(self._last_video_frame_bytes)
+                        target_buf = buf_pool[0]
+                        for candidate in buf_pool:
+                            cid = id(candidate)
+                            if cid != busy_a and cid != busy_b:
+                                target_buf = candidate
+                                break
+
+                        ok = self._read_exact_into(p.stdout, target_buf)
+                        if not ok:
+                            # If hardware V4L2 M2M failed on frame 0 (e.g. non-H.264 stream or
+                            # unsupported profile), seamlessly fall back to multi-core software decode.
+                            if frame_idx == 0 and used_hw_dec and self._video_playing and self._video_gen == expected_gen:
+                                used_hw_dec = None
+                                type(self)._hw_h264_codec = None
+                                try:
+                                    p.kill()
+                                except Exception:
+                                    pass
+                                sw_cmd = self._build_ffmpeg_rawvideo_cmd(
+                                    src_mp4, dur_sec, vf_str, pfmt, hw_decoder=None
+                                )
+                                p = subprocess.Popen(
+                                    sw_cmd,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL,
+                                    bufsize=nbytes * 2,
+                                )
+                                if self._video_gen == expected_gen and self._video_playing:
+                                    self._video_proc = p
+                                    next_frame_t = time.perf_counter() + frame_interval
+                                    continue
                             break
-                        # Tag every frame with its generation so a frame from a previous clip
-                        # can never be drawn into the next video tile (render_frame validates it).
-                        self._latest_video_frame = (expected_gen, buf)
-                        now = time.time()
+
+                        if self._video_gen != expected_gen or not self._video_playing:
+                            break
+
+                        frame_idx += 1
+                        self._latest_video_frame = (expected_gen, target_buf)
+                        now = time.perf_counter()
                         sleep_s = next_frame_t - now
-                        if sleep_s > 0:
+                        if sleep_s > 0.001:
                             time.sleep(sleep_s)
                         next_frame_t = max(now, next_frame_t) + frame_interval
                 except Exception:
@@ -516,7 +710,11 @@ class SlideshowApp:
                     if self._video_proc is p and self._video_gen == expected_gen:
                         self._video_eof = True
 
-            threading.Thread(target=reader_worker, args=(proc, frame_bytes_len, self._video_fps, gen), daemon=True).start()
+            threading.Thread(
+                target=reader_worker,
+                args=(proc, frame_bytes_len, self._video_fps, gen, hw_dec, mp4_path, play_sec, vf_filter, pix_fmt),
+                daemon=True,
+            ).start()
             return True
         return False
 
@@ -714,14 +912,27 @@ class SlideshowApp:
             if prev_vids:
                 self.start_slide_videos(prev_vids)
 
-    @staticmethod
-    def _get_local_ip() -> str:
+    @classmethod
+    def _get_local_ip(cls) -> str:
+        now = time.monotonic()
+        if (now - cls._cached_lan_ip_ts) < cls._LAN_IP_TTL_SEC and cls._cached_lan_ip:
+            return cls._cached_lan_ip
+        ip = "localhost"
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.connect(("8.8.8.8", 80))
-                return s.getsockname()[0]
+                ip = s.getsockname()[0]
         except Exception:
-            return "localhost"
+            ip = "localhost"
+        cls._cached_lan_ip = ip
+        cls._cached_lan_ip_ts = now
+        return ip
+
+    @staticmethod
+    def _rects_intersect(a: Tuple[int, int, int, int], b: Tuple[int, int, int, int]) -> bool:
+        ax, ay, aw, ah = a
+        bx, by, bw, bh = b
+        return ax < (bx + bw) and (ax + aw) > bx and ay < (by + bh) and (ay + ah) > by
 
     def _should_show_portal_overlay(self) -> bool:
         if self.is_night_mode:
@@ -804,10 +1015,17 @@ class SlideshowApp:
 
                 self._cached_demo_pill = pill
                 self._cached_demo_pill_key = cache_key
+                self._cached_rotated_pill_map = {0: pill}
 
-            pill_surf = self._cached_demo_pill
-            if apply_rotation != 0:
-                pill_surf = pygame.transform.rotate(pill_surf, apply_rotation)
+            rot_map = getattr(self, "_cached_rotated_pill_map", None)
+            if not isinstance(rot_map, dict) or rot_map.get(0) is not self._cached_demo_pill:
+                rot_map = {0: self._cached_demo_pill}
+                self._cached_rotated_pill_map = rot_map
+
+            if apply_rotation not in rot_map:
+                rot_map[apply_rotation] = pygame.transform.rotate(self._cached_demo_pill, apply_rotation)
+            pill_surf = rot_map[apply_rotation]
+
             pw, ph = pill_surf.get_size()
             tw_canvas, th_canvas = target.get_size()
             margin = 22
@@ -820,6 +1038,19 @@ class SlideshowApp:
             else:
                 pos = (tw_canvas - pw - margin, th_canvas - ph - margin)
             target.blit(pill_surf, pos)
+
+            # Record screen-space bounding box of the pill so live video frames only
+            # redraw the pill when the video tile actually overlaps it.
+            base_pw, base_ph = self._cached_demo_pill.get_size()
+            sw_scr, sh_scr = self.screen.get_size() if self.screen is not None else (self.screen_w, self.screen_h)
+            if self.rotation == 90:
+                self._last_pill_screen_rect = (sw_scr - base_ph - margin, margin, base_ph, base_pw)
+            elif self.rotation == 180:
+                self._last_pill_screen_rect = (margin, margin, base_pw, base_ph)
+            elif self.rotation == 270:
+                self._last_pill_screen_rect = (margin, sh_scr - base_pw - margin, base_ph, base_pw)
+            else:
+                self._last_pill_screen_rect = (sw_scr - base_pw - margin, sh_scr - base_ph - margin, base_pw, base_ph)
         except Exception as e:
             logger.debug("Demo pill render skipped: %s", e)
 
@@ -832,7 +1063,8 @@ class SlideshowApp:
             if not (self.photo_manager and self.photo_manager.is_demo_mode):
                 self.full_redraw_needed = True
 
-        if self._should_show_portal_overlay():
+        show_overlay = self._should_show_portal_overlay()
+        if show_overlay:
             expected_pill_key = (
                 bool(self.photo_manager and self.photo_manager.is_demo_mode),
                 self._get_local_ip(),
@@ -859,8 +1091,10 @@ class SlideshowApp:
                             target.blit(tile, self._last_video_canvas_rect[:2])
                     except Exception:
                         pass
-                if self._should_show_portal_overlay():
+                if show_overlay:
                     self._draw_demo_setup_pill(target)
+                else:
+                    self._last_pill_screen_rect = None
             else:
                 target.fill((15, 23, 42))
 
@@ -882,35 +1116,47 @@ class SlideshowApp:
             self.full_redraw_needed = False
             return
 
-        # Fast-path live video frame blit via coherent `_base_screen_surf` (eliminates
-        # hardware DOUBLEBUF page-flipping tearing / stale backbuffer flashes and
-        # preserves the final video frame when switching tiles or slides)
+        # Fast-path sub-rectangle live video frame blit:
+        # Copies ONLY the active video tile `(sx, sy, sw, sh)` to `self.screen` (saving
+        # up to 85% RAM copy bandwidth on Raspberry Pi 3 vs. full-screen 1920x1080 blits)
+        # and uses dirty-rect `pygame.display.update(tile_rect)` on software surfaces.
         if self._video_playing and not self.is_night_mode and self._latest_video_frame is not None:
             latest = self._latest_video_frame
             self._latest_video_frame = None
             sx, sy, sw, sh = self._video_screen_rect
-            if not isinstance(latest, tuple) or len(latest) != 2:
+            if not isinstance(latest, tuple) or len(latest) != 2 or sw <= 0 or sh <= 0:
                 return
             frame_gen, frame_bytes = latest
             # Drop frames from a previous clip (race between reader thread and stop/start)
             # or any buffer that doesn't exactly match this tile's size.
-            if frame_gen != self._video_gen or len(frame_bytes) != sw * sh * 3:
+            if frame_gen != self._video_gen or len(frame_bytes) not in (sw * sh * 3, sw * sh * 4):
                 return
             self._last_video_frame_bytes = frame_bytes
             try:
-                vid_surf = pygame.image.frombuffer(frame_bytes, (sw, sh), "RGB")
+                vid_surf = self._frame_bytes_to_surface(frame_bytes, sw, sh)
+                if vid_surf is None:
+                    return
+                tile_rect = (sx, sy, sw, sh)
+                overlay_overlaps = show_overlay and (
+                    self._last_pill_screen_rect is None
+                    or self._rects_intersect(tile_rect, self._last_pill_screen_rect)
+                )
                 if self._base_screen_surf is not None:
                     self._base_screen_surf.blit(vid_surf, (sx, sy))
                     for stamp_surf, stamp_pos in self._video_corner_stamps:
                         self._base_screen_surf.blit(stamp_surf, stamp_pos)
-                    if self._should_show_portal_overlay():
+                    if overlay_overlaps:
                         self._draw_demo_setup_pill(self._base_screen_surf, apply_rotation=self.rotation)
-                    self.screen.blit(self._base_screen_surf, (0, 0))
+                    self.screen.blit(self._base_screen_surf, (sx, sy), tile_rect)
                 else:
                     self.screen.blit(vid_surf, (sx, sy))
-                    if self._should_show_portal_overlay():
+                    if overlay_overlaps:
                         self._draw_demo_setup_pill(self.screen, apply_rotation=self.rotation)
-                pygame.display.flip()
+
+                if self.screen.get_flags() & pygame.DOUBLEBUF:
+                    pygame.display.flip()
+                else:
+                    pygame.display.update(tile_rect)
             except Exception as e:
                 logger.debug("Video frame blit error: %s", e)
 
@@ -1297,7 +1543,10 @@ class SlideshowApp:
                 if self._video_eof and not self.is_paused:
                     if not self._start_next_queued_video():
                         self.advance_slide()
-                self.clock.tick(self._video_fps)
+                # Poll at >=60 Hz so decoded frames from `reader_worker` are presented
+                # within <8ms without beat-frequency drops between two equal-rate clocks.
+                # Idle polls (`_latest_video_frame is None`) return immediately in <5us.
+                self.clock.tick(max(60, self._video_fps * 2))
                 continue
 
             if not self.is_paused and (time.time() - self.last_slide_switch >= self.slide_duration):

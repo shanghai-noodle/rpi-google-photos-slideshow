@@ -360,6 +360,105 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         self.assertEqual(tuple(app.screen.get_at((12, 8)))[:3], (255, 0, 0))
         pygame.display.quit()
 
+    def test_smooth_video_fastpath_native_32bit_dirty_rect_and_deferred_prefetch(self):
+        """
+        Verifies the Linux/Raspberry Pi smooth video playback optimizations:
+          1. Native 32-bit `bgr0`/`rgb0` direct surface blitting matches exact RGB colors.
+          2. Zero-allocation `_read_exact_into` reassembles fragmented pipe reads cleanly.
+          3. Hardware V4L2 M2M (`h264_v4l2m2m`) vs multi-core `-threads 0` FFmpeg CLI flags.
+          4. Higher smooth FPS defaults (`24 FPS` standard, `30 FPS` on >=1.8GB RAM, `15 FPS` lowmem).
+          5. Slide prefetch is deferred while a video slide is active (preventing GIL/GC stutter).
+        """
+        import io
+        from PIL import Image
+
+        # 4. Verify raised FPS profiles
+        _, std_prof = detect_hardware_profile("standard")
+        _, low_prof = detect_hardware_profile("lowmem")
+        self.assertEqual(std_prof["video_fps"], 24)
+        self.assertEqual(low_prof["video_fps"], 15)
+
+        mem_4gb = os.path.join(self.tmp_dir.name, "meminfo_4gb")
+        with open(mem_4gb, "w", encoding="utf-8") as f:
+            f.write("MemTotal:        4096000 kB\n")
+        _, hi_prof = detect_hardware_profile("auto", machine_override="aarch64", meminfo_path=mem_4gb)
+        self.assertEqual(hi_prof["video_fps"], 30)
+
+        # 2. Verify zero-alloc `_read_exact_into` across partial chunks & EOF
+        class _ChunkedReader(io.RawIOBase):
+            def __init__(self, payload: bytes, step: int = 5):
+                self._data = payload
+                self._pos = 0
+                self._step = step
+
+            def readinto(self, b):
+                if self._pos >= len(self._data):
+                    return 0
+                end = min(len(self._data), self._pos + min(len(b), self._step))
+                n = end - self._pos
+                b[:n] = self._data[self._pos:end]
+                self._pos = end
+                return n
+
+        target = bytearray(17)
+        self.assertTrue(SlideshowApp._read_exact_into(_ChunkedReader(b"abcdefghijklmnopq", step=4), target))
+        self.assertEqual(bytes(target), b"abcdefghijklmnopq")
+        self.assertFalse(SlideshowApp._read_exact_into(_ChunkedReader(b"short", step=3), bytearray(10)))
+
+        # 3. Verify FFmpeg command construction for HW V4L2 M2M vs multi-threaded SW
+        hw_cmd = SlideshowApp._build_ffmpeg_rawvideo_cmd("/tmp/v.mp4", 15.0, "fps=24", "bgr0", hw_decoder="h264_v4l2m2m")
+        self.assertIn("h264_v4l2m2m", hw_cmd)
+        self.assertNotIn("-threads", hw_cmd)
+        sw_cmd = SlideshowApp._build_ffmpeg_rawvideo_cmd("/tmp/v.mp4", 15.0, "fps=24", "bgr0", hw_decoder=None)
+        self.assertIn("-threads", sw_cmd)
+        self.assertIn("0", sw_cmd)
+
+        # 1. Verify native 32-bit `bgr0` frame blitting & freeze accuracy
+        try:
+            os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+            import pygame
+            pygame.display.init()
+        except Exception:
+            return
+
+        args = parse_args(["--album", "demo", "--rotate", "0", "--width", "64", "--height", "36", "--web-port", "0"])
+        app = SlideshowApp(args, hw_profile=std_prof, config_store=self.store)
+        app.screen = pygame.display.set_mode((64, 36))
+        app.canvas = app.screen
+        app.current_photo_surf = pygame.Surface((64, 36))
+        app.current_photo_surf.fill((10, 20, 30))
+        app.app_start_time = 0.0
+        app._startup_overlay_expired = True
+        app.full_redraw_needed = True
+        app.render_frame()
+
+        fmt, bpp, tile_surf = app._select_video_pix_fmt(12, 8)
+        app._video_playing = True
+        app._video_screen_rect = (10, 6, 12, 8)
+        app._last_video_canvas_rect = (10, 6, 12, 8)
+        app._video_tile_surf = tile_surf
+        if fmt == "bgr0" and bpp == 4:
+            # B=40, G=180, R=250, X=0 -> RGB(250, 180, 40)
+            frame_buf = bytearray([40, 180, 250, 0] * (12 * 8))
+            app._latest_video_frame = (app._video_gen, frame_buf)
+            app.render_frame()
+            self.assertEqual(tuple(app.screen.get_at((14, 10)))[:3], (250, 180, 40))
+            self.assertEqual(tuple(app.screen.get_at((2, 2)))[:3], (10, 20, 30))
+            app.stop_video_playback()
+            self.assertEqual(tuple(app.current_photo_surf.get_at((14, 10)))[:3], (250, 180, 40))
+
+        # 5. Verify prefetch is deferred when a slide contains playable videos
+        pm = PhotoManager(64, 36, album_url="demo", video_mode="play", auto_refresh=False)
+        prefetch_calls = []
+        pm.trigger_prefetch_next = lambda: prefetch_calls.append(1)
+        pm._build_next_slide = lambda: (Image.new("RGB", (64, 36), (0, 0, 0)), [{"mp4_path": "/tmp/fake.mp4", "rect": (0, 0, 64, 36)}])
+        pm.advance_slide()
+        self.assertEqual(len(prefetch_calls), 0)
+        pm._build_next_slide = lambda: (Image.new("RGB", (64, 36), (0, 0, 0)), [])
+        pm.advance_slide()
+        self.assertEqual(len(prefetch_calls), 1)
+        pygame.display.quit()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -25,7 +25,7 @@ _STANDARD_PROFILE: Dict[str, Any] = {
     "sync_sleep_sec": 0.05,
     "ram_log_max_mb": 2,
     "loop_hz": 10,
-    "video_fps": 18,
+    "video_fps": 24,
 }
 
 _LOWMEM_PROFILE: Dict[str, Any] = {
@@ -38,7 +38,7 @@ _LOWMEM_PROFILE: Dict[str, Any] = {
     "sync_sleep_sec": 0.25,
     "ram_log_max_mb": 1,
     "loop_hz": 5,
-    "video_fps": 12,
+    "video_fps": 15,
 }
 
 HARDWARE_PROFILES: Dict[str, Dict[str, Any]] = {
@@ -54,7 +54,7 @@ def detect_hardware_profile(
 ) -> Tuple[str, Dict[str, Any]]:
     """Detects whether the system is a low-memory Linux device (<=600MB RAM) or standard multi-core system."""
     if requested in ("standard", "lowmem"):
-        return requested, HARDWARE_PROFILES[requested]
+        return requested, dict(HARDWARE_PROFILES[requested])
 
     machine = (machine_override if machine_override is not None else platform.machine()).lower()
     total_ram_mb = 1024
@@ -70,8 +70,11 @@ def detect_hardware_profile(
             pass
 
     if "armv6" in machine or total_ram_mb <= 600:
-        return "lowmem", HARDWARE_PROFILES["lowmem"]
-    return "standard", HARDWARE_PROFILES["standard"]
+        return "lowmem", dict(HARDWARE_PROFILES["lowmem"])
+    prof = dict(HARDWARE_PROFILES["standard"])
+    if total_ram_mb >= 1800:
+        prof["video_fps"] = 30
+    return "standard", prof
 
 
 RAM_DIR = "/dev/shm" if (os.path.isdir("/dev/shm") and os.access("/dev/shm", os.W_OK)) else "/tmp"

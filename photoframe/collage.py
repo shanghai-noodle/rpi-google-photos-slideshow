@@ -1134,7 +1134,10 @@ class PhotoManager(GooglePhotosMixin):
             del pil_img
             self.current_surface = surf
             self.current_video_list = vid_list
-            self.trigger_prefetch_next()
+            # Defer background multi-photo download/Pillow/GC work while a video slide plays
+            # so 100% of CPU, GIL, and RAM bandwidth go to smooth video playback.
+            if not (self.video_mode == "play" and vid_list):
+                self.trigger_prefetch_next()
             return self.current_surface, self.current_video_list
         return None, []
 
@@ -1169,7 +1172,8 @@ class PhotoManager(GooglePhotosMixin):
             self.current_surface = new_surf
             self.current_video_list = new_vids
             gc.collect()
-            self.trigger_prefetch_next()
+            if not (self.video_mode == "play" and new_vids):
+                self.trigger_prefetch_next()
             return self.current_surface, self.current_video_list
 
         self.trigger_prefetch_next()
