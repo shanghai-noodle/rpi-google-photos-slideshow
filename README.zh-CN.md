@@ -31,9 +31,9 @@
 - **🎬 任意拼图格实时视频播放 (`--videos play | skip | still`)**：
   - 自动识别 Google 相册共享相册中的视频（基于 `76647426` 元数据标记）及本地 `.mp4`/`.mov` 视频文件。
   - 将转码后的 MP4 视频流（`=m18`）预加载至 `/dev/shm`（内存虚拟磁盘），并通过 `ffmpeg` 在全屏或任意拼图格子内流畅播放（同一页面包含多个视频格子时会依次自动播放）。
-- **🌐 密码保护的多语言本地网页控制中心 (`http://<设备IP>:8080`)**：
+- **🌐 密码保护的多语言本地网页控制中心 (`https://<设备IP>:8080`)**：
   - **多语言界面**：内置 **English（英语）**、**简体中文**、**日本語（日语）**、**한국어（韩语）**、**Español（西班牙语）**、**Deutsch（德语）** 6 种语言一键切换。
-  - **安全认证**：采用 `PBKDF2-HMAC-SHA256` 加盐哈希存储密码（默认初始密码：`admin`，可在网页端随时修改）。
+  - **安全认证**：基于 **HTTPS (TLS)** 加密传输，采用 `PBKDF2-HMAC-SHA256` 加盐哈希存储密码（默认初始密码：`admin`，可在网页端随时修改）。
   - **实时远程控制与持久化配置**：随时在手机或电脑浏览器中更换 Google 相册共享链接、切换拼图样式、调整幻灯片时长、唤醒/休眠或彻底关闭夜间模式（Night Mode）、切换至内置演示模式（Demo Showcase）、查看实时内存日志、重启服务或重启设备（`sudo reboot`）。
 - **✨ 内置 AI 生成的精选演示媒体包 (`demo_media/`)**：
   - **AI 生成媒体说明**：`demo_media/` 中内置的所有演示图片与视频均由 **Google Gemini 与 Veo AI 生成**（包含 **24 张写实高清照片** —— 12 张萌宠猫咪与狗狗 + 12 张城市园林景观与建筑公园，涵盖 `3:4` 竖屏与 `16:9` 横屏 —— 以及 **5 段 10 秒生动的 Gemini Veo MP4 视频**），100% 原创且遵循 MIT 开源协议。新设备安装后无需联网或配置私人相册即可开箱即用；同时支持在任何远程图片链接失效时自动回退至本地 `demo_media/` 照片。
@@ -86,8 +86,8 @@ cd rpi-google-photos-slideshow
 python3 -B slideshow.py --duration 15 --rotate 0 --landscape-mode collage --web-port 8080
 ```
 
-1. 在同一局域网下的手机或电脑浏览器中打开 **`http://<设备IP>:8080`**。
-   > **⚠️ 防火墙提示**：网页控制台默认监听 TCP **`8080`** 端口。如果您的 Linux 主机启用了防火墙（如 `ufw`、`firewalld` 或 `iptables`）或路由器开启了 AP 隔离，请确保放行局域网 `8080` 端口（例如执行 `sudo ufw allow 8080/tcp` 或 `sudo firewall-cmd --add-port=8080/tcp --permanent && sudo firewall-cmd --reload`）。
+1. 在同一局域网下的手机或电脑浏览器中打开 **`https://<设备IP>:8080`**（首次访问时请在浏览器中信任自签名 TLS 证书）。
+   > **⚠️ 防火墙提示**：网页控制台默认通过 `HTTPS` 监听 TCP **`8080`** 端口。如果您的 Linux 主机启用了防火墙（如 `ufw`、`firewalld` 或 `iptables`）或路由器开启了 AP 隔离，请确保放行局域网 `8080` 端口（例如执行 `sudo ufw allow 8080/tcp` 或 `sudo firewall-cmd --add-port=8080/tcp --permanent && sudo firewall-cmd --reload`）。
 2. 使用默认初始密码 **`admin`** 登录（登录后可在 **安全与修改密码** 中设置新密码）。
 3. 粘贴您的 **Google 相册共享链接**（`https://photos.app.goo.gl/...`），选择喜欢的拼图布局、屏幕旋转角度（`0°`、`90°`、`180°` 或 `270°`）与夜间休眠时段，点击 **保存并立即应用设置** 即可实时生效。
 
@@ -116,7 +116,7 @@ sudo systemctl status slideshow.service
 
 ## 🚀 快速启动与命令行参数
 
-直接启动电子相框（默认进入 **内置演示模式 Demo Showcase**，随后可通过浏览器访问 `http://<设备IP>:8080` 配置您的相册）：
+直接启动电子相框（默认进入 **内置演示模式 Demo Showcase**，随后可通过浏览器访问 `https://<设备IP>:8080` 配置您的相册）：
 
 ```bash
 python3 -B slideshow.py \

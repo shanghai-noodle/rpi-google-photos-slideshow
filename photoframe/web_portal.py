@@ -1,12 +1,15 @@
 """
-Password-protected Local Web Control Portal (HTTP Server + 6-language UI).
+Password-protected Local Web Control Portal (HTTPS Server + 6-language UI).
 Supports English (en), Chinese (zh), Japanese (ja), Korean (ko), Spanish (es), and German (de).
 """
 
 import http.cookies
 import http.server
 import json
+import os
 import socketserver
+import ssl
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -1286,9 +1289,99 @@ setInterval(() => fetchStatus(false), 5000);
 """
 
 
+_SELF_SIGNED_TLS_PEM = """-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEAilRG6w4GHLAIo2duAfwfVyd2LP7K7JHyGoj/U8AC1a2E6w+v
+4SUdxNlMxtmqSxc5fM+hjBfWFyz7gZ+MW44oqb5VRHDeqvUswbJJymrsTJqAVLI4
+9zFqwgx55JO/fNdz1imy6w3ABrfUsCGrLBWP0oj6k27lg+XzfIV/ISFCC/pWs2YZ
+ehephqtY32WQqCBej1jWwSLyVEIyCS4NfibVfmy5iH6/kGiplglu7Pf9fPG809OA
+psqh3e3YDH2nd3W7bHQROffkIVVF9umG4gJm6i3TQtvnUA5EfO9OaX1lOSf7dXqW
+yv2Fal2SQo5yMU6w/7IvZei4XNd5vvO9chY3MwIDAQABAoIBAB1NixRiDSNomvva
+fjBHc3An+N3BP8VriUjbupLIOxF+x4hv80cTcMHxclUxaOStT81DwqoFpqGUMtcb
+sET40V5b5n4wFstKUqfZl84cZmA33nWSp4Sd4EqpD+0+6zKMBYrZnIA0kngZ2yFQ
+kI0vKB9mSwaOWGpffPvk37Bp9i7JEnBTPxGFMdBJJyOZL5qwe2aBbtT0EHW2u4BE
+DvYjenWWOfVTkXN5/weFr2CiiqUt88O+N3Ir+XF8rbbtuFgkuDBrtPneBImqm/hG
+xFoS8PB8D1k/MyPoHBcsZWjDFE7uwhcy11mMtMpqFxkeA06Uvij6Iw0R9neHeCLL
+/JTvM4ECgYEAwY2bqItW5iIMPaIxX1VeI1dqiSW9td+Lspv0cdPHHFY/gQ+s2iQk
+MWLWtnunglA5nXPz/x2PJH6/UMyl8YlA52WSeQwBHnB1wUqHJ98FPgv3W6seup+o
+CrUAUbsriPSM2pwTDGOXSa1AKd3C+zgk7vyYuBFkJVEUe6FRcwQa+XMCgYEAtvV7
++PLz0SPqs6rN3csO+eeloCerSApLC4OVDAQFLDhfYqI1JLUiJMmBoFX88ZA/EPEW
+RM58DfyeYWsKAmvfXzn62YUJcb2Abkofkg5XqXpXvFSpyYSLeWSlA6E8p0DX0DZz
++jc7x1NwP5nczwyieD1TstTlSAYQoWU7xtzrW0ECgYEAob+lhYRsaoWplRgmCnVc
+5kv3TAWuNH9MT0blUPqaOqQZDdH7sZDibiMbLATKR6yjeWGdVmVtaiJB31QmmWMK
+SlYnweC2TqnMvmt552gJCYEWhhTK6UrjM49vZN31084Kp+YmRQQ1Oez+4f3hI/AX
+bWDKf4iJGGZZp7d4SZX0tOECgYALC/VpSZoJFacVJAn8C0ejNSZd7ic8WUrArjgw
+momJavnvZaXZyon+OKB4Atkb6L62EihrDSCWY5tYfHMFRGgfQsvvmEXCtVNs1VLk
+qbMHS5jCiUYbIcKeGMKR3olf+91L+A22nOEiHtqXLH4Vjki9A87q7EnPuHYGmKss
+Tah0QQKBgQCV8LygqxNDUALmCETZ7lRljDh04kjvKCyO5ZzOJmprgI8hIMg5obEb
+GoGDfw7fnpni0lN9VTFSxul+iVdEMMY0zBwuE4eyjLZA+u1g5mdMTRxEhVpJoRfm
+uFV721ksCST3S1ftTTDaPZCgZ37lGTHgFrAeDLqSelFIVeUbKXQU8A==
+-----END RSA PRIVATE KEY-----
+-----BEGIN CERTIFICATE-----
+MIIDSTCCAjGgAwIBAgIIFViUuDwrqMUwDQYJKoZIhvcNAQELBQAwRTELMAkGA1UE
+BhMCVVMxEzARBgNVBAoTClBob3RvRnJhbWUxITAfBgNVBAMTGFBob3RvIEZyYW1l
+IEFkbWluIFBvcnRhbDAeFw0yNjExMTEwMTU2MThaFw0zNjExMDgwMTU2MThaMEUx
+CzAJBgNVBAYTAlVTMRMwEQYDVQQKEwpQaG90b0ZyYW1lMSEwHwYDVQQDExhQaG90
+byBGcmFtZSBBZG1pbiBQb3J0YWwwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEK
+AoIBAQCKVEbrDgYcsAijZ24B/B9XJ3Ys/srskfIaiP9TwALVrYTrD6/hJR3E2UzG
+2apLFzl8z6GMF9YXLPuBn4xbjiipvlVEcN6q9SzBsknKauxMmoBUsjj3MWrCDHnk
+k79813PWKbLrDcAGt9SwIassFY/SiPqTbuWD5fN8hX8hIUIL+lazZhl6F6mGq1jf
+ZZCoIF6PWNbBIvJUQjIJLg1+JtV+bLmIfr+QaKmWCW7s9/188bzT04CmyqHd7dgM
+fad3dbtsdBE59+QhVUX26YbiAmbqLdNC2+dQDkR8705pfWU5J/t1epbK/YVqXZJC
+jnIxTrD/si9l6Lhc13m+871yFjczAgMBAAGjPTA7MB0GA1UdDgQWBBSTjX/4pkkH
+86lipyDVdMGQagaDqDAaBgNVHREEEzARgglsb2NhbGhvc3SHBH8AAAEwDQYJKoZI
+hvcNAQELBQADggEBADZnkLmBpEVoPIOSgmYJEFitlyPB8QVx46U5wynn9wi7cD6F
+8AZe0Y/UXnv0nZCOobqYpkLI+Yk9eGL1WGLIvG3lnVMLTcAK9HF+t9LCL5Ftuy8N
+A9yaX2l15LoveC3n33XFQfIlCvsGTnKnUnDDTw5n7IEFrYkdTaMpkLVL2Ciy8eDy
+u++KVYZ7jeo/jxqa4wWD+bAqHU7I1DG57lAgCQLMt4ItNj7scw7vpOJ950yxWKR2
+Gr6/ImaFvZvYa2hWGCmoaX6ouX5+exmLadtwWZhNCGj95pTs2c2hpdJwYOcq7M1X
+okYKosNZCOMwEDz57b6Tz9XjxrJrjDTe6ZkPmRU=
+-----END CERTIFICATE-----
+"""
+
+
+def create_portal_ssl_context() -> ssl.SSLContext:
+    """
+    Creates an `ssl.SSLContext` configured for the HTTPS Web Control Portal
+    using the bundled self-signed TLS certificate & key in memory (via `/dev/shm`
+    when available, unlinked immediately after loading into OpenSSL).
+    """
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    shm_dir = "/dev/shm" if os.path.isdir("/dev/shm") and os.access("/dev/shm", os.W_OK) else None
+    fd, tmp_pem = tempfile.mkstemp(prefix=".portal_tls_", suffix=".pem", dir=shm_dir)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(_SELF_SIGNED_TLS_PEM)
+        ctx.load_cert_chain(certfile=tmp_pem)
+    finally:
+        try:
+            os.unlink(tmp_pem)
+        except Exception:
+            pass
+    return ctx
+
+
 class _ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+
+    def __init__(
+        self,
+        server_address: Any,
+        RequestHandlerClass: Any,
+        bind_and_activate: bool = True,
+        ssl_context: Optional[ssl.SSLContext] = None,
+    ):
+        self.ssl_context = ssl_context
+        super().__init__(server_address, RequestHandlerClass, bind_and_activate=bind_and_activate)
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        if self.ssl_context is not None:
+            try:
+                request = self.ssl_context.wrap_socket(request, server_side=True)
+            except Exception:
+                self.shutdown_request(request)
+                return
+        super().process_request_thread(request, client_address)
 
 
 def create_portal_handler(
@@ -1443,8 +1536,9 @@ def start_web_config_server(app: "SlideshowApp", config_store: FrameConfigStore,
 
     def _server_worker():
         try:
-            srv = _ThreadingHTTPServer(("0.0.0.0", port), handler_cls)
-            logger.info("🌐 Password-protected Web Control Portal listening on http://0.0.0.0:%d", port)
+            ssl_ctx = create_portal_ssl_context()
+            srv = _ThreadingHTTPServer(("0.0.0.0", port), handler_cls, ssl_context=ssl_ctx)
+            logger.info("🌐 Password-protected Web Control Portal listening on https://0.0.0.0:%d", port)
             srv.serve_forever()
         except Exception as e:
             logger.error("Failed to start Web Control Portal on port %d: %s", port, e)

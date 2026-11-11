@@ -31,9 +31,9 @@ A lightweight, native Linux digital photo frame application (`x86_64` & `ARM64`/
 - **🎬 Live Video Streaming in Any Tile (`--videos play | skip | still`)**:
   - Automatically detects videos in Google Photos shared albums (`76647426` metadata key) and local `.mp4`/`.mov` files.
   - Prefetches transcoded MP4 streams (`=m18`) into `/dev/shm` (`tmpfs` RAM disk) and streams them smoothly via `ffmpeg` directly into any single or multi-tile collage slot (sequencing multiple video tiles on the same slide one after another).
-- **🌐 Password-Protected Local Web Configuration Portal (`http://<device-ip>:8080`)**:
+- **🌐 Password-Protected Local Web Configuration Portal (`https://<device-ip>:8080`)**:
   - **Multi-Language UI**: Full localization for **English**, **中文 (Chinese)**, **日本語 (Japanese)**, **한국어 (Korean)**, **Español (Spanish)**, and **Deutsch (German)**.
-  - **Security**: Protected by `PBKDF2-HMAC-SHA256` password hashing (default password: `admin`, changeable in the Web UI).
+  - **Security**: Served over **HTTPS (TLS)** and protected by `PBKDF2-HMAC-SHA256` password hashing (default password: `admin`, changeable in the Web UI).
   - **Live Remote Control & Settings**: Change the Google Photos shared album URL, switch collage layouts, adjust slide/video durations, toggle or disable Night Mode, advance/pause slides, switch to the built-in **Demo Showcase Pack**, view live RAM logs, restart the slideshow, or reboot the device.
 - **✨ Built-in AI-Generated Demo Showcase Pack (`demo_media/`)**:
   - **AI-Generated Media Note**: All bundled Demo Showcase images and videos in `demo_media/` are AI-generated using **Google Gemini & Veo** (**24 photorealistic photos** — 12 cats & dogs + 12 urban landscaping & architectural parks across Portrait `3:4` and Landscape `16:9` — plus **5 lively 10-second Gemini Veo MP4 videos**). Everything is 100% original and MIT-licensed, so a newly installed device works out of the box—even offline—before a personal Google Photos album is configured. Includes automatic fallback to local `demo_media/` photos if any remote URL ever fails.
@@ -86,8 +86,8 @@ Start the slideshow (boots into **Demo Showcase Mode** at `0°` horizontal `1920
 python3 -B slideshow.py --duration 15 --rotate 0 --landscape-mode collage --web-port 8080
 ```
 
-1. Open **`http://<your-device-ip>:8080`** in any phone or desktop browser on your network.
-   > **⚠️ Firewall Reminder**: The Web Control Portal uses TCP port **`8080`** by default. If you have a firewall enabled on your Linux host (such as `ufw`, `firewalld`, or `iptables`/`nftables`) or Wi-Fi router AP isolation, make sure incoming LAN traffic on port `8080` is allowed (e.g., `sudo ufw allow 8080/tcp` or `sudo firewall-cmd --add-port=8080/tcp --permanent && sudo firewall-cmd --reload`).
+1. Open **`https://<your-device-ip>:8080`** in any phone or desktop browser on your network *(accept your browser's self-signed TLS certificate prompt on first visit)*.
+   > **⚠️ Firewall Reminder**: The Web Control Portal uses TCP port **`8080`** (`HTTPS`) by default. If you have a firewall enabled on your Linux host (such as `ufw`, `firewalld`, or `iptables`/`nftables`) or Wi-Fi router AP isolation, make sure incoming LAN traffic on port `8080` is allowed (e.g., `sudo ufw allow 8080/tcp` or `sudo firewall-cmd --add-port=8080/tcp --permanent && sudo firewall-cmd --reload`).
 2. Sign in with the default password **`admin`** (you can change the password under **Security & Change Password**).
 3. Paste your **Google Photos Shared Album URL** (`https://photos.app.goo.gl/...`), choose your preferred collage layout, screen rotation (`0°`, `90°`, `180°`, or `270°`), and Night Mode schedule, then click **Save & Apply Settings**.
 
@@ -116,7 +116,7 @@ sudo systemctl status slideshow.service
 
 ## 🚀 Quick Start & Command-Line Usage
 
-Start the slideshow (boots into **Demo Showcase Mode** by default until you set your album in the Web Portal at `http://<device-ip>:8080`):
+Start the slideshow (boots into **Demo Showcase Mode** by default until you set your album in the Web Portal at `https://<device-ip>:8080`):
 
 ```bash
 python3 -B slideshow.py \

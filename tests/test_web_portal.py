@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import ssl
 import tempfile
 import threading
 import time
@@ -16,6 +17,7 @@ from photoframe.web_portal import (
     WEB_PORTAL_HTML,
     _ThreadingHTTPServer,
     create_portal_handler,
+    create_portal_ssl_context,
 )
 
 
@@ -214,6 +216,30 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
             _, st_new, _ = request_json("/api/status", cookie=new_cookie)
             self.assertTrue(st_new["authenticated"])
             self.assertFalse(st_new["is_default_password"])
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_https_tls_portal_endpoint(self):
+        args = parse_args(["--album", "demo", "--rotate", "0"])
+        app = SlideshowApp(args, HARDWARE_PROFILES["standard"], config_store=self.store)
+        handler_cls = create_portal_handler(app, self.store, login_fail_delay=0.0)
+        ssl_ctx = create_portal_ssl_context()
+        server = _ThreadingHTTPServer(("127.0.0.1", 0), handler_cls, ssl_context=ssl_ctx)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+
+        client_ctx = ssl.create_default_context()
+        client_ctx.check_hostname = False
+        client_ctx.verify_mode = ssl.CERT_NONE
+
+        try:
+            with urllib.request.urlopen(f"https://127.0.0.1:{port}/api/status", timeout=5, context=client_ctx) as resp:
+                self.assertEqual(resp.status, 200)
+                data = json.loads(resp.read().decode("utf-8"))
+                self.assertFalse(data["authenticated"])
+                self.assertTrue(data["is_default_password"])
         finally:
             server.shutdown()
             server.server_close()

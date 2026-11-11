@@ -677,7 +677,7 @@ class SlideshowApp:
                 font = pygame.font.SysFont("dejavusans,arial,sans-serif", 20, bold=True)
                 ip_str = self._get_local_ip()
                 port = int(getattr(self.args, "web_port", 8080) or 8080)
-                text = f"Demo Mode (AI-Generated Media)  •  Configure at http://{ip_str}:{port}"
+                text = f"Demo Mode (AI-Generated Media)  •  Configure at https://{ip_str}:{port}"
                 txt_surf = font.render(text, True, (241, 245, 249))
                 tw, th = txt_surf.get_size()
                 pad_x, pad_y = 20, 10
