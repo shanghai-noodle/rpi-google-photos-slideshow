@@ -26,6 +26,7 @@ _STANDARD_PROFILE: Dict[str, Any] = {
     "ram_log_max_mb": 2,
     "loop_hz": 10,
     "video_fps": 24,
+    "video_max_edge": 1920,
 }
 
 _LOWMEM_PROFILE: Dict[str, Any] = {
@@ -39,6 +40,7 @@ _LOWMEM_PROFILE: Dict[str, Any] = {
     "ram_log_max_mb": 1,
     "loop_hz": 5,
     "video_fps": 15,
+    "video_max_edge": 480,
 }
 
 HARDWARE_PROFILES: Dict[str, Dict[str, Any]] = {
@@ -72,7 +74,20 @@ def detect_hardware_profile(
     if "armv6" in machine or total_ram_mb <= 600:
         return "lowmem", dict(HARDWARE_PROFILES["lowmem"])
     prof = dict(HARDWARE_PROFILES["standard"])
-    if total_ram_mb >= 1800:
+    is_arm_sbc = ("arm" in machine or "aarch64" in machine) and (
+        machine_override is not None or sys.platform.startswith("linux")
+    )
+    if is_arm_sbc and total_ram_mb < 1500:
+        # Raspberry Pi 2 / Pi 3 1GB: cap FFmpeg internal decode/pipe resolution at 640px
+        # (matching =m18 native 640x360 stream with zero quality loss while avoiding 9x
+        # wasted FFmpeg software upscale/transpose/pipe work) and pace at 20 FPS with headroom.
+        prof["video_fps"] = 20
+        prof["video_max_edge"] = 640
+    elif is_arm_sbc:
+        # Raspberry Pi 4 / Pi 5 (2GB+ RAM): 30 FPS with 960px FFmpeg pipe cap + fast surface scale.
+        prof["video_fps"] = 30
+        prof["video_max_edge"] = 960
+    elif total_ram_mb >= 1800:
         prof["video_fps"] = 30
     return "standard", prof
 

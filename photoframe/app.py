@@ -111,6 +111,9 @@ class SlideshowApp:
         self._video_screen_rect: Tuple[int, int, int, int] = (0, 0, 0, 0)
         self._video_corner_stamps: List[Tuple[Any, Tuple[int, int]]] = []
         self._video_fps = int(self.hw_profile.get("video_fps", 24))
+        self._video_max_edge = int(self.hw_profile.get("video_max_edge", 1920))
+        self._video_decode_size: Optional[Tuple[int, int]] = None
+        self._video_raw_surf: Optional[Any] = None
         self._latest_video_frame: Optional[Tuple[int, Any]] = None
         self._last_video_frame_bytes: Optional[Any] = None
         self._last_video_canvas_rect: Optional[Tuple[int, int, int, int]] = None
@@ -306,6 +309,7 @@ class SlideshowApp:
         vh: int,
         centering: Tuple[float, float] = (0.50, 0.50),
         inset: int = 0,
+        max_edge: Optional[int] = None,
     ) -> Tuple[int, int, int, int, str]:
         """
         Maps a video rectangle `(vx, vy, vw, vh)` on `self.canvas` (`canvas_w x canvas_h`)
@@ -314,33 +318,51 @@ class SlideshowApp:
         Uses the same subject-aware `(cx, cy)` centering and tile border inset as
         `PhotoManager._paste_rounded_tile` so the first video frame aligns pixel-for-pixel
         with the static poster thumbnail without jumping.
+        When `max_edge` (defaults to `self._video_max_edge`) is smaller than `max(vw, vh)`,
+        caps FFmpeg's internal decode/transpose/pipe dimensions `(fw, fh)` to avoid
+        expensive software upscaling/pipe copies on Raspberry Pi SBCs while `pygame.transform.scale`
+        stretches the pre-allocated 32-bit surface cleanly at blit time.
         """
         fps = self._video_fps
         cx = max(0.0, min(1.0, float(centering[0]))) if centering and len(centering) >= 2 else 0.50
         cy = max(0.0, min(1.0, float(centering[1]))) if centering and len(centering) >= 2 else 0.50
-        ins = max(0, int(inset))
-        scale_w = vw + 2 * ins
-        scale_h = vh + 2 * ins
+        eff_max = self._video_max_edge if max_edge is None else int(max_edge)
+        longest = max(vw, vh)
+        if eff_max > 0 and longest > eff_max:
+            ratio = eff_max / float(longest)
+            dw = max(2, int(round(vw * ratio)) & ~1)
+            dh = max(2, int(round(vh * ratio)) & ~1)
+            ins = max(0, int(round(inset * ratio)))
+        else:
+            dw, dh = vw, vh
+            ins = max(0, int(inset))
+
+        scale_w = dw + 2 * ins
+        scale_h = dh + 2 * ins
         crop_x = f"(in_w-{scale_w})*{cx:.4f}+{ins}" if ins > 0 else f"(in_w-out_w)*{cx:.4f}"
         crop_y = f"(in_h-{scale_h})*{cy:.4f}+{ins}" if ins > 0 else f"(in_h-out_h)*{cy:.4f}"
         scale_part = (
             f"fps={fps},scale={scale_w}:{scale_h}:force_original_aspect_ratio=increase:flags=fast_bilinear,"
-            f"crop={vw}:{vh}:{crop_x}:{crop_y}"
+            f"crop={dw}:{dh}:{crop_x}:{crop_y}"
         )
         if self.rotation == 270:
             # 270 deg CCW == 90 deg CW (FFmpeg transpose=1)
             sx = self.canvas_h - (vy + vh)
             sy = vx
+            self._video_decode_size = (dh, dw)
             return sx, sy, vh, vw, f"{scale_part},transpose=1"
         if self.rotation == 90:
             # 90 deg CCW (FFmpeg transpose=2)
             sx = vy
             sy = self.canvas_w - (vx + vw)
+            self._video_decode_size = (dh, dw)
             return sx, sy, vh, vw, f"{scale_part},transpose=2"
         if self.rotation == 180:
             sx = self.canvas_w - (vx + vw)
             sy = self.canvas_h - (vy + vh)
+            self._video_decode_size = (dw, dh)
             return sx, sy, vw, vh, f"{scale_part},hflip,vflip"
+        self._video_decode_size = (dw, dh)
         return vx, vy, vw, vh, scale_part
 
     def _build_video_corner_stamps(
@@ -386,9 +408,18 @@ class SlideshowApp:
     @classmethod
     def _detect_hw_h264_decoder(cls) -> Optional[str]:
         """
-        Probes once on ARM/AArch64 Raspberry Pi systems for the VideoCore V4L2 M2M
-        hardware H.264 decoder (`h264_v4l2m2m` via `/dev/video10`).
+        Returns an explicit hardware H.264 decoder only when opted in via
+        `PHOTOFRAME_HW_DECODE` (e.g. `PHOTOFRAME_HW_DECODE=1` or `h264_v4l2m2m`).
+        On Raspberry Pi (`bcm2835-codec`), V4L2 M2M writes decoded YU12 frames into
+        uncached VideoCore CMA memory; following decode with CPU `-vf` filters (`scale`,
+        `crop`, `transpose`) + `rawvideo` color conversion stalls on uncached bus reads
+        (~9 FPS vs ~28.5 FPS with `-threads 0` multi-core NEON decode into cached CPU RAM).
         """
+        env_val = os.environ.get("PHOTOFRAME_HW_DECODE", "").strip()
+        if not env_val or env_val.lower() in ("0", "false", "no", "off", "none"):
+            return None
+        if env_val.lower() not in ("1", "true", "yes", "on", "auto"):
+            return env_val
         if cls._hw_h264_probed:
             return cls._hw_h264_codec
         cls._hw_h264_probed = True
@@ -456,7 +487,8 @@ class SlideshowApp:
     def _frame_bytes_to_surface(self, frame_bytes: Any, sw: int, sh: int) -> Optional[Any]:
         """
         Converts raw `frame_bytes` (`bgr0`/`rgb0` 32-bit or `rgb24` 24-bit) into a `(sw, sh)`
-        surface ready for fast blitting.
+        surface ready for fast blitting. Supports both native `(sw, sh)` buffers and capped
+        `(fw, fh)` decode buffers scaled in-place into pre-allocated `self._video_tile_surf`.
         """
         if not frame_bytes or sw <= 0 or sh <= 0:
             return None
@@ -475,6 +507,36 @@ class SlideshowApp:
             return tile_surf
         if nlen == sw * sh * 3:
             return pygame.image.frombuffer(frame_bytes, (sw, sh), "RGB")
+
+        dec_sz = self._video_decode_size
+        if dec_sz is not None:
+            fw, fh = dec_sz
+            if fw > 0 and fh > 0 and (fw, fh) != (sw, sh):
+                if nlen == fw * fh * 4:
+                    raw_surf = self._video_raw_surf
+                    if raw_surf is None or raw_surf.get_size() != (fw, fh) or raw_surf.get_pitch() != fw * 4:
+                        raw_surf = pygame.Surface((fw, fh))
+                        if raw_surf.get_bitsize() != 32 or raw_surf.get_pitch() != fw * 4:
+                            s = pygame.image.frombuffer(frame_bytes, (fw, fh), "BGRA")
+                            return pygame.transform.scale(s, (sw, sh))
+                        self._video_raw_surf = raw_surf
+                    v = raw_surf.get_view("0")
+                    mv = memoryview(v)
+                    mv[:] = frame_bytes
+                    del mv, v
+                    tile_surf = self._video_tile_surf
+                    if (
+                        tile_surf is None
+                        or tile_surf.get_size() != (sw, sh)
+                        or tile_surf.get_bitsize() != raw_surf.get_bitsize()
+                    ):
+                        tile_surf = pygame.Surface((sw, sh))
+                        self._video_tile_surf = tile_surf
+                    pygame.transform.scale(raw_surf, (sw, sh), tile_surf)
+                    return tile_surf
+                if nlen == fw * fh * 3:
+                    raw24 = pygame.image.frombuffer(frame_bytes, (fw, fh), "RGB")
+                    return pygame.transform.scale(raw24, (sw, sh))
         return None
 
     def _compose_video_tile_surface(self, frame_bytes: Any) -> Optional[Any]:
@@ -545,6 +607,8 @@ class SlideshowApp:
         self._latest_video_frame = None
         self._last_video_frame_bytes = None
         self._last_video_canvas_rect = None
+        self._video_decode_size = None
+        self._video_raw_surf = None
         self._video_tile_surf = None
         self._video_eof = False
         self._video_corner_stamps = []
@@ -602,13 +666,21 @@ class SlideshowApp:
             sx, sy, sw, sh, vf_filter = self._map_canvas_rect_to_screen(
                 vx, vy, vw, vh, centering=centering, inset=inset
             )
+            fw, fh = self._video_decode_size or (sw, sh)
             self._video_screen_rect = (sx, sy, sw, sh)
             self._last_video_canvas_rect = (vx, vy, vw, vh)
             self._video_corner_stamps = self._build_video_corner_stamps(sx, sy, sw, sh, inset)
 
             pix_fmt, bpp, tile_surf = self._select_video_pix_fmt(sw, sh)
             self._video_tile_surf = tile_surf
-            frame_bytes_len = sw * sh * bpp
+            if (fw, fh) != (sw, sh) and bpp == 4 and PYGAME_AVAILABLE and self.screen is not None:
+                try:
+                    self._video_raw_surf = pygame.Surface((fw, fh))
+                except Exception:
+                    self._video_raw_surf = None
+            else:
+                self._video_raw_surf = None
+            frame_bytes_len = fw * fh * bpp
 
             hw_dec = self._detect_hw_h264_decoder()
             cmd = self._build_ffmpeg_rawvideo_cmd(mp4_path, play_sec, vf_filter, pix_fmt, hw_decoder=hw_dec)
@@ -629,8 +701,8 @@ class SlideshowApp:
             self._video_playing = True
             self._video_eof = False
             logger.info(
-                "▶️  Playing video in tile %d/%d (%dx%d at (%d,%d) @ %d FPS, fmt=%s, dec=%s, max %.0fs)",
-                tile_idx, total_tiles, vw, vh, vx, vy, self._video_fps, pix_fmt, hw_dec or "sw-mt", play_sec
+                "▶️  Playing video in tile %d/%d (%dx%d -> %dx%d pipe at (%d,%d) @ %d FPS, fmt=%s, dec=%s, max %.0fs)",
+                tile_idx, total_tiles, vw, vh, fw, fh, vx, vy, self._video_fps, pix_fmt, hw_dec or "sw-mt", play_sec
             )
 
             def reader_worker(
@@ -651,12 +723,16 @@ class SlideshowApp:
                 buf_pool = [bytearray(nbytes) for _ in range(4)]
                 frame_idx = 0
                 next_frame_t = time.perf_counter() + frame_interval
+                clip_deadline = time.perf_counter() + dur_sec + 1.5
                 try:
                     while self._video_playing and self._video_gen == expected_gen and p.stdout:
                         if self.is_paused:
                             time.sleep(0.05)
                             next_frame_t = time.perf_counter() + frame_interval
+                            clip_deadline += 0.05
                             continue
+                        if time.perf_counter() >= clip_deadline:
+                            break
 
                         latest_pair = self._latest_video_frame
                         busy_a = id(latest_pair[1]) if isinstance(latest_pair, tuple) and len(latest_pair) == 2 else 0
@@ -691,6 +767,7 @@ class SlideshowApp:
                                 if self._video_gen == expected_gen and self._video_playing:
                                     self._video_proc = p
                                     next_frame_t = time.perf_counter() + frame_interval
+                                    clip_deadline = time.perf_counter() + dur_sec + 1.5
                                     continue
                             break
 
@@ -707,6 +784,11 @@ class SlideshowApp:
                 except Exception:
                     pass
                 finally:
+                    try:
+                        if p.poll() is None:
+                            p.kill()
+                    except Exception:
+                        pass
                     if self._video_proc is p and self._video_gen == expected_gen:
                         self._video_eof = True
 
@@ -1128,14 +1210,14 @@ class SlideshowApp:
                 return
             frame_gen, frame_bytes = latest
             # Drop frames from a previous clip (race between reader thread and stop/start)
-            # or any buffer that doesn't exactly match this tile's size.
-            if frame_gen != self._video_gen or len(frame_bytes) not in (sw * sh * 3, sw * sh * 4):
+            # or any buffer that doesn't match this tile's screen or capped decode dimensions.
+            if frame_gen != self._video_gen:
                 return
-            self._last_video_frame_bytes = frame_bytes
             try:
                 vid_surf = self._frame_bytes_to_surface(frame_bytes, sw, sh)
                 if vid_surf is None:
                     return
+                self._last_video_frame_bytes = frame_bytes
                 tile_rect = (sx, sy, sw, sh)
                 overlay_overlaps = show_overlay and (
                     self._last_pill_screen_rect is None

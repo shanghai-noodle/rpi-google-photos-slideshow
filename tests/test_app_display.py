@@ -378,11 +378,28 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         self.assertEqual(std_prof["video_fps"], 24)
         self.assertEqual(low_prof["video_fps"], 15)
 
+        mem_1gb = os.path.join(self.tmp_dir.name, "meminfo_1gb")
+        with open(mem_1gb, "w", encoding="utf-8") as f:
+            f.write("MemTotal:         948000 kB\n")
+        _, pi3_prof = detect_hardware_profile("auto", machine_override="armv7l", meminfo_path=mem_1gb)
+        self.assertEqual(pi3_prof["video_fps"], 20)
+        self.assertEqual(pi3_prof["video_max_edge"], 640)
+
         mem_4gb = os.path.join(self.tmp_dir.name, "meminfo_4gb")
         with open(mem_4gb, "w", encoding="utf-8") as f:
             f.write("MemTotal:        4096000 kB\n")
         _, hi_prof = detect_hardware_profile("auto", machine_override="aarch64", meminfo_path=mem_4gb)
         self.assertEqual(hi_prof["video_fps"], 30)
+        self.assertEqual(hi_prof["video_max_edge"], 960)
+
+        # Verify capped-resolution FFmpeg decode sizing (e.g. 1080x1920 rotated 270 -> 640x360 pipe)
+        args_pi = parse_args(["--rotate", "270"])
+        app_pi = SlideshowApp(args_pi, hw_profile=pi3_prof, config_store=self.store)
+        sx_p, sy_p, sw_p, sh_p, vf_p = app_pi._map_canvas_rect_to_screen(0, 0, 1080, 1920)
+        self.assertEqual((sx_p, sy_p, sw_p, sh_p), (0, 0, 1920, 1080))
+        self.assertEqual(app_pi._video_decode_size, (640, 360))
+        self.assertIn("scale=360:640:force_original_aspect_ratio=increase", vf_p)
+        self.assertIn("transpose=1", vf_p)
 
         # 2. Verify zero-alloc `_read_exact_into` across partial chunks & EOF
         class _ChunkedReader(io.RawIOBase):
@@ -446,6 +463,19 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
             self.assertEqual(tuple(app.screen.get_at((2, 2)))[:3], (10, 20, 30))
             app.stop_video_playback()
             self.assertEqual(tuple(app.current_photo_surf.get_at((14, 10)))[:3], (250, 180, 40))
+
+            # Also verify capped-resolution decode buffer (6x4 -> scaled in-place to 12x8 tile)
+            app._video_playing = True
+            app._video_screen_rect = (10, 6, 12, 8)
+            app._last_video_canvas_rect = (10, 6, 12, 8)
+            app._video_decode_size = (6, 4)
+            app._video_tile_surf = pygame.Surface((12, 8))
+            capped_buf = bytearray([90, 210, 30, 0] * (6 * 4))  # RGB(30, 210, 90)
+            app._latest_video_frame = (app._video_gen, capped_buf)
+            app.render_frame()
+            self.assertEqual(tuple(app.screen.get_at((14, 10)))[:3], (30, 210, 90))
+            app.stop_video_playback()
+            self.assertEqual(tuple(app.current_photo_surf.get_at((14, 10)))[:3], (30, 210, 90))
 
         # 5. Verify prefetch is deferred when a slide contains playable videos
         pm = PhotoManager(64, 36, album_url="demo", video_mode="play", auto_refresh=False)
