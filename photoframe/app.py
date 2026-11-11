@@ -98,7 +98,9 @@ class SlideshowApp:
         self._video_screen_rect: Tuple[int, int, int, int] = (0, 0, 0, 0)
         self._video_corner_stamps: List[Tuple[Any, Tuple[int, int]]] = []
         self._video_fps = int(self.hw_profile.get("video_fps", 18))
-        self._latest_video_frame: Optional[bytes] = None
+        self._latest_video_frame: Optional[Tuple[int, bytes]] = None
+        self._last_video_frame_bytes: Optional[bytes] = None
+        self._last_video_canvas_rect: Optional[Tuple[int, int, int, int]] = None
         self._video_eof = False
         self._pending_slide_videos: Deque[Dict[str, Any]] = collections.deque()
         self._base_screen_surf: Optional[Any] = None
@@ -366,7 +368,45 @@ class SlideshowApp:
             return []
         return stamps
 
+    def _compose_video_tile_surface(self, frame_bytes: bytes) -> Optional[Any]:
+        """
+        Builds a screen-oriented `(sw x sh)` surface for the active tile from raw RGB24
+        `frame_bytes`, with the rounded-border corner stamps re-applied.
+        Returns None if the buffer does not exactly match the active tile size.
+        """
+        sx, sy, sw, sh = self._video_screen_rect
+        if not frame_bytes or sw <= 0 or sh <= 0 or len(frame_bytes) != sw * sh * 3:
+            return None
+        tile = pygame.image.frombuffer(frame_bytes, (sw, sh), "RGB").copy()
+        for stamp_surf, (px, py) in self._video_corner_stamps:
+            tile.blit(stamp_surf, (px - sx, py - sy))
+        return tile
+
+    def _freeze_last_video_frame_into_slide(self):
+        """
+        Pastes the last displayed video frame into `self.current_photo_surf` (canvas
+        orientation) so any later full redraw (overlay timeout, web action, next video tile
+        on the same slide) keeps showing that frame instead of flashing back to the poster.
+        """
+        frame_bytes = self._last_video_frame_bytes
+        canvas_rect = self._last_video_canvas_rect
+        if not frame_bytes or canvas_rect is None or self.current_photo_surf is None or not PYGAME_AVAILABLE:
+            return
+        try:
+            tile = self._compose_video_tile_surface(frame_bytes)
+            if tile is None:
+                return
+            if self.rotation != 0:
+                tile = pygame.transform.rotate(tile, -self.rotation)
+            vx, vy, vw, vh = canvas_rect
+            if tile.get_size() == (vw, vh):
+                self.current_photo_surf.blit(tile, (vx, vy))
+        except Exception as e:
+            logger.debug("Freeze last video frame skipped: %s", e)
+
     def stop_video_playback(self, clear_queue: bool = True):
+        if self._video_playing:
+            self._freeze_last_video_frame_into_slide()
         self._video_gen += 1
         self._video_playing = False
         if clear_queue:
@@ -380,6 +420,8 @@ class SlideshowApp:
             except Exception:
                 pass
         self._latest_video_frame = None
+        self._last_video_frame_bytes = None
+        self._last_video_canvas_rect = None
         self._video_eof = False
         self._video_corner_stamps = []
 
@@ -409,6 +451,7 @@ class SlideshowApp:
                 vx, vy, vw, vh, centering=centering, inset=inset
             )
             self._video_screen_rect = (sx, sy, sw, sh)
+            self._last_video_canvas_rect = (vx, vy, vw, vh)
             self._video_corner_stamps = self._build_video_corner_stamps(sx, sy, sw, sh, inset)
             frame_bytes_len = sw * sh * 3
 
@@ -452,7 +495,9 @@ class SlideshowApp:
                         buf = p.stdout.read(nbytes)
                         if not buf or len(buf) < nbytes or self._video_gen != expected_gen or not self._video_playing:
                             break
-                        self._latest_video_frame = buf
+                        # Tag every frame with its generation so a frame from a previous clip
+                        # can never be drawn into the next video tile (render_frame validates it).
+                        self._latest_video_frame = (expected_gen, buf)
                         now = time.time()
                         sleep_s = next_frame_t - now
                         if sleep_s > 0:
@@ -785,6 +830,17 @@ class SlideshowApp:
                 target.fill((0, 0, 0))
             elif self.current_photo_surf:
                 target.blit(self.current_photo_surf, (0, 0))
+                # Keep the currently playing video frame in place during a full redraw
+                # (e.g. overlay timeout) instead of flashing the static poster for a frame.
+                if self._video_playing and self._last_video_frame_bytes and self._last_video_canvas_rect:
+                    try:
+                        tile = self._compose_video_tile_surface(self._last_video_frame_bytes)
+                        if tile is not None:
+                            if self.rotation != 0:
+                                tile = pygame.transform.rotate(tile, -self.rotation)
+                            target.blit(tile, self._last_video_canvas_rect[:2])
+                    except Exception:
+                        pass
                 if self._should_show_portal_overlay():
                     self._draw_demo_setup_pill(target)
             else:
@@ -812,9 +868,17 @@ class SlideshowApp:
         # hardware DOUBLEBUF page-flipping tearing / stale backbuffer flashes and
         # preserves the final video frame when switching tiles or slides)
         if self._video_playing and not self.is_night_mode and self._latest_video_frame is not None:
-            frame_bytes = self._latest_video_frame
+            latest = self._latest_video_frame
             self._latest_video_frame = None
             sx, sy, sw, sh = self._video_screen_rect
+            if not isinstance(latest, tuple) or len(latest) != 2:
+                return
+            frame_gen, frame_bytes = latest
+            # Drop frames from a previous clip (race between reader thread and stop/start)
+            # or any buffer that doesn't exactly match this tile's size.
+            if frame_gen != self._video_gen or len(frame_bytes) != sw * sh * 3:
+                return
+            self._last_video_frame_bytes = frame_bytes
             try:
                 vid_surf = pygame.image.frombuffer(frame_bytes, (sw, sh), "RGB")
                 if self._base_screen_surf is not None:

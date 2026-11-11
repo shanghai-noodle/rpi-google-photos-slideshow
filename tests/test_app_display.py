@@ -236,6 +236,64 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         self.assertIn("app_version", snap)
         self.assertGreaterEqual(int(snap["app_version_code"]), 3)
 
+    def test_video_frames_never_leak_between_clips_and_freeze_on_stop(self):
+        """
+        Regression test for video start/stop flashes:
+          1. A frame tagged with a previous clip's generation must never be drawn.
+          2. Stopping a video freezes its last frame into the slide surface so later full
+             redraws do not flash the static poster.
+          3. A full redraw while a video plays keeps the live frame in the tile.
+        """
+        try:
+            os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+            import pygame
+            pygame.display.init()
+        except Exception:
+            self.skipTest("pygame not available")
+
+        args = parse_args(["--album", "demo", "--rotate", "0", "--width", "64", "--height", "36", "--web-port", "0"])
+        app = SlideshowApp(args, hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
+        app.screen = pygame.display.set_mode((64, 36))
+        app.canvas = app.screen
+        app.current_photo_surf = pygame.Surface((64, 36))
+        app.current_photo_surf.fill((0, 0, 255))  # blue "poster"
+        app.app_start_time = 0.0  # overlay expired
+        app._startup_overlay_expired = True
+        app.full_redraw_needed = True
+        app.render_frame()
+
+        # Simulate an active clip occupying tile (8, 4, 16, 10)
+        app._video_playing = True
+        app._video_screen_rect = (8, 4, 16, 10)
+        app._last_video_canvas_rect = (8, 4, 16, 10)
+        app._video_corner_stamps = []
+        red = bytes([255, 0, 0]) * (16 * 10)
+        green = bytes([0, 255, 0]) * (16 * 10)
+
+        # 1. Stale frame from an older generation is dropped
+        app._latest_video_frame = (app._video_gen - 1, green)
+        app.render_frame()
+        self.assertEqual(tuple(app.screen.get_at((12, 8)))[:3], (0, 0, 255))
+
+        # Current-generation frame is drawn
+        app._latest_video_frame = (app._video_gen, red)
+        app.render_frame()
+        self.assertEqual(tuple(app.screen.get_at((12, 8)))[:3], (255, 0, 0))
+
+        # 3. Full redraw while playing keeps the live frame (no poster flash)
+        app.full_redraw_needed = True
+        app.render_frame()
+        self.assertEqual(tuple(app.screen.get_at((12, 8)))[:3], (255, 0, 0))
+
+        # 2. Stop freezes the last frame into the slide surface
+        app.stop_video_playback()
+        self.assertEqual(tuple(app.current_photo_surf.get_at((12, 8)))[:3], (255, 0, 0))
+        self.assertEqual(tuple(app.current_photo_surf.get_at((2, 2)))[:3], (0, 0, 255))
+        app.full_redraw_needed = True
+        app.render_frame()
+        self.assertEqual(tuple(app.screen.get_at((12, 8)))[:3], (255, 0, 0))
+        pygame.display.quit()
+
 
 if __name__ == "__main__":
     unittest.main()
