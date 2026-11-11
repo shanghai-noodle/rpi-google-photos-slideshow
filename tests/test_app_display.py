@@ -182,6 +182,60 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
             test_logger.removeHandler(handler)
             handler.close()
 
+    def test_qr_code_mdns_and_portal_overlay_visibility(self):
+        """
+        Verifies QR code matrix generation, mDNS A-record packet construction for
+        `photoframe.local`, build version tracking, and the 60-second / Demo Mode
+        portal overlay visibility rules.
+        """
+        import threading
+        import time
+        from photoframe.mdns import MDNS_HOSTNAME, build_mdns_a_response
+        from photoframe.qrcode_gen import encode_qr_matrix
+
+        mat = encode_qr_matrix("https://192.168.86.42:8080")
+        self.assertEqual(len(mat), 25)  # Version 2 QR code (25x25 modules)
+        self.assertEqual(len(mat[0]), 25)
+        # Top-left finder pattern outer corner and center must be dark
+        self.assertTrue(mat[0][0])
+        self.assertTrue(mat[3][3])
+
+        pkt = build_mdns_a_response(0x1234, "192.168.86.42", hostname=MDNS_HOSTNAME)
+        self.assertIsNotNone(pkt)
+        self.assertIn(b"\nphotoframe\x05local\x00", pkt)
+        self.assertTrue(pkt.endswith(b"\xc0\xa8\x56\x2a"))
+
+        args = parse_args(["--album", "demo", "--rotate", "0"])
+        app = SlideshowApp(args, hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
+
+        class _FakePM:
+            def __init__(self, is_demo: bool):
+                self.is_demo_mode = is_demo
+                self.photo_sources = ["a"]
+                self.video_bases = set()
+                self._sources_lock = threading.Lock()
+
+        # In Demo Mode: overlay remains visible even after 60 seconds
+        app.photo_manager = _FakePM(True)
+        app.app_start_time = time.time() - 120.0
+        self.assertTrue(app._should_show_portal_overlay())
+
+        # In Custom Album Mode: visible during first 60s, hidden after 60s
+        app.photo_manager = _FakePM(False)
+        app.app_start_time = time.time() - 15.0
+        self.assertTrue(app._should_show_portal_overlay())
+        app.app_start_time = time.time() - 65.0
+        self.assertFalse(app._should_show_portal_overlay())
+
+        # In Night Mode: always hidden
+        app.is_night_mode = True
+        app.photo_manager = _FakePM(True)
+        self.assertFalse(app._should_show_portal_overlay())
+
+        snap = app.get_status_snapshot()
+        self.assertIn("app_version", snap)
+        self.assertGreaterEqual(int(snap["app_version_code"]), 3)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Type
 
 from .config import FrameConfigStore
 from .hardware import logger
+from .mdns import MDNS_HOSTNAME, start_mdns_responder
 
 if TYPE_CHECKING:
     from .app import SlideshowApp
@@ -187,6 +188,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
           <option value="es">🌐 Español</option>
           <option value="de">🌐 Deutsch</option>
         </select>
+        <span id="header-version-badge" class="badge" style="background:#1e293b; color:#93c5fd; border:1px solid #334155;">v1.0.3</span>
         <span id="state-badge" class="badge">Loading...</span>
         <button onclick="handleLogout()" style="padding:6px 11px; font-size:0.8rem;" data-i18n="btn_signout">Sign Out</button>
       </div>
@@ -1060,6 +1062,10 @@ function renderStatusSnapshot(st) {
   document.getElementById('stat-layout').textContent = `${st.landscape_mode} (${st.slide_duration}s)`;
   document.getElementById('stat-night').textContent = st.night_mode_enabled ? `${st.night_start} – ${st.night_end}` : t('stat_night_disabled');
   document.getElementById('stat-display').textContent = `${st.canvas_w}×${st.canvas_h} @ ${st.rotation}°`;
+  const hdrVerBadge = document.getElementById('header-version-badge');
+  if (hdrVerBadge && st.app_version) {
+    hdrVerBadge.textContent = `v${st.app_version} (Build #${st.app_version_code ?? 1})`;
+  }
 }
 
 function showToast(msg, isError = false) {
@@ -1290,51 +1296,51 @@ setInterval(() => fetchStatus(false), 5000);
 
 
 _SELF_SIGNED_TLS_PEM = """-----BEGIN RSA PRIVATE KEY-----
-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
+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
 -----END RSA PRIVATE KEY-----
 -----BEGIN CERTIFICATE-----
-MIIDSTCCAjGgAwIBAgIIFViUuDwrqMUwDQYJKoZIhvcNAQELBQAwRTELMAkGA1UE
-BhMCVVMxEzARBgNVBAoTClBob3RvRnJhbWUxITAfBgNVBAMTGFBob3RvIEZyYW1l
-IEFkbWluIFBvcnRhbDAeFw0yNjExMTEwMTU2MThaFw0zNjExMDgwMTU2MThaMEUx
-CzAJBgNVBAYTAlVTMRMwEQYDVQQKEwpQaG90b0ZyYW1lMSEwHwYDVQQDExhQaG90
-byBGcmFtZSBBZG1pbiBQb3J0YWwwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEK
-AoIBAQCKVEbrDgYcsAijZ24B/B9XJ3Ys/srskfIaiP9TwALVrYTrD6/hJR3E2UzG
-2apLFzl8z6GMF9YXLPuBn4xbjiipvlVEcN6q9SzBsknKauxMmoBUsjj3MWrCDHnk
-k79813PWKbLrDcAGt9SwIassFY/SiPqTbuWD5fN8hX8hIUIL+lazZhl6F6mGq1jf
-ZZCoIF6PWNbBIvJUQjIJLg1+JtV+bLmIfr+QaKmWCW7s9/188bzT04CmyqHd7dgM
-fad3dbtsdBE59+QhVUX26YbiAmbqLdNC2+dQDkR8705pfWU5J/t1epbK/YVqXZJC
-jnIxTrD/si9l6Lhc13m+871yFjczAgMBAAGjPTA7MB0GA1UdDgQWBBSTjX/4pkkH
-86lipyDVdMGQagaDqDAaBgNVHREEEzARgglsb2NhbGhvc3SHBH8AAAEwDQYJKoZI
-hvcNAQELBQADggEBADZnkLmBpEVoPIOSgmYJEFitlyPB8QVx46U5wynn9wi7cD6F
-8AZe0Y/UXnv0nZCOobqYpkLI+Yk9eGL1WGLIvG3lnVMLTcAK9HF+t9LCL5Ftuy8N
-A9yaX2l15LoveC3n33XFQfIlCvsGTnKnUnDDTw5n7IEFrYkdTaMpkLVL2Ciy8eDy
-u++KVYZ7jeo/jxqa4wWD+bAqHU7I1DG57lAgCQLMt4ItNj7scw7vpOJ950yxWKR2
-Gr6/ImaFvZvYa2hWGCmoaX6ouX5+exmLadtwWZhNCGj95pTs2c2hpdJwYOcq7M1X
-okYKosNZCOMwEDz57b6Tz9XjxrJrjDTe6ZkPmRU=
+MIIDTDCCAjSgAwIBAgIJAJ4F2erM+qmDMA0GCSqGSIb3DQEBCwUAMD0xCzAJBgNV
+BAYTAlVTMRMwEQYDVQQKEwpQaG90b0ZyYW1lMRkwFwYDVQQDExBwaG90b2ZyYW1l
+LmxvY2FsMB4XDTI2MTExMTAyMTAxOFoXDTM2MTEwODAyMTAxOFowPTELMAkGA1UE
+BhMCVVMxEzARBgNVBAoTClBob3RvRnJhbWUxGTAXBgNVBAMTEHBob3RvZnJhbWUu
+bG9jYWwwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCs3B4f4mHpg5id
+2OnvSPkywf+4tVgT1C+sPTWbtdYBHmhnDnOhTzWSUScxm1FB63+hkaLsy6qNSTj3
+QeaGUaFh/qmwohRsUVX+N1cvRjgwk1fjcNkT2ZoP+cvukosrGMA1OBVIRt69F8UJ
+EE085aZEMPMsyWN+nm5xZ6WpJDOyD6tro+sgF+uVLBjx4B//WrBNSk4BbgMRBhnH
+9jabAeBCrEGDWbvrmBx3YJgS24vvV8TGFO6sU57L8XMkC/eJU+nOz40GXzL1iKaA
+lSPOnwVCV5JZYlwsD8IpoukRc1PVN7LhNurhTuD4T/UOxohFsTEvGpwy8v48fUWd
+VHm17DOVAgMBAAGjTzBNMB0GA1UdDgQWBBTfKpv/CIt5XxufvyDzJMaE9arXaTAs
+BgNVHREEJTAjghBwaG90b2ZyYW1lLmxvY2Fsgglsb2NhbGhvc3SHBH8AAAEwDQYJ
+KoZIhvcNAQELBQADggEBABJyV6FIOID7NhI72LyVmuxUtjGytOcob9GdY08DyBSK
+irCgdZnV609d9Kv/pfP/Br6g1koeI9bG7CLHtPvjzi0xeGDsFyx1uKexTZXJeb+P
+EVTn+i9AOWddQ1o5O5bNlEylO0jVBZ1r0JBqMkEbifqxHXNfdJhqgSf6nbGnmfni
+5BK5QIV+BoOkJ/xI2dBZwbIPtqyv8gof4X4mhzsG7odqzbTUFckhbQpm/7FGLNn4
+9gE6LOBvSw30+TEZnSHry/j5/cl5gRHq84Mfzam0HfR2KHO55uYCNP7LklGDKFfm
+cZzxaR6uBnlMiLbqYlH9mXmdOHqonxDHzAua8xbbLr8=
 -----END CERTIFICATE-----
 """
 
@@ -1533,12 +1539,18 @@ def start_web_config_server(app: "SlideshowApp", config_store: FrameConfigStore,
         return
 
     handler_cls = create_portal_handler(app, config_store)
+    start_mdns_responder(app._get_local_ip, hostname=MDNS_HOSTNAME)
 
     def _server_worker():
         try:
             ssl_ctx = create_portal_ssl_context()
             srv = _ThreadingHTTPServer(("0.0.0.0", port), handler_cls, ssl_context=ssl_ctx)
-            logger.info("🌐 Password-protected Web Control Portal listening on https://0.0.0.0:%d", port)
+            logger.info(
+                "🌐 Password-protected Web Control Portal listening on https://%s:%d (https://0.0.0.0:%d)",
+                MDNS_HOSTNAME,
+                port,
+                port,
+            )
             srv.serve_forever()
         except Exception as e:
             logger.error("Failed to start Web Control Portal on port %d: %s", port, e)

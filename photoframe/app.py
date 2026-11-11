@@ -27,6 +27,8 @@ from .hardware import (
     logger,
     setup_ram_logging,
 )
+from .mdns import MDNS_HOSTNAME
+from .qrcode_gen import encode_qr_matrix
 from .web_portal import start_web_config_server
 
 
@@ -41,6 +43,8 @@ class SlideshowApp:
         "wipe",
         "random",
     )
+
+    STARTUP_OVERLAY_DURATION_SEC = 60.0
 
     def __init__(
         self,
@@ -82,6 +86,8 @@ class SlideshowApp:
         raw_trans = str(getattr(args, "transition", "none") or "none").strip().lower()
         self.transition = raw_trans if raw_trans in self.VALID_TRANSITIONS else "none"
         self.last_slide_switch = time.time()
+        self.app_start_time = time.time()
+        self._startup_overlay_expired = False
         self.is_paused = False
         self.full_redraw_needed = True
 
@@ -665,33 +671,102 @@ class SlideshowApp:
         except Exception:
             return "localhost"
 
-    def _draw_demo_setup_pill(self, target: Any):
+    def _should_show_portal_overlay(self) -> bool:
+        if self.is_night_mode:
+            return False
+        if self.photo_manager and self.photo_manager.is_demo_mode:
+            return True
+        return (time.time() - self.app_start_time) < self.STARTUP_OVERLAY_DURATION_SEC
+
+    @staticmethod
+    def _create_qr_surface(qr_url: str, target_size_px: int = 84) -> Any:
+        matrix = encode_qr_matrix(qr_url)
+        n = len(matrix)
+        quiet_zone = 2
+        total_modules = n + quiet_zone * 2
+        out_size = max(total_modules, target_size_px)
+        surf = pygame.Surface((out_size, out_size))
+        surf.fill((255, 255, 255))
+        for r in range(n):
+            for c in range(n):
+                if matrix[r][c]:
+                    x1 = ((c + quiet_zone) * out_size) // total_modules
+                    y1 = ((r + quiet_zone) * out_size) // total_modules
+                    x2 = ((c + quiet_zone + 1) * out_size) // total_modules
+                    y2 = ((r + quiet_zone + 1) * out_size) // total_modules
+                    pygame.draw.rect(surf, (0, 0, 0), (x1, y1, max(1, x2 - x1), max(1, y2 - y1)))
+        return surf
+
+    def _draw_demo_setup_pill(self, target: Any, apply_rotation: int = 0):
         """
-        Draws a sleek, non-intrusive translucent corner pill while in Demo Showcase Mode
-        showing the local Web Portal URL so a new user knows where to configure their album.
-        Automatically disappears once a Google Photos album is configured.
+        Draws a sleek, non-intrusive bottom-right translucent card containing the
+        friendly mDNS URL (`https://photoframe.local:8080`), fallback IP, and a
+        ~1x1 inch (`84x84` px) QR code. Shown for the first 60 seconds of app startup
+        and at all times while in Demo Showcase Mode, always on top of photos and videos.
         """
         try:
-            if not hasattr(self, "_cached_demo_pill") or self._cached_demo_pill is None:
+            is_demo = bool(self.photo_manager and self.photo_manager.is_demo_mode)
+            ip_str = self._get_local_ip()
+            port = int(getattr(self.args, "web_port", 8080) or 8080)
+            cache_key = (is_demo, ip_str, port)
+            if (
+                not hasattr(self, "_cached_demo_pill")
+                or self._cached_demo_pill is None
+                or getattr(self, "_cached_demo_pill_key", None) != cache_key
+            ):
                 pygame.font.init()
-                font = pygame.font.SysFont("dejavusans,arial,sans-serif", 20, bold=True)
-                ip_str = self._get_local_ip()
-                port = int(getattr(self.args, "web_port", 8080) or 8080)
-                text = f"Demo Mode (AI-Generated Media)  •  Configure at https://{ip_str}:{port}"
-                txt_surf = font.render(text, True, (241, 245, 249))
-                tw, th = txt_surf.get_size()
-                pad_x, pad_y = 20, 10
-                pw, ph = tw + pad_x * 2, th + pad_y * 2
+                title_font = pygame.font.SysFont("dejavusans,arial,sans-serif", 17, bold=True)
+                url_font = pygame.font.SysFont("dejavusans,arial,sans-serif", 20, bold=True)
+                sub_font = pygame.font.SysFont("dejavusans,arial,sans-serif", 16, bold=False)
+
+                line1 = "Demo Mode (AI-Generated Media)" if is_demo else "Admin Web Control Portal"
+                line2 = f"Configure at https://{MDNS_HOSTNAME}:{port}"
+                line3 = f"Fallback IP: https://{ip_str}:{port}  •  Scan QR →"
+
+                s1 = title_font.render(line1, True, (56, 189, 248))
+                s2 = url_font.render(line2, True, (248, 250, 252))
+                s3 = sub_font.render(line3, True, (148, 163, 184))
+
+                text_w = max(s1.get_width(), s2.get_width(), s3.get_width())
+                qr_size = 84  # ~1x1 inch QR code
+                pad_outer = 14
+                gap = 18
+                pw = pad_outer + text_w + gap + qr_size + pad_outer
+                ph = qr_size + pad_outer * 2
+
                 pill = pygame.Surface((pw, ph), pygame.SRCALPHA)
-                pygame.draw.rect(pill, (11, 15, 25, 195), (0, 0, pw, ph), border_radius=ph // 2)
-                pygame.draw.rect(pill, (255, 255, 255, 140), (0, 0, pw, ph), width=1, border_radius=ph // 2)
-                pill.blit(txt_surf, (pad_x, pad_y))
+                pygame.draw.rect(pill, (11, 15, 25, 215), (0, 0, pw, ph), border_radius=18)
+                pygame.draw.rect(pill, (255, 255, 255, 115), (0, 0, pw, ph), width=1, border_radius=18)
+
+                tx = pad_outer + 4
+                pill.blit(s1, (tx, 14))
+                pill.blit(s2, (tx, 41))
+                pill.blit(s3, (tx, 71))
+
+                qr_surf = self._create_qr_surface(f"https://{ip_str}:{port}", qr_size)
+                qx = pw - pad_outer - qr_size
+                qy = pad_outer
+                pygame.draw.rect(pill, (255, 255, 255, 255), (qx - 2, qy - 2, qr_size + 4, qr_size + 4), border_radius=6)
+                pill.blit(qr_surf, (qx, qy))
+
                 self._cached_demo_pill = pill
+                self._cached_demo_pill_key = cache_key
 
             pill_surf = self._cached_demo_pill
+            if apply_rotation != 0:
+                pill_surf = pygame.transform.rotate(pill_surf, apply_rotation)
             pw, ph = pill_surf.get_size()
             tw_canvas, th_canvas = target.get_size()
-            target.blit(pill_surf, (tw_canvas - pw - 22, th_canvas - ph - 22))
+            margin = 22
+            if apply_rotation == 90:
+                pos = (tw_canvas - pw - margin, margin)
+            elif apply_rotation == 180:
+                pos = (margin, margin)
+            elif apply_rotation == 270:
+                pos = (margin, th_canvas - ph - margin)
+            else:
+                pos = (tw_canvas - pw - margin, th_canvas - ph - margin)
+            target.blit(pill_surf, pos)
         except Exception as e:
             logger.debug("Demo pill render skipped: %s", e)
 
@@ -699,13 +774,18 @@ class SlideshowApp:
         if self.screen is None:
             self.full_redraw_needed = False
             return
+        if not self._startup_overlay_expired and (time.time() - self.app_start_time) >= self.STARTUP_OVERLAY_DURATION_SEC:
+            self._startup_overlay_expired = True
+            if not (self.photo_manager and self.photo_manager.is_demo_mode):
+                self.full_redraw_needed = True
+
         if self.full_redraw_needed:
             target = self.canvas if self.canvas else self.screen
             if self.is_night_mode:
                 target.fill((0, 0, 0))
             elif self.current_photo_surf:
                 target.blit(self.current_photo_surf, (0, 0))
-                if self.photo_manager and self.photo_manager.is_demo_mode:
+                if self._should_show_portal_overlay():
                     self._draw_demo_setup_pill(target)
             else:
                 target.fill((15, 23, 42))
@@ -741,11 +821,13 @@ class SlideshowApp:
                     self._base_screen_surf.blit(vid_surf, (sx, sy))
                     for stamp_surf, stamp_pos in self._video_corner_stamps:
                         self._base_screen_surf.blit(stamp_surf, stamp_pos)
-                    if self.rotation == 0 and self.photo_manager and self.photo_manager.is_demo_mode:
-                        self._draw_demo_setup_pill(self._base_screen_surf)
+                    if self._should_show_portal_overlay():
+                        self._draw_demo_setup_pill(self._base_screen_surf, apply_rotation=self.rotation)
                     self.screen.blit(self._base_screen_surf, (0, 0))
                 else:
                     self.screen.blit(vid_surf, (sx, sy))
+                    if self._should_show_portal_overlay():
+                        self._draw_demo_setup_pill(self.screen, apply_rotation=self.rotation)
                 pygame.display.flip()
             except Exception as e:
                 logger.debug("Video frame blit error: %s", e)
@@ -811,6 +893,8 @@ class SlideshowApp:
             with self.photo_manager._sources_lock:
                 items_count = len(self.photo_manager.photo_sources)
                 videos_count = len(self.photo_manager.video_bases)
+        from . import _load_version_info
+        ver_str, build_num = _load_version_info()
         return {
             "is_night_mode": self.is_night_mode,
             "night_mode_enabled": self.night_mode_enabled,
@@ -829,6 +913,8 @@ class SlideshowApp:
             "canvas_h": self.canvas_h,
             "rotation": self.rotation,
             "profile": self.hw_profile.get("name", "Auto"),
+            "app_version": ver_str,
+            "app_version_code": build_num,
         }
 
     def get_current_settings_dict(self) -> Dict[str, Any]:
