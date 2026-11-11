@@ -193,7 +193,7 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         from photoframe.mdns import MDNS_HOSTNAME, build_mdns_a_response
         from photoframe.qrcode_gen import encode_qr_matrix
 
-        mat = encode_qr_matrix("https://192.168.86.42:8080")
+        mat = encode_qr_matrix("http://192.168.86.42:8080")
         self.assertEqual(len(mat), 25)  # Version 2 QR code (25x25 modules)
         self.assertEqual(len(mat[0]), 25)
         # Top-left finder pattern outer corner and center must be dark

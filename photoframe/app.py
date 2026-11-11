@@ -700,7 +700,7 @@ class SlideshowApp:
     def _draw_demo_setup_pill(self, target: Any, apply_rotation: int = 0):
         """
         Draws a sleek, non-intrusive bottom-right translucent card containing the
-        friendly mDNS URL (`https://photoframe.local:8080`), fallback IP, and a
+        friendly mDNS URL (`http://photoframe.local:8080`), fallback IP, and a
         ~1x1 inch (`84x84` px) QR code. Shown for the first 60 seconds of app startup
         and at all times while in Demo Showcase Mode, always on top of photos and videos.
         """
@@ -720,8 +720,8 @@ class SlideshowApp:
                 sub_font = pygame.font.SysFont("dejavusans,arial,sans-serif", 16, bold=False)
 
                 line1 = "Demo Mode (AI-Generated Media)" if is_demo else "Admin Web Control Portal"
-                line2 = f"Configure at https://{MDNS_HOSTNAME}:{port}"
-                line3 = f"Fallback IP: https://{ip_str}:{port}  •  Scan QR →"
+                line2 = f"Configure at http://{MDNS_HOSTNAME}:{port}"
+                line3 = f"Fallback IP: http://{ip_str}:{port}  •  Scan QR →"
 
                 s1 = title_font.render(line1, True, (56, 189, 248))
                 s2 = url_font.render(line2, True, (248, 250, 252))
@@ -743,7 +743,7 @@ class SlideshowApp:
                 pill.blit(s2, (tx, 41))
                 pill.blit(s3, (tx, 71))
 
-                qr_surf = self._create_qr_surface(f"https://{ip_str}:{port}", qr_size)
+                qr_surf = self._create_qr_surface(f"http://{ip_str}:{port}", qr_size)
                 qx = pw - pad_outer - qr_size
                 qy = pad_outer
                 pygame.draw.rect(pill, (255, 255, 255, 255), (qx - 2, qy - 2, qr_size + 4, qr_size + 4), border_radius=6)

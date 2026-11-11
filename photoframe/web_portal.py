@@ -1551,7 +1551,7 @@ def start_web_config_server(app: "SlideshowApp", config_store: FrameConfigStore,
             ssl_ctx = create_portal_ssl_context()
             srv = _ThreadingHTTPServer(("0.0.0.0", port), handler_cls, ssl_context=ssl_ctx)
             logger.info(
-                "🌐 Password-protected Web Control Portal listening on https://%s:%d (https://0.0.0.0:%d)",
+                "🌐 Password-protected Web Control Portal listening on http://%s:%d (http://0.0.0.0:%d)",
                 MDNS_HOSTNAME,
                 port,
                 port,
