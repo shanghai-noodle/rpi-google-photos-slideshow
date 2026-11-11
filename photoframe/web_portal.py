@@ -7,6 +7,7 @@ import http.cookies
 import http.server
 import json
 import os
+import socket
 import socketserver
 import ssl
 import tempfile
@@ -1383,7 +1384,11 @@ class _ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     def process_request_thread(self, request: Any, client_address: Any) -> None:
         if self.ssl_context is not None:
             try:
-                request = self.ssl_context.wrap_socket(request, server_side=True)
+                request.settimeout(5.0)
+                first_byte = request.recv(1, socket.MSG_PEEK)
+                request.settimeout(None)
+                if first_byte == b"\x16":
+                    request = self.ssl_context.wrap_socket(request, server_side=True)
             except Exception:
                 self.shutdown_request(request)
                 return

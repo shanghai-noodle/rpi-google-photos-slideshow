@@ -15,6 +15,10 @@ elif command -v zypper >/dev/null 2>&1; then
     sudo zypper --non-interactive install python3-pygame python3-Pillow ffmpeg Mesa-libEGL1 libgbm1 Mesa-libGLESv2-2 >/dev/null 2>&1 || true
 fi
 sudo usermod -aG video,render "${RUN_USER}" 2>/dev/null || true
+if command -v ufw >/dev/null 2>&1 && sudo ufw status 2>/dev/null | grep -q "Status: active"; then
+    sudo ufw allow 8080/tcp >/dev/null 2>&1 || true
+    sudo ufw allow 5353/udp >/dev/null 2>&1 || true
+fi
 
 echo "2/3 Installing /etc/systemd/system/slideshow.service (WorkingDirectory=${REPO_DIR})..."
 sudo tee /etc/systemd/system/slideshow.service >/dev/null <<EOF
