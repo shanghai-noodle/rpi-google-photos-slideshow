@@ -91,6 +91,8 @@ class SlideshowApp:
                 self.args.disable_night_mode = not bool(saved["night_mode_enabled"])
             if saved.get("web_frame_port") == 8081:
                 self.args.web_frame_port = DEFAULT_WEB_FRAME_PORT
+            if saved.get("timezone"):
+                self._apply_timezone(str(saved["timezone"]))
 
         set_mdns_base_name(getattr(self.args, "device_name", "") or "photoframe")
         self.web_frame = WebFrameController(
@@ -159,6 +161,41 @@ class SlideshowApp:
         self._web_action_queue: Deque[Tuple[str, Any]] = collections.deque()
 
     @staticmethod
+    def _is_valid_timezone(tz_name: str) -> bool:
+        if not tz_name or not isinstance(tz_name, str):
+            return False
+        s = tz_name.strip()
+        if not re.match(r"^[A-Za-z0-9_+-]+(?:/[A-Za-z0-9_+-]+)*$", s):
+            return False
+        zoneinfo_root = "/usr/share/zoneinfo"
+        if os.path.isdir(zoneinfo_root):
+            return os.path.isfile(os.path.join(zoneinfo_root, s))
+        return True
+
+    def _apply_timezone(self, tz_name: str):
+        s = (tz_name or "").strip()
+        if not self._is_valid_timezone(s):
+            return
+        try:
+            os.environ["TZ"] = s
+            if hasattr(time, "tzset"):
+                time.tzset()
+        except Exception:
+            pass
+        if sys.platform.startswith("linux") and shutil.which("timedatectl"):
+            def _sync_os_tz():
+                try:
+                    subprocess.run(
+                        ["sudo", "-n", "timedatectl", "set-timezone", s],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=4,
+                    )
+                except Exception:
+                    pass
+            threading.Thread(target=_sync_os_tz, name="TimezoneSync", daemon=True).start()
+
+    @staticmethod
     def _parse_time_str(time_str: str, default_h: int, default_m: int) -> datetime.time:
         if not time_str:
             return datetime.time(default_h, default_m)
@@ -186,8 +223,12 @@ class SlideshowApp:
         now_dt = datetime.datetime.now()
         if now_dt.minute == self._last_schedule_check_minute:
             return
-        self._last_schedule_check_minute = now_dt.minute
         in_sched = self.is_within_night_schedule(now_dt)
+        if self._last_schedule_check_minute == -1:
+            self._last_schedule_check_minute = now_dt.minute
+            self._last_scheduled_state = in_sched
+            return
+        self._last_schedule_check_minute = now_dt.minute
         if in_sched != self._last_scheduled_state:
             self._last_scheduled_state = in_sched
             if in_sched and not self.is_night_mode:
@@ -1457,6 +1498,8 @@ class SlideshowApp:
             clean["night_start"] = str(data["night_start"]).strip()
         if "night_end" in data and str(data["night_end"]).strip():
             clean["night_end"] = str(data["night_end"]).strip()
+        if "timezone" in data and self._is_valid_timezone(str(data["timezone"]).strip()):
+            clean["timezone"] = str(data["timezone"]).strip()
         if "web_frame_enabled" in data:
             clean["web_frame_enabled"] = bool(data["web_frame_enabled"])
         if "web_frame_profile" in data:
@@ -1611,13 +1654,18 @@ class SlideshowApp:
                 self.transition = raw_trans if raw_trans in self.VALID_TRANSITIONS else "none"
                 self.slide_duration = float(self.args.duration)
                 self.max_video_seconds = float(self.args.max_video_seconds)
+                if "timezone" in payload and payload["timezone"]:
+                    self._apply_timezone(str(payload["timezone"]))
                 if "night_mode_enabled" in payload:
                     self.night_mode_enabled = bool(payload["night_mode_enabled"])
-                    if not self.night_mode_enabled and self.is_night_mode:
-                        self.is_night_mode = False
-                        self.full_redraw_needed = True
                 self.night_start_time = self._parse_time_str(self.args.night_start, 22, 0)
                 self.night_end_time = self._parse_time_str(self.args.night_end, 6, 0)
+                in_sched_now = self.is_within_night_schedule()
+                self._last_scheduled_state = in_sched_now
+                if (not self.night_mode_enabled or not in_sched_now) and self.is_night_mode:
+                    self.is_night_mode = False
+                    self.last_slide_switch = time.time()
+                    self.full_redraw_needed = True
 
                 new_rot = int(getattr(self.args, "rotate", 0)) % 360
                 if new_rot not in (0, 90, 180, 270):
@@ -1705,10 +1753,11 @@ class SlideshowApp:
         self.current_photo_surf, self.current_video_list = self.photo_manager.get_initial_slide()
         self.full_redraw_needed = True
 
-        if self.night_mode_enabled and self.is_within_night_schedule():
-            self.is_night_mode = True
-            self._last_scheduled_state = True
-            logger.info("🌙 Starting in Night Mode schedule (%s - %s).", self.args.night_start, self.args.night_end)
+        # Always boot up with the display ON so the startup overlay and photos
+        # are visible on power-up/restart; Night Mode will engage on the next
+        # scheduled night_start boundary (or via manual toggle).
+        self.is_night_mode = False
+        self._last_scheduled_state = self.is_within_night_schedule()
 
         self.render_frame()
         if self.current_video_list and not self.is_night_mode:

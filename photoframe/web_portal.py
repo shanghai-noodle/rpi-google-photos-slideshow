@@ -1948,6 +1948,7 @@ async function saveSettings(e) {
     night_mode_enabled: document.getElementById('cfg-night-enabled').checked,
     night_start: document.getElementById('cfg-night-start').value,
     night_end: document.getElementById('cfg-night-end').value,
+    timezone: (typeof Intl !== 'undefined' && Intl.DateTimeFormat ? (Intl.DateTimeFormat().resolvedOptions().timeZone || '') : ''),
     update_url: (document.getElementById('cfg-update-url')?.value || '').trim(),
     web_frame_profile: document.getElementById('cfg-webframe-profile')?.value || 'auto',
   };
