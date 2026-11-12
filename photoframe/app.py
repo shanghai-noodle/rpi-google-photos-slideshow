@@ -1221,6 +1221,46 @@ class SlideshowApp:
         except Exception as e:
             logger.debug("Demo pill render skipped: %s", e)
 
+    def _draw_splash_surface(self, target: Any):
+        """
+        Draws the startup splash screen (`#0B1220` background, centered `splash_logo.png`,
+        and `v<version> (Build #<build>)` subtitle directly beneath the logo).
+        """
+        target.fill((11, 18, 32))
+        if not PYGAME_AVAILABLE:
+            return
+        try:
+            tw, th = target.get_size()
+            cx, cy = tw // 2, th // 2
+            from . import _load_version_info
+            ver_str, build_num = _load_version_info()
+            ver_line = f"v{ver_str} (Build #{build_num})"
+
+            logo_surf = getattr(self, "_cached_splash_logo", None)
+            if logo_surf is None:
+                logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "splash_logo.png")
+                if os.path.exists(logo_path):
+                    logo_surf = pygame.image.load(logo_path).convert_alpha()
+                    self._cached_splash_logo = logo_surf
+
+            pygame.font.init()
+            ver_font = pygame.font.SysFont("dejavusans,arial,sans-serif", 22, bold=True)
+            ver_surf = ver_font.render(ver_line, True, (148, 163, 184))
+
+            if logo_surf is not None:
+                lw, lh = logo_surf.get_size()
+                lx = cx - lw // 2
+                ly = cy - lh // 2 - 14
+                target.blit(logo_surf, (lx, ly))
+                target.blit(ver_surf, (cx - ver_surf.get_width() // 2, ly + lh + 10))
+            else:
+                title_font = pygame.font.SysFont("dejavusans,arial,sans-serif", 36, bold=True)
+                title_surf = title_font.render("Photo Frame", True, (248, 250, 252))
+                target.blit(title_surf, (cx - title_surf.get_width() // 2, cy - 28))
+                target.blit(ver_surf, (cx - ver_surf.get_width() // 2, cy + 18))
+        except Exception as e:
+            logger.debug("Splash screen render skipped: %s", e)
+
     def render_frame(self):
         if self.screen is None:
             self.full_redraw_needed = False
@@ -1263,7 +1303,11 @@ class SlideshowApp:
                 else:
                     self._last_pill_screen_rect = None
             else:
-                target.fill((15, 23, 42))
+                self._draw_splash_surface(target)
+                if show_overlay:
+                    self._draw_demo_setup_pill(target)
+                else:
+                    self._last_pill_screen_rect = None
 
             if self.rotation != 0 and self.canvas:
                 rotated = pygame.transform.rotate(self.canvas, self.rotation)
@@ -1743,6 +1787,10 @@ class SlideshowApp:
 
     def run(self):
         self.init_display()
+        self.is_night_mode = False
+        self._last_scheduled_state = self.is_within_night_schedule()
+        self.full_redraw_needed = True
+        self.render_frame()
         self._start_wifi_keepalive_daemon()
         if getattr(self.args, "web_port", 8080) > 0:
             start_web_config_server(self, self.config_store, port=int(self.args.web_port))
