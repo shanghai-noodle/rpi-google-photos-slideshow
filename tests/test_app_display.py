@@ -298,6 +298,30 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         app.app_start_time = time.time() - 65.0
         self.assertFalse(app._should_show_portal_overlay())
 
+        # When Pause action is triggered: Admin Portal control panel is shown, and hidden on Resume
+        app.queue_web_action("pause_toggle")
+        app._process_web_actions()
+        self.assertTrue(app.is_paused)
+        self.assertTrue(app.full_redraw_needed)
+        self.assertTrue(app._should_show_portal_overlay())
+
+        app.full_redraw_needed = False
+        app.queue_web_action("pause_toggle")
+        app._process_web_actions()
+        self.assertFalse(app.is_paused)
+        self.assertTrue(app.full_redraw_needed)
+        self.assertFalse(app._should_show_portal_overlay())
+
+        # Explicit pause & resume actions also show/hide even during initial 60s window
+        app.app_start_time = time.time() - 10.0
+        app._startup_overlay_expired = False
+        app.queue_web_action("pause")
+        app._process_web_actions()
+        self.assertTrue(app._should_show_portal_overlay())
+        app.queue_web_action("resume")
+        app._process_web_actions()
+        self.assertFalse(app._should_show_portal_overlay())
+
         # In Night Mode: always hidden
         app.is_night_mode = True
         app.photo_manager = _FakePM(True)

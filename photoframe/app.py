@@ -838,6 +838,10 @@ class SlideshowApp:
                     self.full_redraw_needed = True
                 elif event.key == pygame.K_SPACE:
                     self.is_paused = not self.is_paused
+                    if not self.is_paused:
+                        self._startup_overlay_expired = True
+                    self.last_slide_switch = time.time()
+                    self.full_redraw_needed = True
                     logger.info("Slideshow %s", "paused" if self.is_paused else "resumed")
                 elif event.key == pygame.K_RIGHT:
                     self.advance_slide()
@@ -871,7 +875,7 @@ class SlideshowApp:
         try:
             temp_canvas = pygame.Surface((self.canvas_w, self.canvas_h))
             temp_canvas.blit(photo_surf, (0, 0))
-            if self.photo_manager and self.photo_manager.is_demo_mode:
+            if self._should_show_portal_overlay():
                 self._draw_demo_setup_pill(temp_canvas)
             if self.rotation != 0:
                 return pygame.transform.rotate(temp_canvas, self.rotation)
@@ -1041,8 +1045,12 @@ class SlideshowApp:
     def _should_show_portal_overlay(self) -> bool:
         if self.is_night_mode:
             return False
+        if self.is_paused:
+            return True
         if self.photo_manager and self.photo_manager.is_demo_mode:
             return True
+        if getattr(self, "_startup_overlay_expired", False):
+            return False
         return (time.time() - self.app_start_time) < self.STARTUP_OVERLAY_DURATION_SEC
 
     @staticmethod
@@ -1489,6 +1497,8 @@ class SlideshowApp:
             "next": "Advancing to next slide...",
             "prev": "Returning to previous slide...",
             "pause_toggle": "Toggled slide pause.",
+            "pause": "Slideshow paused.",
+            "resume": "Slideshow resumed.",
             "resync": "Syncing Google Photos album now...",
             "demo": "Switched to built-in Demo Showcase Pack!",
             "test_videos": "Queued video tile test sequence.",
@@ -1532,9 +1542,17 @@ class SlideshowApp:
             elif action == "prev":
                 self.is_night_mode = False
                 self.previous_slide()
-            elif action == "pause_toggle":
-                self.is_paused = not self.is_paused
+            elif action in ("pause_toggle", "pause", "resume"):
+                if action == "pause":
+                    self.is_paused = True
+                elif action == "resume":
+                    self.is_paused = False
+                else:
+                    self.is_paused = not self.is_paused
+                if not self.is_paused:
+                    self._startup_overlay_expired = True
                 self.last_slide_switch = time.time()
+                self.full_redraw_needed = True
             elif action == "demo":
                 self.is_night_mode = False
                 self.args.album = "demo"
