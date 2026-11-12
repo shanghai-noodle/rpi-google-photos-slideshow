@@ -372,7 +372,7 @@ class TestWebFrameUnit(unittest.TestCase):
                 urllib.request.urlopen(f"http://127.0.0.1:{portal_port}/frame", timeout=3)
             self.assertEqual(ctx.exception.code, 403)
             err_html = ctx.exception.read().decode("utf-8")
-            self.assertIn("Web Photo Frame is Off", err_html)
+            self.assertIn("Web Slideshow Viewer is Off", err_html)
 
             with self.assertRaises(urllib.error.HTTPError) as ctx2:
                 urllib.request.urlopen(f"http://127.0.0.1:{portal_port}/api/webframe/state", timeout=3)
@@ -382,11 +382,16 @@ class TestWebFrameUnit(unittest.TestCase):
                 urllib.request.urlopen(f"http://127.0.0.1:{portal_port}/api/webframe/slide.jpg", timeout=3)
             self.assertEqual(ctx3.exception.code, 403)
 
-            # Turn ON via queue_web_action("web_frame_on") using an ephemeral dedicated port
-            self.app.web_frame.port = 0
+            # Default port is 0 (/frame on :8080 only, no extra port opened)
+            self.assertEqual(DEFAULT_WEB_FRAME_PORT, 0)
             msg_on = self.app.queue_web_action("web_frame_on")
             self.assertIn("enabled", msg_on)
             self.assertTrue(self.app.web_frame.enabled)
+            self.assertFalse(self.app.web_frame.is_running)
+
+            # Also test dedicated listener with an ephemeral OS port (port=0 directly)
+            self.app.web_frame.port = 0
+            self.assertTrue(self.app.web_frame.start_dedicated_server())
             self.assertTrue(self.app.web_frame.is_running)
             ded_port = self.app.web_frame.bound_port
             self.assertGreater(ded_port, 0)
@@ -397,12 +402,12 @@ class TestWebFrameUnit(unittest.TestCase):
             with urllib.request.urlopen(f"http://127.0.0.1:{portal_port}/frame", timeout=3) as r1:
                 self.assertEqual(r1.status, 200)
                 html1 = r1.read().decode("utf-8")
-                self.assertIn("Web Photo Frame", html1)
+                self.assertIn("Web Slideshow Viewer", html1)
 
             with urllib.request.urlopen(f"http://127.0.0.1:{ded_port}/", timeout=3) as r2:
                 self.assertEqual(r2.status, 200)
                 html2 = r2.read().decode("utf-8")
-                self.assertIn("Web Photo Frame", html2)
+                self.assertIn("Web Slideshow Viewer", html2)
 
             req_state = urllib.request.Request(
                 f"http://127.0.0.1:{ded_port}/api/webframe/state?cid=ipad2&w=1024&h=768",
@@ -432,10 +437,14 @@ class TestWebFrameUnit(unittest.TestCase):
             })
             self.assertEqual(self.app.web_frame.profile, "legacy")
 
-            # Change port live and verify restart
+            # Change port live and verify stop of old dedicated listener when port=0, plus port>0 branch
             self.app.web_frame.port = 9999
             self.app.web_frame.set_enabled(True, profile="hd", port=0)
-            self.assertTrue(self.app.web_frame.is_running)
+            self.assertFalse(self.app.web_frame.is_running)
+            with mock.patch.object(self.app.web_frame, "start_dedicated_server", return_value=True) as mock_start:
+                self.app.web_frame.set_enabled(True, profile="hd", port=18081)
+                mock_start.assert_called_once()
+                self.app.web_frame.port = 0
 
             # Turn OFF via queue_web_action("web_frame_toggle")
             msg_off = self.app.queue_web_action("web_frame_toggle")

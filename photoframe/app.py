@@ -1645,7 +1645,7 @@ class SlideshowApp:
         self._start_wifi_keepalive_daemon()
         if getattr(self.args, "web_port", 8080) > 0:
             start_web_config_server(self, self.config_store, port=int(self.args.web_port))
-        if hasattr(self, "web_frame") and self.web_frame and self.web_frame.enabled:
+        if hasattr(self, "web_frame") and self.web_frame and self.web_frame.enabled and self.web_frame.port > 0:
             self.web_frame.start_dedicated_server()
 
         self.photo_manager = PhotoManager(
@@ -1846,19 +1846,19 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         dest="web_frame_enabled",
         action="store_true",
         default=False,
-        help="Enable the HTTP Browser Photo Frame server on startup (default: disabled until turned on in Admin Portal)"
+        help="Enable the Web Slideshow Viewer (/frame) on startup (default: disabled until turned on in Admin Portal)"
     )
     parser.add_argument(
         "--web-frame-port",
         type=int,
         default=DEFAULT_WEB_FRAME_PORT,
-        help=f"Dedicated HTTP port for the Browser Photo Frame viewer (default: {DEFAULT_WEB_FRAME_PORT})"
+        help="Optional secondary HTTP port for the Web Slideshow Viewer (default: 0 = served on :8080/frame only)"
     )
     parser.add_argument(
         "--web-frame-profile",
         choices=list(VALID_WEB_FRAME_PROFILES),
         default="auto",
-        help="Browser compatibility profile for Web Photo Frame: 'auto', 'legacy' (iPad 2 / Old Android 1024x768), or 'hd'"
+        help="Picture Quality & Device Profile for Web Slideshow Viewer: 'auto' (Smart Match), 'hd' (1080p HD), or 'legacy' (768p Standard for older tablets)"
     )
     parser.add_argument(
         "--device-name", "--hostname",

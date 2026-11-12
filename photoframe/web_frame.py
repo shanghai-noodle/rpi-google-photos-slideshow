@@ -1,17 +1,19 @@
 """
-Modular HTTP Web Photo Frame (Browser Slideshow Viewer) Server & Composer
-=========================================================================
-Hosts a lightweight browser-based photo frame on the same server (both on a
-dedicated port `:8081` that can be started/stopped live from the Admin Portal
-and on `:8080/frame`), sharing the synced photo album while advancing slides in
-each browser's own independent order and screen orientation.
+Modular Web Slideshow Viewer (/frame) Controller & Composer
+===========================================================
+Hosts a lightweight browser-based photo frame on the same HTTP server (`:8080/frame`)
+that can be enabled/disabled live from the Admin Portal, sharing the synced photo
+album while advancing slides in each browser's own independent order and screen
+orientation (videos are rendered as high-resolution static poster frames inside
+single slides and collage tiles).
 
-Specifically engineered for legacy device stability (iPad 2 / iOS 9 Safari,
-Android 4.x+ WebView/Chrome, Kindle Silk, and smart TV browsers):
+Specifically engineered for both modern screens and legacy device stability
+(iPad 2 / iOS 9 Safari, Android 4.x+ WebView/Chrome, Kindle Silk, and smart TV browsers):
 - Pure ES5 JavaScript (`var`, `XMLHttpRequest`, zero ES6 syntax)
 - Server-side slide & Smart Collage composition into baseline RGB JPEGs over
   plain LAN HTTP (bypassing modern CDN TLS 1.3 handshake failures and 4K OOMs)
-- Auto/Selectable client profiles (`auto`, `legacy` 1024x768 low-RAM mode, `hd` 1080p)
+- Selectable Picture Quality & Device Profiles (`auto` Smart Match, `hd` 1080p HD,
+  and `legacy` 768p Standard memory-safe mode)
 - Aggressive DOM & GPU texture cleanup to prevent WebKit Jetsam / OOM tab crashes
 """
 
@@ -41,7 +43,7 @@ from .hardware import logger
 from .mdns import get_active_mdns_hostname
 
 VALID_WEB_FRAME_PROFILES = ("auto", "legacy", "hd")
-DEFAULT_WEB_FRAME_PORT = 8081
+DEFAULT_WEB_FRAME_PORT = 0
 
 # Minimal valid 1x1 black baseline JPEG fallback when Pillow is unavailable
 _MINIMAL_1X1_JPEG = (
@@ -156,7 +158,7 @@ DISABLED_WEB_FRAME_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Web Photo Frame Disabled</title>
+<title>Web Slideshow Viewer Disabled</title>
 <style>
   body {
     margin: 0; padding: 32px 16px; background: #070b14; color: #e2e8f0;
@@ -178,8 +180,8 @@ DISABLED_WEB_FRAME_HTML = """<!DOCTYPE html>
 </head>
 <body>
   <div class="box">
-    <h1>🖼️ Web Photo Frame is Off</h1>
-    <p>The HTTP browser slideshow is currently turned off. An administrator can enable it anytime from the Photo Frame Control Portal.</p>
+    <h1>🖼️ Web Slideshow Viewer is Off</h1>
+    <p>The browser slideshow viewer (/frame) is currently disabled. An administrator can enable it anytime from the Photo Frame Control Portal.</p>
     <a class="btn" id="portal-link" href="/">Open Admin Control Portal</a>
   </div>
   <script type="text/javascript">
@@ -206,7 +208,7 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<title>Web Photo Frame</title>
+<title>Web Slideshow Viewer</title>
 <style type="text/css">
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -286,9 +288,9 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
       </div>
       <div class="hud-right">
         <select id="hud-profile" class="hud-select" onchange="changeClientProfile(this.value)">
-          <option value="auto">Auto Profile</option>
-          <option value="legacy">Legacy Safe (iPad 2)</option>
-          <option value="hd">Modern HD (1080p)</option>
+          <option value="auto">Quality: Auto</option>
+          <option value="hd">Quality: 1080p HD</option>
+          <option value="legacy">Quality: 768p Standard</option>
         </select>
         <button type="button" class="hud-btn" onclick="loadSlide('prev')">⏮</button>
         <button type="button" class="hud-btn" id="btn-pause" onclick="toggleLocalPause()">⏸</button>
@@ -551,15 +553,15 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
           }
           var infoEl = document.getElementById("hud-info");
           if (infoEl) {
-            var pLabel = (effectiveProfile === "legacy") ? "Legacy Safe" : "HD";
-            infoEl.innerHTML = (data.photo_count || 0) + " photos · " + pLabel + " (" + (data.target_w || vp.w) + "×" + (data.target_h || vp.h) + ")";
+            var pLabel = (effectiveProfile === "legacy") ? "768p Standard" : "1080p HD";
+            infoEl.innerHTML = (data.photo_count || 0) + " items · " + pLabel + " (" + (data.target_w || vp.w) + "×" + (data.target_h || vp.h) + ")";
           }
 
           var overlay = document.getElementById("night-overlay");
           var nightMsg = document.getElementById("night-msg");
           if (!isEnabled) {
             if (overlay) overlay.style.display = "block";
-            if (nightMsg) nightMsg.innerHTML = "🖼️ Web Photo Frame is turned OFF by Admin";
+            if (nightMsg) nightMsg.innerHTML = "🖼️ Web Slideshow Viewer is Disabled by Admin";
             var imgA = document.getElementById("slide-a");
             if (imgA) imgA.src = BLANK_GIF;
           } else if (isNightMode) {
@@ -702,17 +704,15 @@ class WebFrameController:
         if self.enabled:
             if port_changed and self.is_running:
                 self.stop_dedicated_server()
-            started = self.start_dedicated_server()
+            if self.port > 0:
+                self.start_dedicated_server()
             host = get_active_mdns_hostname()
-            actual_port = self.bound_port or self.port
-            if started or self.is_running:
-                return True, f"Web Photo Frame enabled on http://{host}:{actual_port} (and /frame)"
-            return True, f"Web Photo Frame enabled on http://{host}:8080/frame"
+            return True, f"Web Slideshow Viewer enabled on http://{host}:8080/frame"
         else:
             self.stop_dedicated_server()
             with self._cache_lock:
                 self._raw_pil_cache.clear()
-            return True, "Web Photo Frame disabled and stopped."
+            return True, "Web Slideshow Viewer disabled."
 
     def start_dedicated_server(self) -> bool:
         """Starts the dedicated `:8081` plain-HTTP listener if `self.enabled` is True."""

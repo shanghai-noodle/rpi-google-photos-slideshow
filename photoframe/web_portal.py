@@ -283,27 +283,27 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- HTTP WEB PHOTO FRAME (BROWSER VIEWER SERVER) -->
+    <!-- WEB SLIDESHOW VIEWER (/frame) -->
     <div class="card" id="webframe-card">
       <h2>
-        <span data-i18n="sec_webframe">🌐 HTTP Web Photo Frame (Browser Viewer)</span>
-        <span id="webframe-status-badge" class="badge">⚪ Off</span>
+        <span data-i18n="sec_webframe">🖼️ Web Slideshow Viewer (/frame)</span>
+        <span id="webframe-status-badge" class="badge">⚪ Disabled</span>
       </h2>
       <div style="font-size: 0.84rem; color: var(--muted); margin-bottom: 12px;" data-i18n="webframe_desc">
-        Host an HTTP browser slideshow sharing this frame's synced album (compatible with iPad 2 / iOS 9, older Android tablets, and modern HD browsers). Each browser renders slides in its own independent order.
+        View a live browser slideshow on any tablet, phone, or computer on your Wi-Fi without signing in. Shares the synced album with an independent photo order per browser (videos are displayed as still poster photos).
       </div>
       <div class="form-grid" style="align-items: end; margin-bottom: 12px;">
         <div class="form-group">
-          <label for="cfg-webframe-profile" data-i18n="lbl_webframe_profile">Browser Compatibility Profile</label>
+          <label for="cfg-webframe-profile" data-i18n="lbl_webframe_profile">Picture Quality &amp; Device Profile</label>
           <select id="cfg-webframe-profile" onchange="updateWebFrameProfileLive(this.value)">
-            <option value="auto" data-i18n="opt_wf_auto">Auto-Detect (iPad 2 / Old Android → Legacy 1024×768; Modern → HD)</option>
-            <option value="legacy" data-i18n="opt_wf_legacy">Legacy Safe Mode (iPad 2 / Old Android — 1024×768 Low RAM, No Crash)</option>
-            <option value="hd" data-i18n="opt_wf_hd">Modern HD (1080p + Crossfade Transitions)</option>
+            <option value="auto" data-i18n="opt_wf_auto">Auto — Smart Match (1080p HD on Modern Screens, 768p Standard on Older Tablets)</option>
+            <option value="hd" data-i18n="opt_wf_hd">1080p HD — Full Resolution, Smooth Crossfade &amp; All 9 Collage Layouts</option>
+            <option value="legacy" data-i18n="opt_wf_legacy">768p Standard — Memory-Safe Mode for Older iPads &amp; Tablets (Up to 4-Tile Collages)</option>
           </select>
         </div>
         <div class="form-group" style="display:flex; flex-direction:row; gap:10px; flex-wrap:wrap;">
-          <button type="button" id="btn-webframe-toggle" class="primary" onclick="sendAction('web_frame_toggle')" style="flex:1;" data-i18n="btn_wf_turn_on">🟢 Turn Web Frame ON</button>
-          <a id="btn-webframe-open" href="/frame" target="_blank" rel="noopener" class="btn hidden" style="text-decoration:none; flex:1;" data-i18n="btn_wf_open">↗️ Open Web Frame</a>
+          <button type="button" id="btn-webframe-toggle" class="primary" onclick="sendAction('web_frame_toggle')" style="flex:1;" data-i18n="btn_wf_turn_on">🟢 Enable Web Viewer (/frame)</button>
+          <a id="btn-webframe-open" href="/frame" target="_blank" rel="noopener" class="btn hidden" style="text-decoration:none; flex:1;" data-i18n="btn_wf_open">↗️ Launch Web Viewer (/frame)</a>
         </div>
       </div>
       <div id="webframe-links-box" class="target-banner hidden" style="font-size:0.81rem;"></div>
@@ -1487,9 +1487,8 @@ function renderStatusSnapshot(st) {
     upStatus.textContent = st.update_status;
   }
 
-  // Render HTTP Web Photo Frame status
+  // Render Web Slideshow Viewer (/frame) status
   const wfEnabled = Boolean(st.web_frame_enabled);
-  const wfPort = st.web_frame_port || 8081;
   const wfClients = st.web_frame_clients || 0;
   const wfBadge = document.getElementById('webframe-status-badge');
   const wfBtn = document.getElementById('btn-webframe-toggle');
@@ -1499,27 +1498,27 @@ function renderStatusSnapshot(st) {
   const hostIp = st.lan_ip || window.location.hostname || 'photoframe.local';
   if (wfBadge) {
     if (wfEnabled) {
-      wfBadge.textContent = `🟢 ON (:${wfPort} · ${wfClients} viewer${wfClients === 1 ? '' : 's'})`;
+      wfBadge.textContent = `🟢 Enabled (${wfClients} active viewer${wfClients === 1 ? '' : 's'})`;
       wfBadge.className = 'badge active';
     } else {
-      wfBadge.textContent = '⚪ OFF';
+      wfBadge.textContent = '⚪ Disabled';
       wfBadge.className = 'badge';
     }
   }
   if (wfBtn) {
-    wfBtn.textContent = wfEnabled ? '🛑 Turn Web Frame OFF' : '🟢 Turn Web Frame ON';
+    wfBtn.textContent = wfEnabled ? '🛑 Disable Web Viewer (/frame)' : '🟢 Enable Web Viewer (/frame)';
     wfBtn.className = wfEnabled ? 'danger' : 'primary';
   }
   if (wfOpen) {
     wfOpen.classList.toggle('hidden', !wfEnabled);
     wfOpen.href = (selectedTarget && selectedTarget !== 'self' && selectedTarget !== 'all')
-      ? `http://${hostIp}:${wfPort}/`
+      ? `http://${hostIp}:8080/frame`
       : '/frame';
   }
   if (wfLinks) {
     wfLinks.classList.toggle('hidden', !wfEnabled);
     if (wfEnabled) {
-      wfLinks.innerHTML = `📺 <b>Direct HTTP URLs (no login required):</b> <a href="http://${hostName}:${wfPort}/" target="_blank" style="color:#38bdf8;">http://${hostName}:${wfPort}/</a> &nbsp;or&nbsp; <a href="http://${hostIp}:${wfPort}/" target="_blank" style="color:#38bdf8;">http://${hostIp}:${wfPort}/</a> &nbsp;or&nbsp; <a href="/frame" target="_blank" style="color:#38bdf8;">/frame</a>`;
+      wfLinks.innerHTML = `📺 <b>Web Slideshow Viewer URL (no login required):</b> <a href="http://${hostName}:8080/frame" target="_blank" style="color:#38bdf8;">http://${hostName}:8080/frame</a> &nbsp;or&nbsp; <a href="http://${hostIp}:8080/frame" target="_blank" style="color:#38bdf8;">http://${hostIp}:8080/frame</a>`;
     }
   }
 }
@@ -1533,7 +1532,8 @@ async function updateWebFrameProfileLive(profileVal) {
     });
     const data = await res.json();
     if (res.ok && data.ok) {
-      showToast(`Web Frame profile set to ${profileVal}`);
+      const labelMap = {auto: 'Auto (Smart Match)', hd: '1080p HD', legacy: '768p Standard'};
+      showToast(`Picture quality profile set to ${labelMap[profileVal] || profileVal}`);
       fetchStatus(false);
     }
   } catch (e) {}
