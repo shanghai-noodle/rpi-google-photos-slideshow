@@ -638,7 +638,18 @@ const I18N = {
     btn_check_update: "🔍 Save Link & Check Update Now",
     lbl_apk_upload: "Or Upload & Install APK File Directly from Browser",
     btn_upload_apk: "📲 Upload & Install APK",
-    msg_select_apk: "Please choose an .apk file first"
+    msg_select_apk: "Please choose an .apk file first",
+    sec_webframe: "🖼️ Web Slideshow Viewer (/frame)",
+    webframe_desc: "View a live browser slideshow on any tablet, phone, or computer on your Wi-Fi without signing in. Shares the synced album with an independent photo order per browser (videos are displayed as still poster photos).",
+    lbl_webframe_profile: "Picture Quality & Device Profile",
+    lbl_webframe_url: "Web Viewer Address",
+    opt_wf_auto: "Auto — Smart Match (1080p HD on Modern Screens, 768p Standard on Older Tablets)",
+    opt_wf_hd: "1080p HD — Full Resolution, Smooth Crossfade & All 9 Collage Layouts",
+    opt_wf_legacy: "768p Standard — Memory-Safe Mode for Older iPads & Tablets (Up to 4-Tile Collages)",
+    btn_wf_turn_on: "🟢 Enable Web Viewer (/frame)",
+    btn_wf_turn_off: "🛑 Disable Web Viewer (/frame)",
+    btn_wf_open: "↗️ Launch Web Viewer (/frame)",
+    btn_open_webframe: "🖼️ Launch Web Viewer (/frame)"
   },
   zh: {
     login_title: "🔒 数码相框管理登录",
@@ -756,7 +767,18 @@ const I18N = {
     btn_check_update: "🔍 保存链接并立即检查更新",
     lbl_apk_upload: "或直接从浏览器上传并安装本地 .apk 安装包",
     btn_upload_apk: "📲 上传并安装 APK",
-    msg_select_apk: "请先选择一个 .apk 安装包文件"
+    msg_select_apk: "请先选择一个 .apk 安装包文件",
+    sec_webframe: "🖼️ 网页端相框浏览器 (/frame)",
+    webframe_desc: "在同一局域网内的平板、手机或电脑浏览器中免登录直接观看实时幻灯片。共享当前相册，每台浏览器拥有独立的照片播放顺序（视频在网页端以高清静态封面展示）。",
+    lbl_webframe_profile: "画质与设备兼容模式",
+    lbl_webframe_url: "网页相框访问地址",
+    opt_wf_auto: "自动匹配 — 智能识别（现代屏幕 1080p 高清，老款平板 768p 标准）",
+    opt_wf_hd: "1080p 高清 — 全高清画质、平滑渐变过渡与全部 9 种拼图布局",
+    opt_wf_legacy: "768p 标准 — 老款 iPad 与平板省内存兼容模式（最多 4 宫格拼图）",
+    btn_wf_turn_on: "🟢 启用网页端相框 (/frame)",
+    btn_wf_turn_off: "🛑 关闭网页端相框 (/frame)",
+    btn_wf_open: "↗️ 打开网页端相框 (/frame)",
+    btn_open_webframe: "🖼️ 打开网页端相框 (/frame)"
   },
   ja: {
     login_title: "🔒 フォトフレーム ログイン",
@@ -874,7 +896,18 @@ const I18N = {
     btn_check_update: "🔍 リンクを保存して今すぐ更新確認",
     lbl_apk_upload: "またはブラウザから .apk ファイルを直接アップロードしてインストール",
     btn_upload_apk: "📲 APK をアップロードしてインストール",
-    msg_select_apk: "先に .apk ファイルを選択してください"
+    msg_select_apk: "先に .apk ファイルを選択してください",
+    sec_webframe: "🖼️ Web スライドショービューア (/frame)",
+    webframe_desc: "同じ Wi-Fi 上のタブレット・スマホ・PC のブラウザでログイン不要でスライドショーを表示します。ブラウザごとに独立した再生順でアルバムを共有します（動画は静止画ポスターとして表示）。",
+    lbl_webframe_profile: "画質・デバイスプロファイル",
+    lbl_webframe_url: "Web ビューアのアドレス",
+    opt_wf_auto: "自動 — スマートマッチ（最新画面は 1080p HD、旧型タブレットは 768p 標準）",
+    opt_wf_hd: "1080p HD — フル解像度・クロスフェード・全9種コラージュ",
+    opt_wf_legacy: "768p 標準 — 旧型 iPad・タブレット向け省メモリモード（最大4分割）",
+    btn_wf_turn_on: "🟢 Web ビューアを有効化 (/frame)",
+    btn_wf_turn_off: "🛑 Web ビューアを無効化 (/frame)",
+    btn_wf_open: "↗️ Web ビューアを開く (/frame)",
+    btn_open_webframe: "🖼️ Web ビューアを開く (/frame)"
   },
   ko: {
     login_title: "🔒 디지털 액자 로그인",
@@ -992,7 +1025,18 @@ const I18N = {
     btn_check_update: "🔍 링크 저장 및 지금 업데이트 확인",
     lbl_apk_upload: "또는 브라우저에서 .apk 파일을 직접 업로드하여 설치",
     btn_upload_apk: "📲 APK 업로드 및 설치",
-    msg_select_apk: "먼저 .apk 파일을 선택하세요"
+    msg_select_apk: "먼저 .apk 파일을 선택하세요",
+    sec_webframe: "🖼️ 웹 슬라이드쇼 뷰어 (/frame)",
+    webframe_desc: "동일한 Wi-Fi의 태블릿, 스마트폰, PC 브라우저에서 로그인 없이 실시간 슬라이드쇼를 감상하세요. 브라우저별로 독립된 사진 순서를 사용합니다 (동영상은 정지 포스터 이미지로 표시).",
+    lbl_webframe_profile: "화질 및 기기 프로필",
+    lbl_webframe_url: "웹 뷰어 주소",
+    opt_wf_auto: "자동 — 스마트 매치 (최신 화면 1080p HD, 구형 태블릿 768p 표준)",
+    opt_wf_hd: "1080p HD — 전체 해상도, 부드러운 전환 및 9가지 콜라주 레이아웃",
+    opt_wf_legacy: "768p 표준 — 구형 iPad 및 태블릿용 메모리 절약 모드 (최대 4분할 콜라주)",
+    btn_wf_turn_on: "🟢 웹 뷰어 켜기 (/frame)",
+    btn_wf_turn_off: "🛑 웹 뷰어 끄기 (/frame)",
+    btn_wf_open: "↗️ 웹 뷰어 열기 (/frame)",
+    btn_open_webframe: "🖼️ 웹 뷰어 열기 (/frame)"
   },
   es: {
     login_title: "🔒 Acceso al Marco Digital",
@@ -1110,7 +1154,18 @@ const I18N = {
     btn_check_update: "🔍 Guardar Enlace y Buscar Actualización",
     lbl_apk_upload: "O Subir e Instalar Archivo .apk Directamente desde el Navegador",
     btn_upload_apk: "📲 Subir e Instalar APK",
-    msg_select_apk: "Por favor selecciona un archivo .apk primero"
+    msg_select_apk: "Por favor selecciona un archivo .apk primero",
+    sec_webframe: "🖼️ Visor Web de Presentación (/frame)",
+    webframe_desc: "Ve la presentación en vivo desde cualquier tablet, teléfono o PC en tu Wi-Fi sin iniciar sesión. Comparte el álbum con un orden independiente por navegador (los videos se muestran como pósters estáticos).",
+    lbl_webframe_profile: "Calidad de Imagen y Perfil de Dispositivo",
+    lbl_webframe_url: "Dirección del Visor Web",
+    opt_wf_auto: "Auto — Ajuste Inteligente (1080p HD en Pantallas Modernas, 768p Estándar en Tablets Antiguas)",
+    opt_wf_hd: "1080p HD — Resolución Completa, Fundido Suave y los 9 Diseños de Collage",
+    opt_wf_legacy: "768p Estándar — Modo Ligero para iPads y Tablets Antiguas (Hasta 4 Mosaicos)",
+    btn_wf_turn_on: "🟢 Activar Visor Web (/frame)",
+    btn_wf_turn_off: "🛑 Desactivar Visor Web (/frame)",
+    btn_wf_open: "↗️ Abrir Visor Web (/frame)",
+    btn_open_webframe: "🖼️ Abrir Visor Web (/frame)"
   },
   de: {
     login_title: "🔒 Bilderrahmen-Anmeldung",
@@ -1228,7 +1283,18 @@ const I18N = {
     btn_check_update: "🔍 Link speichern & jetzt auf Update prüfen",
     lbl_apk_upload: "Oder .apk-Datei direkt über den Browser hochladen & installieren",
     btn_upload_apk: "📲 APK hochladen & installieren",
-    msg_select_apk: "Bitte wählen Sie zuerst eine .apk-Datei aus"
+    msg_select_apk: "Bitte wählen Sie zuerst eine .apk-Datei aus",
+    sec_webframe: "🖼️ Web-Diashow-Viewer (/frame)",
+    webframe_desc: "Zeigen Sie die Live-Diashow ohne Anmeldung auf jedem Tablet, Smartphone oder PC im WLAN an. Teilt das Album mit unabhängiger Bildreihenfolge pro Browser (Videos werden als Standbilder angezeigt).",
+    lbl_webframe_profile: "Bildqualität & Geräteprofil",
+    lbl_webframe_url: "Web-Viewer-Adresse",
+    opt_wf_auto: "Auto — Smart Match (1080p HD auf modernen Bildschirmen, 768p Standard auf älteren Tablets)",
+    opt_wf_hd: "1080p HD — Volle Auflösung, sanftes Überblenden & alle 9 Collagen-Layouts",
+    opt_wf_legacy: "768p Standard — Speicherschonender Modus für ältere iPads & Tablets (bis zu 4 Kacheln)",
+    btn_wf_turn_on: "🟢 Web-Viewer aktivieren (/frame)",
+    btn_wf_turn_off: "🛑 Web-Viewer deaktivieren (/frame)",
+    btn_wf_open: "↗️ Web-Viewer öffnen (/frame)",
+    btn_open_webframe: "🖼️ Web-Viewer öffnen (/frame)"
   }
 };
 
@@ -1506,7 +1572,7 @@ function renderStatusSnapshot(st) {
     }
   }
   if (wfBtn) {
-    wfBtn.textContent = wfEnabled ? '🛑 Disable Web Viewer (/frame)' : '🟢 Enable Web Viewer (/frame)';
+    wfBtn.textContent = wfEnabled ? t('btn_wf_turn_off') : t('btn_wf_turn_on');
     wfBtn.className = wfEnabled ? 'danger' : 'primary';
   }
   if (wfOpen) {
