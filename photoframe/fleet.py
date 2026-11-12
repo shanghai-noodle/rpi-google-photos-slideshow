@@ -509,6 +509,8 @@ class FleetManager:
     def execute_action(self, target: str, action: str, album_arg: str = "", pwd_arg: str = "") -> Tuple[int, Dict[str, Any]]:
         if not target or self.is_self_target(target):
             msg = self._dispatch_action_local(action, album_arg, pwd_arg)
+            if msg and msg.startswith("Unknown action"):
+                return 400, {"ok": False, "error": f"{msg} — please update this Photo Frame to the latest version first."}
             return 200, {"ok": True, "message": msg}
 
         if target == "all":
@@ -547,8 +549,9 @@ class FleetManager:
 
             if has_self:
                 m = self._dispatch_action_local(action, album_arg, pwd_arg)
-                success_count += 1
-                last_msg = m
+                if m and not m.startswith("Unknown action"):
+                    success_count += 1
+                    last_msg = m
 
             return 200, {
                 "ok": success_count > 0,

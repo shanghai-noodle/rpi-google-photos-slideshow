@@ -68,6 +68,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   }
   .badge.active { background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.35); }
   .badge.night { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: rgba(245, 158, 11, 0.35); }
+  .badge.offline { background: rgba(239, 68, 68, 0.16); color: #fca5a5; border-color: rgba(239, 68, 68, 0.42); }
   .card {
     background: var(--card); border: 1px solid var(--card-border);
     border-radius: 14px; padding: 20px; margin-bottom: 18px;
@@ -209,6 +210,26 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     background: #1e293b; border: 1px solid #475569; color: #bae6fd;
   }
   .saved-use-btn:hover { background: var(--accent); color: #0f172a; border-color: var(--accent); }
+  .modal-backdrop {
+    position: fixed; inset: 0; z-index: 9500;
+    background: rgba(5, 8, 16, 0.78); backdrop-filter: blur(3px);
+    display: flex; align-items: center; justify-content: center; padding: 18px;
+  }
+  .modal-card {
+    width: 100%; max-width: 440px; background: var(--card);
+    border: 1.5px solid rgba(239, 68, 68, 0.45); border-radius: 16px;
+    padding: 22px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75);
+  }
+  .modal-card h3 {
+    font-size: 1.08rem; font-weight: 700; color: #f8fafc;
+    margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
+  }
+  .modal-card p {
+    font-size: 0.9rem; color: #cbd5e1; line-height: 1.5; margin-bottom: 18px;
+  }
+  .modal-actions {
+    display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;
+  }
 </style>
 </head>
 <body>
@@ -548,8 +569,20 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       </h2>
       <pre class="log-box" id="log-box">Loading RAM log...</pre>
       <div class="btn-grid" style="margin-top: 14px;">
-        <button class="danger" onclick="confirmExitFrame()" data-i18n="btn_exit_app">🚪 Exit Photo Frame</button>
+        <button type="button" id="btn-exit-app" class="danger" onclick="confirmExitFrame()" data-i18n="btn_exit_app">🚪 Exit Photo Frame</button>
       </div>
+      <div id="system-confirm-banner" class="confirm-banner"></div>
+    </div>
+  </div>
+</div>
+
+<div id="exit-confirm-modal" class="modal-backdrop hidden" onclick="if (event.target === this) closeExitModal()">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="exit-modal-title">
+    <h3 id="exit-modal-title" data-i18n="btn_exit_app">🚪 Exit Photo Frame</h3>
+    <p id="exit-modal-msg"></p>
+    <div class="modal-actions">
+      <button type="button" id="btn-exit-cancel" onclick="closeExitModal()" data-i18n="btn_cancel">Cancel</button>
+      <button type="button" id="btn-exit-confirm" class="danger" onclick="executeConfirmedExit()" data-i18n="btn_exit_app">🚪 Exit Photo Frame</button>
     </div>
   </div>
 </div>
@@ -654,6 +687,9 @@ const I18N = {
     msg_pw_updated: "✅ Password updated successfully! Your session remains active.",
     confirm_exit_app: "Exit and close the Photo Frame application now? Its Web Control Portal will go offline until the app is started again.",
     confirm_exit_app_all: "Exit and close the Photo Frame application on ALL connected frames now? Their Web Control Portals will go offline until started again.",
+    btn_cancel: "Cancel",
+    badge_offline: "🔴 Offline (Closed)",
+    msg_exited_offline: "🚪 Photo Frame closed. Its Web Control Portal is now offline until the app is started again.",
     sec_fleet: "🖧 Connected Photo Frames (LAN Fleet)",
     btn_scan_fleet: "🔍 Scan LAN",
     btn_add_peer: "➕ Add IP",
@@ -786,6 +822,9 @@ const I18N = {
     msg_pw_updated: "✅ 密码更新成功！当前登录会话保持有效。",
     confirm_exit_app: "确定要立即退出并关闭相框程序吗？关闭后网页控制中心将离线，需重新启动应用后方可再次访问。",
     confirm_exit_app_all: "确定要立即退出并关闭所有已连接设备上的相框程序吗？关闭后各设备的网页控制中心将离线。",
+    btn_cancel: "取消",
+    badge_offline: "🔴 已关闭离线",
+    msg_exited_offline: "🚪 相框应用已退出关闭。网页控制中心现已离线，重新启动应用后即可恢复连接。",
     sec_fleet: "🖧 局域网已连接相框 (多设备集群管理)",
     btn_scan_fleet: "🔍 扫描局域网",
     btn_add_peer: "➕ 手动添加 IP",
@@ -918,6 +957,9 @@ const I18N = {
     msg_pw_updated: "✅ パスワードを更新しました！セッションは維持されます。",
     confirm_exit_app: "フォトフレームアプリを今すぐ終了して閉じますか？アプリを再起動するまでWeb管理画面はオフラインになります。",
     confirm_exit_app_all: "接続されているすべてのフレームでフォトフレームアプリを終了しますか？再起動するまでWeb管理画面はオフラインになります。",
+    btn_cancel: "キャンセル",
+    badge_offline: "🔴 オフライン（終了済）",
+    msg_exited_offline: "🚪 フォトフレームを終了しました。アプリを再起動するまでWeb管理画面はオフラインになります。",
     sec_fleet: "🖧 接続済みフォトフレーム (LAN一括管理)",
     btn_scan_fleet: "🔍 LANスキャン",
     btn_add_peer: "➕ IP追加",
@@ -1050,6 +1092,9 @@ const I18N = {
     msg_pw_updated: "✅ 비밀번호가 성공적으로 변경되었습니다!",
     confirm_exit_app: "지금 포토 프레임 앱을 종료하고 닫으시겠습니까? 앱을 다시 시작할 때까지 웹 제어 포털이 오프라인 상태가 됩니다.",
     confirm_exit_app_all: "연결된 모든 액자에서 포토 프레임 앱을 종료하시겠습니까? 다시 시작할 때까지 웹 제어 포털이 오프라인 상태가 됩니다.",
+    btn_cancel: "취소",
+    badge_offline: "🔴 오프라인 (종료됨)",
+    msg_exited_offline: "🚪 포토 프레임 앱이 종료되었습니다. 앱을 다시 시작할 때까지 웹 제어 포털이 오프라인 상태로 유지됩니다.",
     sec_fleet: "🖧 연결된 디지털 액자 (LAN 통합 관리)",
     btn_scan_fleet: "🔍 LAN 스캔",
     btn_add_peer: "➕ IP 추가",
@@ -1182,6 +1227,9 @@ const I18N = {
     msg_pw_updated: "✅ ¡Contraseña actualizada correctamente! Tu sesión sigue activa.",
     confirm_exit_app: "¿Salir y cerrar la aplicación del marco de fotos ahora? El portal web quedará sin conexión hasta volver a iniciarla.",
     confirm_exit_app_all: "¿Salir y cerrar la aplicación en TODOS los marcos conectados ahora? Sus portales web quedarán sin conexión hasta volver a iniciarlos.",
+    btn_cancel: "Cancelar",
+    badge_offline: "🔴 Sin Conexión (Cerrado)",
+    msg_exited_offline: "🚪 Marco de fotos cerrado. El portal web está ahora sin conexión hasta que se vuelva a iniciar la aplicación.",
     sec_fleet: "🖧 Marcos Conectados en Red (Flota LAN)",
     btn_scan_fleet: "🔍 Escanear LAN",
     btn_add_peer: "➕ Añadir IP",
@@ -1314,6 +1362,9 @@ const I18N = {
     msg_pw_updated: "✅ Passwort erfolgreich aktualisiert! Ihre Sitzung bleibt aktiv.",
     confirm_exit_app: "Bilderrahmen-App jetzt beenden und schließen? Das Web-Steuerportal bleibt offline, bis die App wieder gestartet wird.",
     confirm_exit_app_all: "Bilderrahmen-App auf ALLEN verbundenen Rahmen jetzt beenden und schließen? Die Web-Steuerportale bleiben bis zum Neustart offline.",
+    btn_cancel: "Abbrechen",
+    badge_offline: "🔴 Offline (Beendet)",
+    msg_exited_offline: "🚪 Bilderrahmen beendet. Das Web-Steuerportal ist jetzt offline, bis die App wieder gestartet wird.",
     sec_fleet: "🖧 Verbundene Bilderrahmen (LAN-Flotte)",
     btn_scan_fleet: "🔍 LAN scannen",
     btn_add_peer: "➕ IP hinzufügen",
@@ -1362,6 +1413,8 @@ let activeTargetPlatform = 'linux';
 let savedAlbumsList = [];
 let lastActiveAlbumUrl = '';
 let lastActiveAlbumTitle = '';
+let portalExitedOffline = false;
+let consecutiveStatusFailures = 0;
 
 function escapeHtml(s) {
   return String(s || '')
@@ -1800,6 +1853,27 @@ function showInlineBanner(elId, msg, isError = false) {
   el._hideTimer = setTimeout(() => { el.style.display = 'none'; }, 7000);
 }
 
+function markPortalOfflineUI(bannerMsg) {
+  const badge = document.getElementById('state-badge');
+  if (badge) {
+    badge.textContent = t('badge_offline');
+    badge.className = 'badge offline';
+  }
+  if (bannerMsg) {
+    const el = document.getElementById('system-confirm-banner');
+    if (el) {
+      clearTimeout(el._hideTimer);
+      el.textContent = bannerMsg;
+      el.className = 'confirm-banner';
+      el.style.display = 'block';
+    }
+  }
+  const exitBtn = document.getElementById('btn-exit-app');
+  if (exitBtn && portalExitedOffline) {
+    exitBtn.disabled = true;
+  }
+}
+
 async function fetchStatus(populateForm = false, triggerScan = false) {
   try {
     const q = new URLSearchParams();
@@ -1810,6 +1884,14 @@ async function fetchStatus(populateForm = false, triggerScan = false) {
     const url = '/api/status' + (q.toString() ? `?${q.toString()}` : '');
     const res = await fetch(url);
     const data = await res.json();
+    consecutiveStatusFailures = 0;
+    if (portalExitedOffline) {
+      portalExitedOffline = false;
+      const exitBtn = document.getElementById('btn-exit-app');
+      if (exitBtn) exitBtn.disabled = false;
+      const sysBanner = document.getElementById('system-confirm-banner');
+      if (sysBanner) sysBanner.style.display = 'none';
+    }
     if (data.language && !localStorage.getItem('frame_lang_user_set')) {
       setLanguage(data.language);
     }
@@ -1823,6 +1905,9 @@ async function fetchStatus(populateForm = false, triggerScan = false) {
     document.getElementById('app-view').classList.remove('hidden');
     document.getElementById('default-pw-banner').classList.toggle('hidden', !data.is_default_password);
 
+    if (selectedTarget && selectedTarget !== 'self' && selectedTarget !== 'all' && data.target === 'self') {
+      selectedTarget = 'self';
+    }
     activeTargetEdition = data.target_edition || data.status?.edition || 'gphotos';
     activeTargetPlatform = data.target_platform || data.status?.platform || 'linux';
     if (data.fleet) {
@@ -1868,6 +1953,10 @@ async function fetchStatus(populateForm = false, triggerScan = false) {
       formPopulated = true;
     }
   } catch (err) {
+    consecutiveStatusFailures += 1;
+    if (portalExitedOffline || consecutiveStatusFailures >= 2) {
+      markPortalOfflineUI(portalExitedOffline ? t('msg_exited_offline') : null);
+    }
     console.error(err);
   }
 }
@@ -1910,21 +1999,57 @@ async function sendAction(action) {
       bodyObj.pwd = pwdEl.value.trim();
     }
   }
-  const res = await fetch('/api/action', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(bodyObj)
-  });
-  const data = await res.json();
-  if (res.ok && data.ok) {
-    showToast(data.message || 'Action executed');
-    if (action !== 'exit_app') {
-      setTimeout(() => fetchStatus(false), 600);
-    } else if (selectedTarget !== 'self' && selectedTarget !== 'all') {
-      setTimeout(() => fetchStatus(false), 900);
+  const exitsThisPortal = (action === 'exit_app') && (!selectedTarget || selectedTarget === 'self' || selectedTarget === 'all');
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(bodyObj)
+    });
+    let data = {};
+    try {
+      data = await res.json();
+    } catch (parseErr) {
+      if (exitsThisPortal && res.ok) {
+        data = {ok: true, message: t('msg_exited_offline')};
+      } else {
+        throw parseErr;
+      }
     }
-  } else {
-    showToast(data.error || 'Action failed', true);
+    if (res.ok && data.ok) {
+      if (action === 'exit_app') {
+        if (exitsThisPortal) {
+          portalExitedOffline = true;
+          showToast(t('msg_exited_offline'));
+          markPortalOfflineUI(t('msg_exited_offline'));
+        } else {
+          showToast(data.message || t('msg_exited_offline'));
+          showInlineBanner('system-confirm-banner', t('msg_exited_offline'), false);
+          setTimeout(() => fetchStatus(false, true), 1100);
+        }
+      } else {
+        showToast(data.message || 'Action executed');
+        setTimeout(() => fetchStatus(false), 600);
+      }
+    } else {
+      const errMsg = data.error || 'Action failed';
+      showToast(errMsg, true);
+      if (action === 'exit_app') {
+        showInlineBanner('system-confirm-banner', '⚠️ ' + errMsg, true);
+      }
+    }
+  } catch (err) {
+    if (exitsThisPortal) {
+      portalExitedOffline = true;
+      showToast(t('msg_exited_offline'));
+      markPortalOfflineUI(t('msg_exited_offline'));
+    } else {
+      const errMsg = (err && err.message) ? err.message : 'Network request failed';
+      showToast(errMsg, true);
+      if (action === 'exit_app') {
+        showInlineBanner('system-confirm-banner', '⚠️ ' + errMsg, true);
+      }
+    }
   }
 }
 
@@ -1937,11 +2062,46 @@ function playDemoShowcase() {
 }
 
 function confirmExitFrame() {
+  const modal = document.getElementById('exit-confirm-modal');
+  const msgEl = document.getElementById('exit-modal-msg');
+  const titleEl = document.getElementById('exit-modal-title');
+  const cancelBtn = document.getElementById('btn-exit-cancel');
+  const confirmBtn = document.getElementById('btn-exit-confirm');
   const promptKey = selectedTarget === 'all' ? 'confirm_exit_app_all' : 'confirm_exit_app';
-  if (confirm(t(promptKey))) {
-    sendAction('exit_app');
+  if (titleEl) titleEl.textContent = t('btn_exit_app');
+  if (msgEl) msgEl.textContent = t(promptKey);
+  if (cancelBtn) cancelBtn.textContent = t('btn_cancel');
+  if (confirmBtn) {
+    confirmBtn.textContent = t('btn_exit_app');
+    confirmBtn.disabled = false;
+  }
+  if (modal) {
+    modal.classList.remove('hidden');
   }
 }
+
+function closeExitModal() {
+  const modal = document.getElementById('exit-confirm-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+  }
+}
+
+async function executeConfirmedExit() {
+  const confirmBtn = document.getElementById('btn-exit-confirm');
+  if (confirmBtn) confirmBtn.disabled = true;
+  closeExitModal();
+  await sendAction('exit_app');
+}
+
+document.addEventListener('keydown', function(ev) {
+  if (ev.key === 'Escape') {
+    const modal = document.getElementById('exit-confirm-modal');
+    if (modal && !modal.classList.contains('hidden')) {
+      closeExitModal();
+    }
+  }
+});
 
 async function saveSettings(e) {
   e.preventDefault();

@@ -126,11 +126,16 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
                 return e.code, json.loads(e.read().decode("utf-8")), e.headers.get("Set-Cookie", "")
 
         try:
-            # 1. GET / serves HTML
+            # 1. GET / serves HTML with custom in-page exit confirmation modal (never native window.confirm)
             with urllib.request.urlopen(f"{base_url}/", timeout=5) as resp:
                 html = resp.read().decode("utf-8")
                 self.assertEqual(resp.status, 200)
                 self.assertIn("Photo Frame Control Portal", html)
+                self.assertIn('id="exit-confirm-modal"', html)
+                self.assertIn('id="system-confirm-banner"', html)
+                self.assertIn("executeConfirmedExit()", html)
+                self.assertIn("closeExitModal()", html)
+                self.assertNotIn("confirm(t(", html)
 
             # 2. Unauthenticated GET /api/status
             code, st_unauth, _ = request_json("/api/status")
@@ -197,6 +202,17 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
             self.assertTrue(act_res["ok"])
             app._process_web_actions()
             self.assertTrue(app.is_paused)
+
+            # 8a. Unknown action returns HTTP 400 (never silent 200 ok)
+            code, bad_act, _ = request_json(
+                "/api/action",
+                method="POST",
+                cookie=session_cookie,
+                payload={"action": "unknown_nonexistent_action"},
+            )
+            self.assertEqual(code, 400)
+            self.assertFalse(bad_act["ok"])
+            self.assertIn("Unknown action", bad_act.get("error", ""))
 
             # 8b. Exit photo frame action via POST /api/action -> returns 200 OK and stops app cleanly
             code, exit_res, _ = request_json(
