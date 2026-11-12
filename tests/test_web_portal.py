@@ -198,6 +198,19 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
             app._process_web_actions()
             self.assertTrue(app.is_paused)
 
+            # 8b. Exit photo frame action via POST /api/action -> returns 200 OK and stops app cleanly
+            code, exit_res, _ = request_json(
+                "/api/action",
+                method="POST",
+                cookie=session_cookie,
+                payload={"action": "exit_app"},
+            )
+            self.assertEqual(code, 200)
+            self.assertTrue(exit_res["ok"])
+            app._process_web_actions()
+            time.sleep(0.6)
+            self.assertFalse(app.is_running)
+
             # 9. Change password via POST /api/password
             code, pw_res, new_set_cookie = request_json(
                 "/api/password",

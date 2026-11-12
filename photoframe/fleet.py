@@ -514,13 +514,12 @@ class FleetManager:
         if target == "all":
             nodes = self.get_fleet_nodes(trigger_scan=False)
             online_nodes = [n for n in nodes if n.get("online", True)]
+            remote_nodes = [n for n in online_nodes if not n.get("is_self")]
+            has_self = any(n.get("is_self") for n in online_nodes)
             success_count = 0
             last_msg = "Action executed"
 
             def _run_on_node(node: Dict[str, Any]) -> Tuple[bool, str]:
-                if node.get("is_self"):
-                    m = self._dispatch_action_local(action, album_arg, pwd_arg)
-                    return True, m
                 ip = node["ip"]
                 port = int(node.get("port", self.port))
                 node_edition = node.get("edition", "")
@@ -539,11 +538,17 @@ class FleetManager:
                     return True, str(resp.get("message", "OK"))
                 return False, str(resp.get("error", "Failed"))
 
-            with ThreadPoolExecutor(max_workers=min(16, max(1, len(online_nodes)))) as pool:
-                for ok, m in pool.map(_run_on_node, online_nodes):
-                    if ok:
-                        success_count += 1
-                        last_msg = m
+            if remote_nodes:
+                with ThreadPoolExecutor(max_workers=min(16, len(remote_nodes))) as pool:
+                    for ok, m in pool.map(_run_on_node, remote_nodes):
+                        if ok:
+                            success_count += 1
+                            last_msg = m
+
+            if has_self:
+                m = self._dispatch_action_local(action, album_arg, pwd_arg)
+                success_count += 1
+                last_msg = m
 
             return 200, {
                 "ok": success_count > 0,

@@ -548,8 +548,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       </h2>
       <pre class="log-box" id="log-box">Loading RAM log...</pre>
       <div class="btn-grid" style="margin-top: 14px;">
-        <button class="warn" onclick="confirmSystemAction('restart')" data-i18n="btn_restart">♻️ Restart Slideshow</button>
-        <button class="danger" onclick="confirmSystemAction('reboot')" data-i18n="btn_reboot">⚡ Reboot Device</button>
+        <button class="danger" onclick="confirmExitFrame()" data-i18n="btn_exit_app">🚪 Exit Photo Frame</button>
       </div>
     </div>
   </div>
@@ -640,8 +639,7 @@ const I18N = {
     btn_save_pw: "🔐 Update Password",
     sec_system: "🛠️ System Control & RAM Log",
     btn_refresh_log: "🔄 Refresh Log",
-    btn_restart: "♻️ Restart Slideshow",
-    btn_reboot: "⚡ Reboot Device",
+    btn_exit_app: "🚪 Exit Photo Frame",
     badge_night: "🌙 Night Mode (Sleeping)",
     badge_paused: "⏸️ Paused",
     badge_active: "🟢 Active (Playing)",
@@ -654,8 +652,8 @@ const I18N = {
     msg_source_demo: "Built-in Demo Showcase Pack",
     msg_pw_mismatch: "New passwords do not match",
     msg_pw_updated: "✅ Password updated successfully! Your session remains active.",
-    confirm_restart: "Restart the slideshow service now?",
-    confirm_reboot: "Reboot the device now? The screen will reconnect in ~35 seconds.",
+    confirm_exit_app: "Exit and close the Photo Frame application now? Its Web Control Portal will go offline until the app is started again.",
+    confirm_exit_app_all: "Exit and close the Photo Frame application on ALL connected frames now? Their Web Control Portals will go offline until started again.",
     sec_fleet: "🖧 Connected Photo Frames (LAN Fleet)",
     btn_scan_fleet: "🔍 Scan LAN",
     btn_add_peer: "➕ Add IP",
@@ -773,8 +771,7 @@ const I18N = {
     btn_save_pw: "🔐 更新密码",
     sec_system: "🛠️ 系统控制与内存日志",
     btn_refresh_log: "🔄 刷新日志",
-    btn_restart: "♻️ 重启幻灯片服务",
-    btn_reboot: "⚡ 重启设备",
+    btn_exit_app: "🚪 退出并关闭相框",
     badge_night: "🌙 夜间休眠中",
     badge_paused: "⏸️ 已暂停",
     badge_active: "🟢 正在播放",
@@ -787,8 +784,8 @@ const I18N = {
     msg_source_demo: "内置精选演示集",
     msg_pw_mismatch: "两次输入的新密码不一致",
     msg_pw_updated: "✅ 密码更新成功！当前登录会话保持有效。",
-    confirm_restart: "确定要立即重启幻灯片服务吗？",
-    confirm_reboot: "确定要立即重启设备吗？屏幕将在约 35 秒后重新连接。",
+    confirm_exit_app: "确定要立即退出并关闭相框程序吗？关闭后网页控制中心将离线，需重新启动应用后方可再次访问。",
+    confirm_exit_app_all: "确定要立即退出并关闭所有已连接设备上的相框程序吗？关闭后各设备的网页控制中心将离线。",
     sec_fleet: "🖧 局域网已连接相框 (多设备集群管理)",
     btn_scan_fleet: "🔍 扫描局域网",
     btn_add_peer: "➕ 手动添加 IP",
@@ -906,8 +903,7 @@ const I18N = {
     btn_save_pw: "🔐 パスワードを更新",
     sec_system: "🛠️ システム管理 & RAMログ",
     btn_refresh_log: "🔄 ログ更新",
-    btn_restart: "♻️ スライドショー再起動",
-    btn_reboot: "⚡ デバイスを再起動",
+    btn_exit_app: "🚪 フォトフレームを終了",
     badge_night: "🌙 ナイトモード（スリープ中）",
     badge_paused: "⏸️ 一時停止中",
     badge_active: "🟢 再生中 (Active)",
@@ -920,8 +916,8 @@ const I18N = {
     msg_source_demo: "内蔵デモショーケースパック",
     msg_pw_mismatch: "新しいパスワードが一致しません",
     msg_pw_updated: "✅ パスワードを更新しました！セッションは維持されます。",
-    confirm_restart: "スライドショーサービスを今すぐ再起動しますか？",
-    confirm_reboot: "デバイスを今すぐ再起動しますか？約35秒後に再接続されます。",
+    confirm_exit_app: "フォトフレームアプリを今すぐ終了して閉じますか？アプリを再起動するまでWeb管理画面はオフラインになります。",
+    confirm_exit_app_all: "接続されているすべてのフレームでフォトフレームアプリを終了しますか？再起動するまでWeb管理画面はオフラインになります。",
     sec_fleet: "🖧 接続済みフォトフレーム (LAN一括管理)",
     btn_scan_fleet: "🔍 LANスキャン",
     btn_add_peer: "➕ IP追加",
@@ -1039,8 +1035,7 @@ const I18N = {
     btn_save_pw: "🔐 비밀번호 업데이트",
     sec_system: "🛠️ 시스템 제어 및 RAM 로그",
     btn_refresh_log: "🔄 로그 새로고침",
-    btn_restart: "♻️ 슬라이드쇼 재시작",
-    btn_reboot: "⚡ 기기 재부팅",
+    btn_exit_app: "🚪 포토 프레임 종료",
     badge_night: "🌙 야간 모드 (절전 중)",
     badge_paused: "⏸️ 일시정지됨",
     badge_active: "🟢 재생 중 (Active)",
@@ -1053,8 +1048,8 @@ const I18N = {
     msg_source_demo: "내장 데모 쇼케이스 팩",
     msg_pw_mismatch: "새 비밀번호가 일치하지 않습니다",
     msg_pw_updated: "✅ 비밀번호가 성공적으로 변경되었습니다!",
-    confirm_restart: "슬라이드쇼 서비스를 지금 재시작하시겠습니까?",
-    confirm_reboot: "기기를 지금 재부팅하시겠습니까? 약 35초 후 다시 연결됩니다.",
+    confirm_exit_app: "지금 포토 프레임 앱을 종료하고 닫으시겠습니까? 앱을 다시 시작할 때까지 웹 제어 포털이 오프라인 상태가 됩니다.",
+    confirm_exit_app_all: "연결된 모든 액자에서 포토 프레임 앱을 종료하시겠습니까? 다시 시작할 때까지 웹 제어 포털이 오프라인 상태가 됩니다.",
     sec_fleet: "🖧 연결된 디지털 액자 (LAN 통합 관리)",
     btn_scan_fleet: "🔍 LAN 스캔",
     btn_add_peer: "➕ IP 추가",
@@ -1172,8 +1167,7 @@ const I18N = {
     btn_save_pw: "🔐 Actualizar Contraseña",
     sec_system: "🛠️ Control del Sistema y Registro RAM",
     btn_refresh_log: "🔄 Actualizar Registro",
-    btn_restart: "♻️ Reiniciar Presentación",
-    btn_reboot: "⚡ Reiniciar dispositivo",
+    btn_exit_app: "🚪 Salir del Marco de Fotos",
     badge_night: "🌙 Modo Nocturno (En Reposo)",
     badge_paused: "⏸️ En Pausa",
     badge_active: "🟢 Activo (Reproduciendo)",
@@ -1186,8 +1180,8 @@ const I18N = {
     msg_source_demo: "Paquete Demo Integrado",
     msg_pw_mismatch: "Las contraseñas nuevas no coinciden",
     msg_pw_updated: "✅ ¡Contraseña actualizada correctamente! Tu sesión sigue activa.",
-    confirm_restart: "¿Reiniciar el servicio de presentación ahora?",
-    confirm_reboot: "¿Reiniciar el dispositivo ahora? La pantalla se reconectará en ~35 segundos.",
+    confirm_exit_app: "¿Salir y cerrar la aplicación del marco de fotos ahora? El portal web quedará sin conexión hasta volver a iniciarla.",
+    confirm_exit_app_all: "¿Salir y cerrar la aplicación en TODOS los marcos conectados ahora? Sus portales web quedarán sin conexión hasta volver a iniciarlos.",
     sec_fleet: "🖧 Marcos Conectados en Red (Flota LAN)",
     btn_scan_fleet: "🔍 Escanear LAN",
     btn_add_peer: "➕ Añadir IP",
@@ -1305,8 +1299,7 @@ const I18N = {
     btn_save_pw: "🔐 Passwort aktualisieren",
     sec_system: "🛠️ Systemsteuerung & RAM-Protokoll",
     btn_refresh_log: "🔄 Protokoll aktualisieren",
-    btn_restart: "♻️ Diashow neu starten",
-    btn_reboot: "⚡ Gerät neu starten",
+    btn_exit_app: "🚪 Bilderrahmen beenden",
     badge_night: "🌙 Nachtmodus (Schlafend)",
     badge_paused: "⏸️ Pausiert",
     badge_active: "🟢 Aktiv (Wiedergabe)",
@@ -1319,8 +1312,8 @@ const I18N = {
     msg_source_demo: "Integriertes Demo-Showcase-Paket",
     msg_pw_mismatch: "Neue Passwörter stimmen nicht überein",
     msg_pw_updated: "✅ Passwort erfolgreich aktualisiert! Ihre Sitzung bleibt aktiv.",
-    confirm_restart: "Diashow-Dienst jetzt neu starten?",
-    confirm_reboot: "Gerät jetzt neu starten? Der Bildschirm verbindet sich in ca. 35 Sekunden neu.",
+    confirm_exit_app: "Bilderrahmen-App jetzt beenden und schließen? Das Web-Steuerportal bleibt offline, bis die App wieder gestartet wird.",
+    confirm_exit_app_all: "Bilderrahmen-App auf ALLEN verbundenen Rahmen jetzt beenden und schließen? Die Web-Steuerportale bleiben bis zum Neustart offline.",
     sec_fleet: "🖧 Verbundene Bilderrahmen (LAN-Flotte)",
     btn_scan_fleet: "🔍 LAN scannen",
     btn_add_peer: "➕ IP hinzufügen",
@@ -1925,7 +1918,11 @@ async function sendAction(action) {
   const data = await res.json();
   if (res.ok && data.ok) {
     showToast(data.message || 'Action executed');
-    setTimeout(() => fetchStatus(false), 600);
+    if (action !== 'exit_app') {
+      setTimeout(() => fetchStatus(false), 600);
+    } else if (selectedTarget !== 'self' && selectedTarget !== 'all') {
+      setTimeout(() => fetchStatus(false), 900);
+    }
   } else {
     showToast(data.error || 'Action failed', true);
   }
@@ -1939,10 +1936,10 @@ function playDemoShowcase() {
   sendAction('demo');
 }
 
-function confirmSystemAction(action) {
-  const promptKey = action === 'reboot' ? 'confirm_reboot' : 'confirm_restart';
+function confirmExitFrame() {
+  const promptKey = selectedTarget === 'all' ? 'confirm_exit_app_all' : 'confirm_exit_app';
   if (confirm(t(promptKey))) {
-    sendAction(action);
+    sendAction('exit_app');
   }
 }
 

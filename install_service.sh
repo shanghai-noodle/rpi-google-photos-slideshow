@@ -38,7 +38,7 @@ Environment=PYTHONDONTWRITEBYTECODE=1
 Nice=-5
 # Starts in Demo Showcase Mode until configured via the Web Portal (http://<device-ip>:8080)
 ExecStart=/usr/bin/python3 -B ${REPO_DIR}/slideshow.py --duration 15 --rotate 0 --landscape-mode collage --quiet
-Restart=always
+Restart=on-failure
 RestartSec=5
 StandardOutput=null
 StandardError=null

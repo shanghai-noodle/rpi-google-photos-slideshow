@@ -1225,7 +1225,7 @@ class SlideshowApp:
     def _draw_splash_surface(self, target: Any):
         """
         Draws the startup splash screen (`#0B1220` background, centered `splash_logo.png`,
-        and `v<version> (Build #<build>)` subtitle directly beneath the logo).
+        and `v<version>` subtitle directly beneath the logo).
         """
         target.fill((11, 18, 32))
         if not PYGAME_AVAILABLE:
@@ -1234,8 +1234,8 @@ class SlideshowApp:
             tw, th = target.get_size()
             cx, cy = tw // 2, th // 2
             from . import _load_version_info
-            ver_str, build_num = _load_version_info()
-            ver_line = f"v{ver_str} (Build #{build_num})"
+            ver_str, _ = _load_version_info()
+            ver_line = f"v{ver_str}"
 
             logo_surf = getattr(self, "_cached_splash_logo", None)
             if logo_surf is None:
@@ -1624,8 +1624,7 @@ class SlideshowApp:
             "resync": "Syncing Google Photos album now...",
             "demo": "Switched to built-in Demo Showcase Pack!",
             "test_videos": "Queued video tile test sequence.",
-            "restart": "Restarting slideshow service...",
-            "reboot": "Rebooting device now...",
+            "exit_app": "Closing Photo Frame...",
         }
         if action not in valid:
             return f"Unknown action: {action}"
@@ -1778,14 +1777,24 @@ class SlideshowApp:
                             self.advance_slide()
                         else:
                             self.photo_manager.trigger_prefetch_next()
-            elif action == "restart":
-                self.is_running = False
-            elif action == "reboot":
-                logger.warning("🌐 Reboot requested via Web Portal! Running sudo reboot...")
-                try:
-                    subprocess.Popen(["sudo", "reboot"])
-                except Exception as e:
-                    logger.error("Failed to execute sudo reboot: %s", e)
+            elif action == "exit_app":
+                logger.warning("🌐 Exit requested via Web Portal — closing Photo Frame...")
+
+                def _deferred_exit():
+                    time.sleep(0.5)
+                    if os.environ.get("INVOCATION_ID"):
+                        try:
+                            subprocess.Popen(
+                                ["sudo", "-n", "systemctl", "stop", "slideshow.service"],
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                start_new_session=True,
+                            )
+                        except Exception:
+                            pass
+                    self.is_running = False
+
+                threading.Thread(target=_deferred_exit, name="WebExitPhotoFrame", daemon=True).start()
 
     def run(self):
         self.init_display()
