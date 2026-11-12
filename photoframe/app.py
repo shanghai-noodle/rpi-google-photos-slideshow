@@ -56,6 +56,7 @@ class SlideshowApp:
         "random",
     )
 
+    SPLASH_MIN_DURATION_SEC = 5.0
     STARTUP_OVERLAY_DURATION_SEC = 60.0
     _LAN_IP_TTL_SEC = 5.0
     _cached_lan_ip: str = "localhost"
@@ -1304,7 +1305,7 @@ class SlideshowApp:
                     self._last_pill_screen_rect = None
             else:
                 self._draw_splash_surface(target)
-                if show_overlay:
+                if self.is_paused and show_overlay:
                     self._draw_demo_setup_pill(target)
                 else:
                     self._last_pill_screen_rect = None
@@ -1791,6 +1792,7 @@ class SlideshowApp:
         self._last_scheduled_state = self.is_within_night_schedule()
         self.full_redraw_needed = True
         self.render_frame()
+        splash_shown_at = time.time()
         self._start_wifi_keepalive_daemon()
         if getattr(self.args, "web_port", 8080) > 0:
             start_web_config_server(self, self.config_store, port=int(self.args.web_port))
@@ -1812,7 +1814,19 @@ class SlideshowApp:
             hw_profile=self.hw_profile,
             on_album_connected=self._on_album_connected,
         )
-        self.current_photo_surf, self.current_video_list = self.photo_manager.get_initial_slide()
+        initial_surf, initial_videos = self.photo_manager.get_initial_slide()
+
+        # Keep the splash screen visible for at least SPLASH_MIN_DURATION_SEC (5.0s)
+        while self.is_running and (time.time() - splash_shown_at) < self.SPLASH_MIN_DURATION_SEC:
+            self.handle_events()
+            if self.clock:
+                self.clock.tick(self.loop_hz)
+            else:
+                time.sleep(0.05)
+
+        self.current_photo_surf, self.current_video_list = initial_surf, initial_videos
+        self.app_start_time = time.time()
+        self.last_slide_switch = time.time()
         self.full_redraw_needed = True
 
         # Always boot up with the display ON so the startup overlay and photos
