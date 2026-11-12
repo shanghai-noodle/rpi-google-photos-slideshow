@@ -370,7 +370,6 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
           5. Slide prefetch is deferred while a video slide is active (preventing GIL/GC stutter).
         """
         import io
-        from PIL import Image
 
         # 4. Verify raised FPS profiles
         _, std_prof = detect_hardware_profile("standard")

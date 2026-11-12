@@ -283,6 +283,32 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       </div>
     </div>
 
+    <!-- HTTP WEB PHOTO FRAME (BROWSER VIEWER SERVER) -->
+    <div class="card" id="webframe-card">
+      <h2>
+        <span data-i18n="sec_webframe">🌐 HTTP Web Photo Frame (Browser Viewer)</span>
+        <span id="webframe-status-badge" class="badge">⚪ Off</span>
+      </h2>
+      <div style="font-size: 0.84rem; color: var(--muted); margin-bottom: 12px;" data-i18n="webframe_desc">
+        Host an HTTP browser slideshow sharing this frame's synced album (compatible with iPad 2 / iOS 9, older Android tablets, and modern HD browsers). Each browser renders slides in its own independent order.
+      </div>
+      <div class="form-grid" style="align-items: end; margin-bottom: 12px;">
+        <div class="form-group">
+          <label for="cfg-webframe-profile" data-i18n="lbl_webframe_profile">Browser Compatibility Profile</label>
+          <select id="cfg-webframe-profile" onchange="updateWebFrameProfileLive(this.value)">
+            <option value="auto" data-i18n="opt_wf_auto">Auto-Detect (iPad 2 / Old Android → Legacy 1024×768; Modern → HD)</option>
+            <option value="legacy" data-i18n="opt_wf_legacy">Legacy Safe Mode (iPad 2 / Old Android — 1024×768 Low RAM, No Crash)</option>
+            <option value="hd" data-i18n="opt_wf_hd">Modern HD (1080p + Crossfade Transitions)</option>
+          </select>
+        </div>
+        <div class="form-group" style="display:flex; flex-direction:row; gap:10px; flex-wrap:wrap;">
+          <button type="button" id="btn-webframe-toggle" class="primary" onclick="sendAction('web_frame_toggle')" style="flex:1;" data-i18n="btn_wf_turn_on">🟢 Turn Web Frame ON</button>
+          <a id="btn-webframe-open" href="/frame" target="_blank" rel="noopener" class="btn hidden" style="text-decoration:none; flex:1;" data-i18n="btn_wf_open">↗️ Open Web Frame</a>
+        </div>
+      </div>
+      <div id="webframe-links-box" class="target-banner hidden" style="font-size:0.81rem;"></div>
+    </div>
+
     <!-- SLIDESHOW & ALBUM SETTINGS -->
     <div class="card">
       <h2 data-i18n="sec_settings">🎨 Album, Collage & Schedule Settings</h2>
@@ -1460,6 +1486,57 @@ function renderStatusSnapshot(st) {
   if (upStatus && st.update_status) {
     upStatus.textContent = st.update_status;
   }
+
+  // Render HTTP Web Photo Frame status
+  const wfEnabled = Boolean(st.web_frame_enabled);
+  const wfPort = st.web_frame_port || 8081;
+  const wfClients = st.web_frame_clients || 0;
+  const wfBadge = document.getElementById('webframe-status-badge');
+  const wfBtn = document.getElementById('btn-webframe-toggle');
+  const wfOpen = document.getElementById('btn-webframe-open');
+  const wfLinks = document.getElementById('webframe-links-box');
+  const hostName = st.mdns_hostname || window.location.hostname || 'photoframe.local';
+  const hostIp = st.lan_ip || window.location.hostname || 'photoframe.local';
+  if (wfBadge) {
+    if (wfEnabled) {
+      wfBadge.textContent = `🟢 ON (:${wfPort} · ${wfClients} viewer${wfClients === 1 ? '' : 's'})`;
+      wfBadge.className = 'badge active';
+    } else {
+      wfBadge.textContent = '⚪ OFF';
+      wfBadge.className = 'badge';
+    }
+  }
+  if (wfBtn) {
+    wfBtn.textContent = wfEnabled ? '🛑 Turn Web Frame OFF' : '🟢 Turn Web Frame ON';
+    wfBtn.className = wfEnabled ? 'danger' : 'primary';
+  }
+  if (wfOpen) {
+    wfOpen.classList.toggle('hidden', !wfEnabled);
+    wfOpen.href = (selectedTarget && selectedTarget !== 'self' && selectedTarget !== 'all')
+      ? `http://${hostIp}:${wfPort}/`
+      : '/frame';
+  }
+  if (wfLinks) {
+    wfLinks.classList.toggle('hidden', !wfEnabled);
+    if (wfEnabled) {
+      wfLinks.innerHTML = `📺 <b>Direct HTTP URLs (no login required):</b> <a href="http://${hostName}:${wfPort}/" target="_blank" style="color:#38bdf8;">http://${hostName}:${wfPort}/</a> &nbsp;or&nbsp; <a href="http://${hostIp}:${wfPort}/" target="_blank" style="color:#38bdf8;">http://${hostIp}:${wfPort}/</a> &nbsp;or&nbsp; <a href="/frame" target="_blank" style="color:#38bdf8;">/frame</a>`;
+    }
+  }
+}
+
+async function updateWebFrameProfileLive(profileVal) {
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({target: selectedTarget, web_frame_profile: profileVal})
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast(`Web Frame profile set to ${profileVal}`);
+      fetchStatus(false);
+    }
+  } catch (e) {}
 }
 
 function showToast(msg, isError = false) {
@@ -1537,6 +1614,8 @@ async function fetchStatus(populateForm = false, triggerScan = false) {
       document.getElementById('cfg-night-end').value = cfg.night_end || '06:00';
       const upUrlEl = document.getElementById('cfg-update-url');
       if (upUrlEl) upUrlEl.value = cfg.update_url || '';
+      const wfProfEl = document.getElementById('cfg-webframe-profile');
+      if (wfProfEl && cfg.web_frame_profile) wfProfEl.value = cfg.web_frame_profile;
       formPopulated = true;
     }
   } catch (err) {
@@ -1642,6 +1721,7 @@ async function saveSettings(e) {
     night_start: document.getElementById('cfg-night-start').value,
     night_end: document.getElementById('cfg-night-end').value,
     update_url: (document.getElementById('cfg-update-url')?.value || '').trim(),
+    web_frame_profile: document.getElementById('cfg-webframe-profile')?.value || 'auto',
   };
   try {
     const res = await fetch('/api/settings', {
@@ -1968,6 +2048,9 @@ def create_portal_handler(
 
         def do_GET(self):
             self._sync_bound_port()
+            if hasattr(app, "web_frame") and app.web_frame is not None:
+                if app.web_frame.handle_http_get(self, is_dedicated_port=False):
+                    return
             parsed = urllib.parse.urlparse(self.path)
             if parsed.path in ("/", "/index.html"):
                 body = WEB_PORTAL_HTML.encode("utf-8")

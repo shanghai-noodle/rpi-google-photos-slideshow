@@ -41,6 +41,9 @@ SHARED_SETTINGS_KEYS = (
     "night_mode_enabled",
     "night_start",
     "night_end",
+    "web_frame_enabled",
+    "web_frame_profile",
+    "web_frame_port",
 )
 
 
@@ -208,6 +211,11 @@ class FleetManager:
             "rotation": int(st.get("rotation", 0)),
             "canvas_w": int(st.get("canvas_w", 1920)),
             "canvas_h": int(st.get("canvas_h", 1080)),
+            "web_frame_enabled": bool(st.get("web_frame_enabled", False)),
+            "web_frame_running": bool(st.get("web_frame_running", False)),
+            "web_frame_port": int(st.get("web_frame_port", 8081)),
+            "web_frame_profile": str(st.get("web_frame_profile", "auto")),
+            "web_frame_clients": int(st.get("web_frame_clients", 0)),
             "known_peers": self.get_known_peer_targets(),
         }
 

@@ -35,6 +35,12 @@ from .mdns import (
     set_mdns_base_name,
 )
 from .qrcode_gen import encode_qr_matrix
+from .web_frame import (
+    DEFAULT_WEB_FRAME_PORT,
+    VALID_WEB_FRAME_PROFILES,
+    WebFrameController,
+    normalize_web_frame_profile,
+)
 from .web_portal import start_web_config_server
 
 
@@ -69,6 +75,13 @@ class SlideshowApp:
         self.is_running = True
 
         self.config_store = config_store if config_store is not None else FrameConfigStore()
+        if not hasattr(self.args, "web_frame_enabled"):
+            self.args.web_frame_enabled = False
+        if not hasattr(self.args, "web_frame_port"):
+            self.args.web_frame_port = DEFAULT_WEB_FRAME_PORT
+        if not hasattr(self.args, "web_frame_profile"):
+            self.args.web_frame_profile = "auto"
+
         saved = self.config_store.get_settings()
         if saved:
             for k, v in saved.items():
@@ -78,6 +91,13 @@ class SlideshowApp:
                 self.args.disable_night_mode = not bool(saved["night_mode_enabled"])
 
         set_mdns_base_name(getattr(self.args, "device_name", "") or "photoframe")
+        self.web_frame = WebFrameController(
+            app=self,
+            config_store=self.config_store,
+            port=int(getattr(self.args, "web_frame_port", DEFAULT_WEB_FRAME_PORT)),
+            enabled=bool(getattr(self.args, "web_frame_enabled", False)),
+            profile=normalize_web_frame_profile(getattr(self.args, "web_frame_profile", "auto")),
+        )
 
         self.screen_w = args.width
         self.screen_h = args.height
@@ -1305,6 +1325,13 @@ class SlideshowApp:
                 videos_count = len(self.photo_manager.video_bases)
         from . import _load_version_info
         ver_str, build_num = _load_version_info()
+        wf_status = self.web_frame.get_status_dict() if hasattr(self, "web_frame") and self.web_frame else {
+            "web_frame_enabled": False,
+            "web_frame_running": False,
+            "web_frame_port": DEFAULT_WEB_FRAME_PORT,
+            "web_frame_profile": "auto",
+            "web_frame_clients": 0,
+        }
         return {
             "is_night_mode": self.is_night_mode,
             "night_mode_enabled": self.night_mode_enabled,
@@ -1329,9 +1356,11 @@ class SlideshowApp:
             "lan_ip": self._get_local_ip(),
             "edition": "gphotos",
             "platform": "linux",
+            **wf_status,
         }
 
     def get_current_settings_dict(self) -> Dict[str, Any]:
+        wf_status = self.web_frame.get_status_dict() if hasattr(self, "web_frame") and self.web_frame else {}
         return {
             "album": self.args.album,
             "device_name": getattr(self.args, "device_name", ""),
@@ -1348,6 +1377,9 @@ class SlideshowApp:
             "night_mode_enabled": self.night_mode_enabled,
             "night_start": self.args.night_start,
             "night_end": self.args.night_end,
+            "web_frame_enabled": bool(wf_status.get("web_frame_enabled", getattr(self.args, "web_frame_enabled", False))),
+            "web_frame_port": int(wf_status.get("web_frame_port", getattr(self.args, "web_frame_port", DEFAULT_WEB_FRAME_PORT))),
+            "web_frame_profile": str(wf_status.get("web_frame_profile", getattr(self.args, "web_frame_profile", "auto"))),
         }
 
     def get_ram_log_tail(self, max_lines: int = 35) -> str:
@@ -1412,12 +1444,42 @@ class SlideshowApp:
             clean["night_start"] = str(data["night_start"]).strip()
         if "night_end" in data and str(data["night_end"]).strip():
             clean["night_end"] = str(data["night_end"]).strip()
+        if "web_frame_enabled" in data:
+            clean["web_frame_enabled"] = bool(data["web_frame_enabled"])
+        if "web_frame_profile" in data:
+            clean["web_frame_profile"] = normalize_web_frame_profile(str(data["web_frame_profile"]))
+        if "web_frame_port" in data:
+            try:
+                wfp = int(data["web_frame_port"])
+                if wfp == 0 or (1024 <= wfp <= 65535):
+                    clean["web_frame_port"] = wfp
+            except Exception:
+                pass
 
         self.config_store.save_settings(clean)
+        if hasattr(self, "web_frame") and self.web_frame and (
+            "web_frame_enabled" in clean or "web_frame_profile" in clean or "web_frame_port" in clean
+        ):
+            self.web_frame.set_enabled(
+                enabled=clean.get("web_frame_enabled", self.web_frame.enabled),
+                profile=clean.get("web_frame_profile", self.web_frame.profile),
+                port=clean.get("web_frame_port", self.web_frame.port),
+                persist=False,
+            )
         self._web_action_queue.append(("apply_settings", clean))
         return "Settings saved and applied live!"
 
     def queue_web_action(self, action: str, album_arg: str = "") -> str:
+        if action in ("web_frame_on", "web_frame_off", "web_frame_toggle"):
+            if hasattr(self, "web_frame") and self.web_frame:
+                target_state = (
+                    True if action == "web_frame_on"
+                    else (False if action == "web_frame_off" else not self.web_frame.enabled)
+                )
+                _, msg = self.web_frame.set_enabled(target_state, persist=True)
+                return msg
+            return "Web Photo Frame controller unavailable."
+
         valid = {
             "wake": "Screen woken from Night Mode.",
             "sleep": "Screen placed into Night Mode sleep.",
@@ -1583,6 +1645,8 @@ class SlideshowApp:
         self._start_wifi_keepalive_daemon()
         if getattr(self.args, "web_port", 8080) > 0:
             start_web_config_server(self, self.config_store, port=int(self.args.web_port))
+        if hasattr(self, "web_frame") and self.web_frame and self.web_frame.enabled:
+            self.web_frame.start_dedicated_server()
 
         self.photo_manager = PhotoManager(
             target_w=self.canvas_w,
@@ -1638,6 +1702,8 @@ class SlideshowApp:
             self.clock.tick(self.loop_hz)
 
         self.stop_video_playback()
+        if hasattr(self, "web_frame") and self.web_frame:
+            self.web_frame.stop_dedicated_server()
         pygame.quit()
         logger.info("Slideshow terminated cleanly.")
 
@@ -1774,6 +1840,25 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         type=int,
         default=8080,
         help="Port for password-protected local web configuration portal (default: 8080, 0 to disable)"
+    )
+    parser.add_argument(
+        "--web-frame",
+        dest="web_frame_enabled",
+        action="store_true",
+        default=False,
+        help="Enable the HTTP Browser Photo Frame server on startup (default: disabled until turned on in Admin Portal)"
+    )
+    parser.add_argument(
+        "--web-frame-port",
+        type=int,
+        default=DEFAULT_WEB_FRAME_PORT,
+        help=f"Dedicated HTTP port for the Browser Photo Frame viewer (default: {DEFAULT_WEB_FRAME_PORT})"
+    )
+    parser.add_argument(
+        "--web-frame-profile",
+        choices=list(VALID_WEB_FRAME_PROFILES),
+        default="auto",
+        help="Browser compatibility profile for Web Photo Frame: 'auto', 'legacy' (iPad 2 / Old Android 1024x768), or 'hd'"
     )
     parser.add_argument(
         "--device-name", "--hostname",
