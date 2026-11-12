@@ -316,8 +316,8 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
   var slideCount = 0;
   var isFetchingSlide = false;
   var slideTimer = null;
+  var cleanupTimer = null;
   var hudTimer = null;
-  var preloader = new Image();
 
   function getQueryParam(name) {
     var s = window.location.search || "";
@@ -419,6 +419,8 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
   function resetImgElement(id, visible) {
     var oldEl = document.getElementById(id);
     if (!oldEl || !oldEl.parentNode) return oldEl;
+    oldEl.onload = null;
+    oldEl.onerror = null;
     oldEl.src = BLANK_GIF;
     var fresh = document.createElement("img");
     fresh.id = id;
@@ -433,61 +435,20 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
     return fresh;
   }
 
-  function applySlideUrl(url) {
+  function loadSlide(dir) {
+    if (isFetchingSlide || !isEnabled || isNightMode) return;
     var imgA = document.getElementById("slide-a");
     var imgB = document.getElementById("slide-b");
     if (!imgA) return;
 
-    slideCount += 1;
-    var useDualFade = (effectiveProfile === "hd" && transitionMode !== "none" && imgB);
-
-    if (!useDualFade) {
-      if (imgB) {
-        imgB.src = BLANK_GIF;
-        imgB.style.display = "none";
-      }
-      if (slideCount % 40 === 0) {
-        imgA = resetImgElement("slide-a", true);
-      } else {
-        imgA.src = BLANK_GIF;
-      }
-      imgA.className = "slide-img";
-      imgA.style.display = "block";
-      imgA.style.opacity = "1";
-      imgA.src = url;
-      activeSlot = "a";
-      return;
-    }
-
-    imgA.className = "slide-img fade-transition";
-    imgB.className = "slide-img fade-transition";
-    imgB.style.display = "block";
-
-    if (activeSlot === "a") {
-      imgB.src = url;
-      imgB.style.opacity = "1";
-      imgA.style.opacity = "0";
-      activeSlot = "b";
-      setTimeout(function() {
-        if (activeSlot === "b") imgA.src = BLANK_GIF;
-      }, 750);
-    } else {
-      imgA.src = url;
-      imgA.style.opacity = "1";
-      imgB.style.opacity = "0";
-      activeSlot = "a";
-      setTimeout(function() {
-        if (activeSlot === "a") imgB.src = BLANK_GIF;
-      }, 750);
-    }
-  }
-
-  window.loadSlide = function(dir) {
-    if (isFetchingSlide || !isEnabled || isNightMode) return;
     isFetchingSlide = true;
     if (slideTimer) {
       clearTimeout(slideTimer);
       slideTimer = null;
+    }
+    if (cleanupTimer) {
+      clearTimeout(cleanupTimer);
+      cleanupTimer = null;
     }
 
     var vp = getViewportSize();
@@ -499,21 +460,78 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
       + "&dir=" + encodeURIComponent(direction)
       + "&t=" + (new Date().getTime());
 
-    preloader.onload = function() {
-      preloader.onload = null;
-      preloader.onerror = null;
+    if (effectiveProfile !== "hd" || !imgB) {
+      if (imgB) {
+        imgB.onload = null;
+        imgB.onerror = null;
+        imgB.style.opacity = "0";
+        imgB.style.display = "none";
+        imgB.src = BLANK_GIF;
+      }
+      if (slideCount > 0 && slideCount % 40 === 0) {
+        imgA = resetImgElement("slide-a", true);
+      }
+      imgA.className = "slide-img";
+      imgA.style.display = "block";
+      imgA.onload = function() {
+        imgA.onload = null;
+        imgA.onerror = null;
+        isFetchingSlide = false;
+        slideCount += 1;
+        imgA.style.opacity = "1";
+        activeSlot = "a";
+        scheduleNextSlide();
+      };
+      imgA.onerror = function() {
+        imgA.onload = null;
+        imgA.onerror = null;
+        isFetchingSlide = false;
+        scheduleNextSlide();
+      };
+      imgA.src = url;
+      return;
+    }
+
+    var useFade = (transitionMode !== "none");
+    var cls = useFade ? "slide-img fade-transition" : "slide-img";
+    imgA.className = cls;
+    imgB.className = cls;
+
+    var targetImg = (activeSlot === "a") ? imgB : imgA;
+    var currentImg = (activeSlot === "a") ? imgA : imgB;
+    var nextSlot = (activeSlot === "a") ? "b" : "a";
+
+    targetImg.onload = null;
+    targetImg.onerror = null;
+    targetImg.style.opacity = "0";
+    targetImg.style.display = "block";
+    targetImg.onload = function() {
+      targetImg.onload = null;
+      targetImg.onerror = null;
       isFetchingSlide = false;
-      applySlideUrl(url);
+      slideCount += 1;
+      targetImg.style.opacity = "1";
+      currentImg.style.opacity = "0";
+      activeSlot = nextSlot;
+      cleanupTimer = setTimeout(function() {
+        cleanupTimer = null;
+        if (activeSlot === nextSlot) {
+          currentImg.onload = null;
+          currentImg.onerror = null;
+          currentImg.src = BLANK_GIF;
+        }
+      }, useFade ? 750 : 60);
       scheduleNextSlide();
     };
-    preloader.onerror = function() {
-      preloader.onload = null;
-      preloader.onerror = null;
+    targetImg.onerror = function() {
+      targetImg.onload = null;
+      targetImg.onerror = null;
       isFetchingSlide = false;
       scheduleNextSlide();
     };
-    preloader.src = url;
-  };
+    targetImg.src = url;
+  }
+  window.loadSlide = loadSlide;
 
   function scheduleNextSlide() {
     if (slideTimer) {
@@ -567,12 +585,16 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
             if (overlay) overlay.style.display = "block";
             if (nightMsg) nightMsg.innerHTML = "🖼️ Web Slideshow Viewer is Disabled by Admin";
             var imgA = document.getElementById("slide-a");
-            if (imgA) imgA.src = BLANK_GIF;
+            var imgB = document.getElementById("slide-b");
+            if (imgA) { imgA.onload = null; imgA.onerror = null; imgA.src = BLANK_GIF; }
+            if (imgB) { imgB.onload = null; imgB.onerror = null; imgB.src = BLANK_GIF; }
           } else if (isNightMode) {
             if (overlay) overlay.style.display = "block";
             if (nightMsg) nightMsg.innerHTML = "🌙 Night Mode Sleep (" + (data.night_start || "") + " - " + (data.night_end || "") + ")";
             var imgA2 = document.getElementById("slide-a");
-            if (imgA2) imgA2.src = BLANK_GIF;
+            var imgB2 = document.getElementById("slide-b");
+            if (imgA2) { imgA2.onload = null; imgA2.onerror = null; imgA2.src = BLANK_GIF; }
+            if (imgB2) { imgB2.onload = null; imgB2.onerror = null; imgB2.src = BLANK_GIF; }
           } else {
             if (overlay) overlay.style.display = "none";
             if (wasNightOrDisabled && slideCount > 0) {

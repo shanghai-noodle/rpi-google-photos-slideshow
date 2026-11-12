@@ -536,6 +536,13 @@ class TestWebFrameUnit(unittest.TestCase):
         self.assertIn("Removed", del_msg)
         self.assertFalse(self.store.remove_album_history_entry("nonexistent_id"))
 
+    def test_web_frame_html_clears_onload_and_avoids_double_fetch(self):
+        html = web_frame_mod.WEB_FRAME_HTML
+        self.assertNotIn("new Image()", html)
+        self.assertIn("targetImg.onload = null;", html)
+        self.assertIn("currentImg.onload = null;", html)
+        self.assertIn("cleanupTimer", html)
+
 
 if __name__ == "__main__":
     unittest.main()
