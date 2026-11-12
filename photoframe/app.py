@@ -89,6 +89,8 @@ class SlideshowApp:
                     setattr(self.args, k, v)
             if "night_mode_enabled" in saved:
                 self.args.disable_night_mode = not bool(saved["night_mode_enabled"])
+            if saved.get("web_frame_port") == 8081:
+                self.args.web_frame_port = DEFAULT_WEB_FRAME_PORT
 
         set_mdns_base_name(getattr(self.args, "device_name", "") or "photoframe")
         self.web_frame = WebFrameController(
