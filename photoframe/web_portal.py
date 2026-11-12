@@ -349,9 +349,6 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
           <div class="form-group full" id="group-album">
             <label for="cfg-album" id="lbl-album-dynamic" data-i18n="lbl_album">Google Photos Shared Album URL (leave blank or 'demo' for Demo Showcase Pack)</label>
             <input type="text" id="cfg-album" oninput="autoExtractBaiduPwd()" data-i18n-placeholder="ph_album" placeholder="https://photos.app.goo.gl/... (or leave blank for Demo Showcase)">
-            <div style="font-size: 0.78rem; color: var(--muted); margin-top: 2px;" data-i18n="demo_ai_note">
-              ✨ Note: Built-in Demo Showcase images and videos are AI-generated with Google Gemini &amp; Veo.
-            </div>
           </div>
 
           <div class="form-group hidden" id="group-pwd">
@@ -654,8 +651,7 @@ const I18N = {
     msg_invalid_pw: "Invalid password",
     msg_settings_saved_banner: "✅ Settings saved & applied live at {time}! Active source: {source} • Layout: {layout} ({duration}s)",
     msg_source_album: "Google Photos Album ({album})",
-    msg_source_demo: "Built-in Demo Showcase Pack (AI-Generated)",
-    demo_ai_note: "✨ Note: Built-in Demo Showcase images and videos are AI-generated with Google Gemini & Veo.",
+    msg_source_demo: "Built-in Demo Showcase Pack",
     msg_pw_mismatch: "New passwords do not match",
     msg_pw_updated: "✅ Password updated successfully! Your session remains active.",
     confirm_restart: "Restart the slideshow service now?",
@@ -788,8 +784,7 @@ const I18N = {
     msg_invalid_pw: "密码错误",
     msg_settings_saved_banner: "✅ 设置已于 {time} 保存并实时生效！当前媒体源：{source} • 布局：{layout} ({duration}秒)",
     msg_source_album: "Google 共享相册 ({album})",
-    msg_source_demo: "内置精选演示集 (AI 生成媒体)",
-    demo_ai_note: "✨ 注：内置演示精选集中的图片与视频均由 Google Gemini 与 Veo AI 生成。",
+    msg_source_demo: "内置精选演示集",
     msg_pw_mismatch: "两次输入的新密码不一致",
     msg_pw_updated: "✅ 密码更新成功！当前登录会话保持有效。",
     confirm_restart: "确定要立即重启幻灯片服务吗？",
@@ -922,8 +917,7 @@ const I18N = {
     msg_invalid_pw: "パスワードが正しくありません",
     msg_settings_saved_banner: "✅ {time} に設定を保存・即時適用しました！ソース: {source} • レイアウト: {layout} ({duration}秒)",
     msg_source_album: "Google フォトアルバム ({album})",
-    msg_source_demo: "内蔵デモショーケースパック (AI生成)",
-    demo_ai_note: "✨ 注：内蔵デモショーケースの画像と動画は Google Gemini & Veo による AI 生成メディアです。",
+    msg_source_demo: "内蔵デモショーケースパック",
     msg_pw_mismatch: "新しいパスワードが一致しません",
     msg_pw_updated: "✅ パスワードを更新しました！セッションは維持されます。",
     confirm_restart: "スライドショーサービスを今すぐ再起動しますか？",
@@ -1056,8 +1050,7 @@ const I18N = {
     msg_invalid_pw: "비밀번호가 올바르지 않습니다",
     msg_settings_saved_banner: "✅ {time}에 설정이 저장 및 실시간 적용되었습니다! 활성 소스: {source} • 레이아웃: {layout} ({duration}초)",
     msg_source_album: "Google 포토 앨범 ({album})",
-    msg_source_demo: "내장 데모 쇼케이스 팩 (AI 생성 미디어)",
-    demo_ai_note: "✨ 참고: 내장 데모 쇼케이스의 이미지와 동영상은 Google Gemini 및 Veo AI로 생성되었습니다.",
+    msg_source_demo: "내장 데모 쇼케이스 팩",
     msg_pw_mismatch: "새 비밀번호가 일치하지 않습니다",
     msg_pw_updated: "✅ 비밀번호가 성공적으로 변경되었습니다!",
     confirm_restart: "슬라이드쇼 서비스를 지금 재시작하시겠습니까?",
@@ -1190,8 +1183,7 @@ const I18N = {
     msg_invalid_pw: "Contraseña incorrecta",
     msg_settings_saved_banner: "✅ ¡Configuración guardada y aplicada a las {time}! Fuente: {source} • Diseño: {layout} ({duration}s)",
     msg_source_album: "Álbum de Google Fotos ({album})",
-    msg_source_demo: "Paquete Demo Integrado (Generado por IA)",
-    demo_ai_note: "✨ Nota: Las imágenes y videos del paquete Demo integrado son generados por IA con Google Gemini y Veo.",
+    msg_source_demo: "Paquete Demo Integrado",
     msg_pw_mismatch: "Las contraseñas nuevas no coinciden",
     msg_pw_updated: "✅ ¡Contraseña actualizada correctamente! Tu sesión sigue activa.",
     confirm_restart: "¿Reiniciar el servicio de presentación ahora?",
@@ -1324,8 +1316,7 @@ const I18N = {
     msg_invalid_pw: "Ungültiges Passwort",
     msg_settings_saved_banner: "✅ Einstellungen um {time} gespeichert & live angewendet! Quelle: {source} • Layout: {layout} ({duration}s)",
     msg_source_album: "Google Fotos-Album ({album})",
-    msg_source_demo: "Integriertes Demo-Showcase-Paket (KI-generiert)",
-    demo_ai_note: "✨ Hinweis: Die Bilder und Videos des integrierten Demo-Pakets wurden mit Google Gemini & Veo KI-generiert.",
+    msg_source_demo: "Integriertes Demo-Showcase-Paket",
     msg_pw_mismatch: "Neue Passwörter stimmen nicht überein",
     msg_pw_updated: "✅ Passwort erfolgreich aktualisiert! Ihre Sitzung bleibt aktiv.",
     confirm_restart: "Diashow-Dienst jetzt neu starten?",

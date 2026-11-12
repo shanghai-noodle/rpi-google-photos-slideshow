@@ -36,8 +36,8 @@ A lightweight, native Linux digital photo frame application (`x86_64` & `ARM64`/
   - **Multi-Language UI**: Full localization for **English**, **中文 (Chinese)**, **日本語 (Japanese)**, **한국어 (Korean)**, **Español (Spanish)**, and **Deutsch (German)**.
   - **Security**: Protected by `PBKDF2-HMAC-SHA256` password hashing (default password: `admin`, changeable in the Web UI).
   - **Live Remote Control & Settings**: Change the Google Photos shared album URL, switch collage layouts, adjust slide/video durations, toggle or disable Night Mode, advance/pause slides, switch to the built-in **Demo Showcase Pack**, view live RAM logs, restart the slideshow, or reboot the device.
-- **✨ Built-in AI-Generated Demo Showcase Pack (`demo_media/`)**:
-  - **AI-Generated Media Note**: All bundled Demo Showcase images and videos in `demo_media/` are AI-generated using **Google Gemini & Veo** (**24 photorealistic photos** — 12 cats & dogs + 12 urban landscaping & architectural parks across Portrait `3:4` and Landscape `16:9` — plus **5 lively 10-second Gemini Veo MP4 videos**). Everything is 100% original and MIT-licensed, so a newly installed device works out of the box—even offline—before a personal Google Photos album is configured. Includes automatic fallback to local `demo_media/` photos if any remote URL ever fails.
+- **✨ Built-in Demo Showcase Pack (`demo_media/`)**:
+  - Bundled with **18 curated personal photos & videos** (**12 high-resolution photos** — 8 landscape + 4 portrait — plus **6 optimized 720p H.264 MP4 video clips**), stripped of all metadata and optimized under 20 MB total so a newly installed device works out of the box—even offline—before a Google Photos album is configured. Includes automatic fallback to local `demo_media/` photos if any remote URL ever fails.
 - **🛡️ Zero Disk/Flash Wear & 24/7 USB Wi-Fi Keepalive**:
   - Disables `.pyc` bytecode writes (`sys.dont_write_bytecode = True`), logs strictly to `/dev/shm/slideshow.log` (capped at 2 MB in RAM), and caches album URLs in `/dev/shm/gphotos_cache.json`.
   - Includes a built-in USB Wi-Fi keepalive daemon (`iw dev wlan0 set power_save off` + 45-second gateway heartbeat) so wireless adapters never enter sleep mode during Night Mode.
@@ -201,7 +201,7 @@ Run the included helper script to check process status and tail the RAM log (`/d
 │   ├── test_web_portal.py    # PBKDF2 auth, session cookies, 6-language i18n & HTTP API tests
 │   ├── test_gphotos.py       # Google Photos HTML/RPC parser & RAM cache roundtrip tests
 │   └── test_app_display.py   # Rotation math, FFmpeg transpose mapping & Night Mode schedule tests
-└── demo_media/               # Built-in 30-item Demo Showcase Pack (24 photos + 6 MP4 videos)
+└── demo_media/               # Built-in 18-item Demo Showcase Pack (12 photos + 6 MP4 videos)
 ```
 
 ---

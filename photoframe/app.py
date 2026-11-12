@@ -1151,7 +1151,7 @@ class SlideshowApp:
                 url_font = pygame.font.SysFont("dejavusans,arial,sans-serif", 20, bold=True)
                 sub_font = pygame.font.SysFont("dejavusans,arial,sans-serif", 16, bold=False)
 
-                line1 = "Demo Mode (AI-Generated Media)" if is_demo else "Admin Web Control Portal"
+                line1 = "Demo Showcase Mode" if is_demo else "Admin Web Control Portal"
                 line2 = f"Configure at http://{mdns_host}:{port}"
                 line3 = f"Fallback IP: http://{ip_str}:{port}  •  Scan QR →"
 
