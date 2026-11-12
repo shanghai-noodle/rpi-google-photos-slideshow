@@ -81,6 +81,9 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
 
         en_keys = lang_keys["en"]
         self.assertGreaterEqual(len(en_keys), 60, "Expected at least 60 i18n keys in English dictionary")
+        self.assertIn("btn_theme_light", en_keys)
+        self.assertIn("btn_theme_dark", en_keys)
+        self.assertIn("title_toggle_theme", en_keys)
         for lang in SUPPORTED_LANGUAGES:
             missing = en_keys - lang_keys[lang]
             extra = lang_keys[lang] - en_keys
@@ -94,6 +97,12 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
                 set(),
                 f"Language '{lang}' has unexpected extra i18n keys: {extra}",
             )
+
+    def test_portal_light_dark_theme_toggle_support(self):
+        self.assertIn(':root[data-theme="light"]', WEB_PORTAL_HTML)
+        self.assertIn('id="header-theme-btn"', WEB_PORTAL_HTML)
+        self.assertIn('id="login-theme-btn"', WEB_PORTAL_HTML)
+        self.assertIn("function toggleTheme()", WEB_PORTAL_HTML)
 
     def test_web_portal_http_api_endpoints(self):
         """

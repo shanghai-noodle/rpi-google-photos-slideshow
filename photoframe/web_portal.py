@@ -32,8 +32,20 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Photo Frame Control Portal</title>
+<script>
+(function() {
+  try {
+    var saved = localStorage.getItem('frame_theme');
+    var theme = (saved === 'light' || saved === 'dark') ? saved : 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch (e) {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }
+})();
+</script>
 <style>
   :root {
+    color-scheme: dark;
     --bg: #0b0f19;
     --card: #131b2e;
     --card-border: #23304d;
@@ -46,6 +58,20 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     --danger: #ef4444;
     --input-bg: #0f1626;
   }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f1f5f9;
+    --card: #ffffff;
+    --card-border: #cbd5e1;
+    --text: #0f172a;
+    --muted: #64748b;
+    --accent: #0284c7;
+    --accent-hover: #0369a1;
+    --success: #059669;
+    --warn: #d97706;
+    --danger: #dc2626;
+    --input-bg: #f8fafc;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -53,6 +79,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     color: var(--text);
     line-height: 1.5;
     padding: 20px 14px 48px;
+    transition: background-color 0.18s ease, color 0.18s ease;
   }
   .container { max-width: 780px; margin: 0 auto; }
   header {
@@ -230,22 +257,74 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   .modal-actions {
     display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;
   }
+  .badge.host-badge { background: #0f172a; color: #38bdf8; border-color: #1e293b; }
+  .badge.ver-badge { background: #1e293b; color: #93c5fd; border-color: #334155; }
+  .theme-toggle-btn { padding: 5px 10px; font-size: 0.8rem; border-radius: 8px; white-space: nowrap; }
+  .webframe-url-pill {
+    color: #60a5fa; font-size: 0.85rem; font-weight: 600; text-decoration: none;
+    background: #0f172a; padding: 8px 13px; border-radius: 8px; border: 1px solid #334155;
+    display: inline-block; word-break: break-all;
+  }
+  :root[data-theme="light"] .badge { background: #e2e8f0; color: #334155; border-color: #cbd5e1; }
+  :root[data-theme="light"] .badge.host-badge { background: #e0f2fe; color: #0369a1; border-color: #bae6fd; }
+  :root[data-theme="light"] .badge.ver-badge { background: #eef2ff; color: #3730a3; border-color: #c7d2fe; }
+  :root[data-theme="light"] .badge.active { background: rgba(16, 185, 129, 0.14); color: #047857; border-color: rgba(16, 185, 129, 0.4); }
+  :root[data-theme="light"] .badge.night { background: rgba(245, 158, 11, 0.16); color: #b45309; border-color: rgba(245, 158, 11, 0.45); }
+  :root[data-theme="light"] .badge.offline { background: rgba(239, 68, 68, 0.12); color: #b91c1c; border-color: rgba(239, 68, 68, 0.4); }
+  :root[data-theme="light"] .card { box-shadow: 0 4px 16px rgba(15, 23, 42, 0.07); }
+  :root[data-theme="light"] .card h2 { color: #0f172a; }
+  :root[data-theme="light"] button, :root[data-theme="light"] .btn { background: #f1f5f9; color: #0f172a; border-color: #cbd5e1; }
+  :root[data-theme="light"] button:hover, :root[data-theme="light"] .btn:hover { background: #e2e8f0; border-color: #94a3b8; }
+  :root[data-theme="light"] button.primary, :root[data-theme="light"] .btn.primary { background: var(--accent); color: #ffffff; border-color: transparent; }
+  :root[data-theme="light"] button.primary:hover, :root[data-theme="light"] .btn.primary:hover { background: var(--accent-hover); color: #ffffff; }
+  :root[data-theme="light"] button.success { background: rgba(16, 185, 129, 0.14); color: #047857; border-color: rgba(16, 185, 129, 0.42); }
+  :root[data-theme="light"] button.success:hover { background: rgba(16, 185, 129, 0.22); border-color: rgba(16, 185, 129, 0.55); }
+  :root[data-theme="light"] button.warn { background: rgba(245, 158, 11, 0.16); color: #b45309; border-color: rgba(245, 158, 11, 0.45); }
+  :root[data-theme="light"] button.warn:hover { background: rgba(245, 158, 11, 0.25); border-color: rgba(245, 158, 11, 0.6); }
+  :root[data-theme="light"] button.danger { background: rgba(239, 68, 68, 0.12); color: #dc2626; border-color: rgba(239, 68, 68, 0.4); }
+  :root[data-theme="light"] button.danger:hover { background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.55); }
+  :root[data-theme="light"] label { color: #334155; }
+  :root[data-theme="light"] .toast { background: #ffffff; color: #0f172a; box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18); }
+  :root[data-theme="light"] .confirm-banner { background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.45); color: #047857; }
+  :root[data-theme="light"] .confirm-banner.error { background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.45); color: #dc2626; }
+  :root[data-theme="light"] pre.log-box { background: #f8fafc; color: #1e3a8a; border-color: #cbd5e1; }
+  :root[data-theme="light"] .warn-banner { background: #fffbeb; border-color: #f59e0b; color: #92400e; }
+  :root[data-theme="light"] .fleet-pill:hover { border-color: #94a3b8; background: #f1f5f9; }
+  :root[data-theme="light"] .fleet-pill.selected { border-color: var(--accent); background: rgba(2, 132, 199, 0.09); box-shadow: 0 0 0 1px rgba(2, 132, 199, 0.28); }
+  :root[data-theme="light"] .fleet-pill-top { color: #0f172a; }
+  :root[data-theme="light"] .fleet-pill-meta { color: #0369a1; }
+  :root[data-theme="light"] .target-banner { background: rgba(2, 132, 199, 0.08); border-color: rgba(2, 132, 199, 0.28); color: #0c4a6e; }
+  :root[data-theme="light"] .saved-album-pill { background: #f8fafc; border-color: #cbd5e1; }
+  :root[data-theme="light"] .saved-album-pill:hover { border-color: var(--accent); background: #f1f5f9; }
+  :root[data-theme="light"] .saved-album-pill.active { border-color: var(--success); background: rgba(16, 185, 129, 0.1); }
+  :root[data-theme="light"] .saved-album-title { color: #0f172a; }
+  :root[data-theme="light"] .saved-album-meta { color: #64748b; }
+  :root[data-theme="light"] .saved-use-btn { background: #e0f2fe; border-color: #7dd3fc; color: #0369a1; }
+  :root[data-theme="light"] .saved-use-btn:hover { background: var(--accent); color: #ffffff; border-color: var(--accent); }
+  :root[data-theme="light"] .webframe-url-pill { background: #f0f9ff; color: #0369a1; border-color: #bae6fd; }
+  :root[data-theme="light"] .modal-backdrop { background: rgba(15, 23, 42, 0.48); }
+  :root[data-theme="light"] .modal-card { box-shadow: 0 20px 50px rgba(15, 23, 42, 0.22); }
+  :root[data-theme="light"] .modal-card h3 { color: #0f172a; }
+  :root[data-theme="light"] .modal-card p { color: #334155; }
 </style>
 </head>
 <body>
 <div class="container">
   <!-- LOGIN VIEW -->
   <div id="login-view" class="card hidden">
-    <h2>
+    <h2 style="gap:8px; flex-wrap:wrap;">
       <span data-i18n="login_title">🔒 Photo Frame Login</span>
-      <select id="login-lang-select" onchange="setLanguage(this.value, true, true)" style="width:auto; padding:5px 10px; font-size:0.82rem;">
-        <option value="en">🌐 English</option>
-        <option value="zh">🌐 中文</option>
-        <option value="ja">🌐 日本語</option>
-        <option value="ko">🌐 한국어</option>
-        <option value="es">🌐 Español</option>
-        <option value="de">🌐 Deutsch</option>
-      </select>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <button type="button" id="login-theme-btn" class="theme-toggle-btn" onclick="toggleTheme()">☀️ Light</button>
+        <select id="login-lang-select" onchange="setLanguage(this.value, true, true)" style="width:auto; padding:5px 10px; font-size:0.82rem;">
+          <option value="en">🌐 English</option>
+          <option value="zh">🌐 中文</option>
+          <option value="ja">🌐 日本語</option>
+          <option value="ko">🌐 한국어</option>
+          <option value="es">🌐 Español</option>
+          <option value="de">🌐 Deutsch</option>
+        </select>
+      </div>
     </h2>
     <div id="default-pw-hint" class="warn-banner hidden" data-i18n-html="default_pw_hint">
       Default password is <b>admin</b>. You can change it after signing in.
@@ -264,6 +343,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     <header>
       <h1 data-i18n="portal_title">🖼️ Photo Frame Control Portal</h1>
       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <button type="button" id="header-theme-btn" class="theme-toggle-btn" onclick="toggleTheme()">☀️ Light</button>
         <select id="header-lang-select" onchange="setLanguage(this.value, true, true)" style="width:auto; padding:5px 10px; font-size:0.8rem;">
           <option value="en">🌐 English</option>
           <option value="zh">🌐 中文</option>
@@ -272,8 +352,8 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
           <option value="es">🌐 Español</option>
           <option value="de">🌐 Deutsch</option>
         </select>
-        <span id="header-host-badge" class="badge" style="background:#0f172a; color:#38bdf8; border:1px solid #1e293b;">🌐 photoframe.local</span>
-        <span id="header-version-badge" class="badge" style="background:#1e293b; color:#93c5fd; border:1px solid #334155;">v1.0.3</span>
+        <span id="header-host-badge" class="badge host-badge">🌐 photoframe.local</span>
+        <span id="header-version-badge" class="badge ver-badge">v1.0.3</span>
         <span id="state-badge" class="badge">Loading...</span>
         <button onclick="handleLogout()" style="padding:6px 11px; font-size:0.8rem;" data-i18n="btn_signout">Sign Out</button>
       </div>
@@ -380,7 +460,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
           <div class="form-group full" id="group-saved-albums">
             <label style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
               <span data-i18n="lbl_saved_albums">🔐 Saved Connected Albums &amp; Folders (Encrypted Locally)</span>
-              <span id="active-album-title-badge" class="badge hidden" style="font-size:0.75rem; background:rgba(16,185,129,0.15); color:#6ee7b7; border:1px solid rgba(16,185,129,0.35);"></span>
+              <span id="active-album-title-badge" class="badge active hidden" style="font-size:0.75rem;"></span>
             </label>
             <div id="saved-albums-list" class="saved-albums-grid"></div>
           </div>
@@ -724,7 +804,10 @@ const I18N = {
     saved_albums_empty: "No connected links saved yet. Successfully connected Google Photos albums and Baidu Pan folders are automatically encrypted and stored here.",
     btn_use_saved_album: "Switch",
     badge_saved_active: "Active",
-    broadcast_settings_note: "🌐 Broadcast Mode: Only shared slideshow, collage, video, and schedule settings that can be broadcast to all frames are shown. Select an individual frame above to modify its Album/Folder URL, Saved Links, Hostname, Screen Rotation, or APK Update."
+    broadcast_settings_note: "🌐 Broadcast Mode: Only shared slideshow, collage, video, and schedule settings that can be broadcast to all frames are shown. Select an individual frame above to modify its Album/Folder URL, Saved Links, Hostname, Screen Rotation, or APK Update.",
+    btn_theme_light: "☀️ Light",
+    btn_theme_dark: "🌙 Dark",
+    title_toggle_theme: "Switch between Light and Dark mode"
   },
   zh: {
     login_title: "🔒 数码相框管理登录",
@@ -859,7 +942,10 @@ const I18N = {
     saved_albums_empty: "暂无已保存的历史链接。成功连接并加载媒体的 Google 相册或百度网盘分享链接将自动加密保存在此处。",
     btn_use_saved_album: "切换",
     badge_saved_active: "当前使用",
-    broadcast_settings_note: "🌐 群控广播模式：当前仅显示可同步广播至所有相框的通用播放、拼图、视频与夜间定时设置。如需修改相册/网盘链接、已保存记录、主机名、屏幕旋转或 APK 更新，请在上方选择单个相框。"
+    broadcast_settings_note: "🌐 群控广播模式：当前仅显示可同步广播至所有相框的通用播放、拼图、视频与夜间定时设置。如需修改相册/网盘链接、已保存记录、主机名、屏幕旋转或 APK 更新，请在上方选择单个相框。",
+    btn_theme_light: "☀️ 浅色",
+    btn_theme_dark: "🌙 深色",
+    title_toggle_theme: "切换浅色 / 深色外观模式"
   },
   ja: {
     login_title: "🔒 フォトフレーム ログイン",
@@ -994,7 +1080,10 @@ const I18N = {
     saved_albums_empty: "保存されたリンクはまだありません。接続に成功した Google フォトアルバムや百度網盤フォルダは自動的に暗号化されてここに保存されます。",
     btn_use_saved_album: "切替",
     badge_saved_active: "使用中",
-    broadcast_settings_note: "🌐 一括配信モード：すべてのフレームに一括適用できる共通設定のみ表示しています。アルバムURL、保存済みリンク、ホスト名、画面回転、APK更新を変更するには、上で個別のフレームを選択してください。"
+    broadcast_settings_note: "🌐 一括配信モード：すべてのフレームに一括適用できる共通設定のみ表示しています。アルバムURL、保存済みリンク、ホスト名、画面回転、APK更新を変更するには、上で個別のフレームを選択してください。",
+    btn_theme_light: "☀️ ライト",
+    btn_theme_dark: "🌙 ダーク",
+    title_toggle_theme: "ライトモード / ダークモードを切り替え"
   },
   ko: {
     login_title: "🔒 디지털 액자 로그인",
@@ -1129,7 +1218,10 @@ const I18N = {
     saved_albums_empty: "저장된 링크가 없습니다. 연결에 성공한 Google 포토 앨범이나 바이두 클라우드 폴더는 자동으로 암호화되어 여기에 저장됩니다.",
     btn_use_saved_album: "전환",
     badge_saved_active: "사용 중",
-    broadcast_settings_note: "🌐 전체 브로드캐스트 모드: 모든 액자에 동시에 적용할 수 있는 공통 설정만 표시됩니다. 앨범/폴더 링크, 저장된 링크, 호스트 이름, 화면 회전, APK 업데이트를 변경하려면 위에서 개별 액자를 선택하세요."
+    broadcast_settings_note: "🌐 전체 브로드캐스트 모드: 모든 액자에 동시에 적용할 수 있는 공통 설정만 표시됩니다. 앨범/폴더 링크, 저장된 링크, 호스트 이름, 화면 회전, APK 업데이트를 변경하려면 위에서 개별 액자를 선택하세요.",
+    btn_theme_light: "☀️ 라이트",
+    btn_theme_dark: "🌙 다크",
+    title_toggle_theme: "라이트 / 다크 모드 전환"
   },
   es: {
     login_title: "🔒 Acceso al Marco Digital",
@@ -1264,7 +1356,10 @@ const I18N = {
     saved_albums_empty: "Aún no hay enlaces guardados. Los álbumes de Google Fotos y carpetas de Baidu Pan conectados con éxito se cifran y guardan aquí automáticamente.",
     btn_use_saved_album: "Cambiar",
     badge_saved_active: "Activo",
-    broadcast_settings_note: "🌐 Modo Difusión: Solo se muestran los ajustes compartidos que pueden enviarse a todos los marcos. Selecciona un marco individual arriba para cambiar su URL de Álbum/Carpeta, Enlaces Guardados, Nombre de Host, Rotación de Pantalla o Actualización APK."
+    broadcast_settings_note: "🌐 Modo Difusión: Solo se muestran los ajustes compartidos que pueden enviarse a todos los marcos. Selecciona un marco individual arriba para cambiar su URL de Álbum/Carpeta, Enlaces Guardados, Nombre de Host, Rotación de Pantalla o Actualización APK.",
+    btn_theme_light: "☀️ Claro",
+    btn_theme_dark: "🌙 Oscuro",
+    title_toggle_theme: "Cambiar entre modo claro y oscuro"
   },
   de: {
     login_title: "🔒 Bilderrahmen-Anmeldung",
@@ -1399,11 +1494,22 @@ const I18N = {
     saved_albums_empty: "Noch keine verbundenen Links gespeichert. Erfolgreich verbundene Google Fotos-Alben und Baidu Pan-Ordner werden hier automatisch verschlüsselt gespeichert.",
     btn_use_saved_album: "Wechseln",
     badge_saved_active: "Aktiv",
-    broadcast_settings_note: "🌐 Broadcast-Modus: Es werden nur gemeinsame Einstellungen angezeigt, die an alle Rahmen gesendet werden können. Wählen Sie oben einen einzelnen Rahmen aus, um Album-/Ordner-URL, Gespeicherte Links, Hostname, Bildschirmdrehung oder APK-Update zu ändern."
+    broadcast_settings_note: "🌐 Broadcast-Modus: Es werden nur gemeinsame Einstellungen angezeigt, die an alle Rahmen gesendet werden können. Wählen Sie oben einen einzelnen Rahmen aus, um Album-/Ordner-URL, Gespeicherte Links, Hostname, Bildschirmdrehung oder APK-Update zu ändern.",
+    btn_theme_light: "☀️ Hell",
+    btn_theme_dark: "🌙 Dunkel",
+    title_toggle_theme: "Zwischen hellem und dunklem Modus wechseln"
   }
 };
 
 let currentLang = localStorage.getItem('frame_lang') || 'en';
+let currentTheme = (function() {
+  try {
+    const s = localStorage.getItem('frame_theme');
+    return (s === 'light' || s === 'dark') ? s : 'dark';
+  } catch (e) {
+    return 'dark';
+  }
+})();
 let formPopulated = false;
 let lastStatusSnapshot = null;
 let selectedTarget = 'self';
@@ -1525,6 +1631,32 @@ function autoExtractBaiduPwd() {
   }
 }
 
+function updateThemeButtons() {
+  const label = currentTheme === 'dark' ? t('btn_theme_light') : t('btn_theme_dark');
+  const tip = t('title_toggle_theme');
+  ['login-theme-btn', 'header-theme-btn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) {
+      btn.textContent = label;
+      btn.title = tip;
+      btn.setAttribute('aria-label', tip);
+    }
+  });
+}
+
+function applyTheme(theme, persist = true) {
+  currentTheme = (theme === 'light') ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', currentTheme);
+  if (persist) {
+    try { localStorage.setItem('frame_theme', currentTheme); } catch (e) {}
+  }
+  updateThemeButtons();
+}
+
+function toggleTheme() {
+  applyTheme(currentTheme === 'dark' ? 'light' : 'dark', true);
+}
+
 function setLanguage(lang, syncSelectors = true, userPicked = false) {
   if (!I18N[lang]) lang = 'en';
   currentLang = lang;
@@ -1551,6 +1683,7 @@ function setLanguage(lang, syncSelectors = true, userPicked = false) {
     const key = el.getAttribute('data-i18n-placeholder');
     el.setAttribute('placeholder', t(key));
   });
+  updateThemeButtons();
   if (lastStatusSnapshot) {
     renderStatusSnapshot(lastStatusSnapshot);
   }
@@ -1591,7 +1724,7 @@ function renderFleetBar(nodes) {
     const dot = node.online === false ? '🔴' : (node.is_night_mode ? '🌙' : (node.is_paused ? '⏸️' : '🟢'));
     const platIcon = node.platform === 'android_tv' ? '📺 TV' : '🍓 Linux';
     const edLabel = node.edition === 'baidupan' ? 'Baidu' : 'Google';
-    const selfTag = node.is_self ? ` <span style="font-size:0.72rem; color:#38bdf8;">(${t('fleet_this_frame')})</span>` : '';
+    const selfTag = node.is_self ? ` <span style="font-size:0.72rem; color:var(--accent);">(${t('fleet_this_frame')})</span>` : '';
     const removeBtn = (!node.is_self && (node.is_manual || node.online === false))
       ? `<button type="button" class="fleet-remove-btn" title="Remove" onclick="removePeer(event, '${node.id}')">&times;</button>`
       : '';
@@ -1813,7 +1946,7 @@ function renderStatusSnapshot(st) {
   if (wfLinks) {
     wfLinks.classList.toggle('hidden', !wfEnabled || selectedTarget === 'all');
     if (wfEnabled && selectedTarget !== 'all') {
-      wfLinks.innerHTML = `📺 <b>Web Slideshow Viewer URL (no login required):</b> <a href="http://${hostName}:${targetPort}/frame" target="_blank" style="color:#38bdf8;">http://${hostName}:${targetPort}/frame</a> &nbsp;or&nbsp; <a href="http://${hostIp}:${targetPort}/frame" target="_blank" style="color:#38bdf8;">http://${hostIp}:${targetPort}/frame</a>`;
+      wfLinks.innerHTML = `📺 <b>Web Slideshow Viewer URL (no login required):</b> <a href="http://${hostName}:${targetPort}/frame" target="_blank" style="color:var(--accent);">http://${hostName}:${targetPort}/frame</a> &nbsp;or&nbsp; <a href="http://${hostIp}:${targetPort}/frame" target="_blank" style="color:var(--accent);">http://${hostIp}:${targetPort}/frame</a>`;
     }
   }
 }
@@ -2280,6 +2413,7 @@ function uploadAndInstallApk() {
   xhr.send(file);
 }
 
+applyTheme(currentTheme, false);
 setLanguage(currentLang);
 fetchStatus(true);
 setInterval(() => fetchStatus(false), 5000);
