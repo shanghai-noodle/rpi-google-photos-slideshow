@@ -1577,15 +1577,17 @@ function renderFleetBar(nodes) {
     if (selectedTarget === 'all') {
       banner.textContent = t('target_controlling_all', {count: onlineNodes.length});
     } else if (selectedTarget === 'self' || selectedTarget === selfNode.id) {
+      const selfPortSuffix = (selfNode.port && selfNode.port !== 8080) ? `:${selfNode.port}` : '';
       banner.textContent = t('target_controlling_self', {
-        host: selfNode.mdns_hostname || 'photoframe.local',
-        ip: selfNode.ip || '127.0.0.1'
+        host: `${selfNode.mdns_hostname || 'photoframe.local'}${selfPortSuffix}`,
+        ip: `${selfNode.ip || '127.0.0.1'}${selfPortSuffix}`
       });
     } else {
       const peer = fleetNodes.find(n => n.id === selectedTarget) || {};
+      const peerPortSuffix = (peer.port && peer.port !== 8080) ? `:${peer.port}` : '';
       banner.textContent = t('target_controlling_peer', {
-        host: peer.mdns_hostname || selectedTarget,
-        ip: peer.ip || selectedTarget
+        host: `${peer.mdns_hostname || selectedTarget}${peerPortSuffix}`,
+        ip: peer.id || `${peer.ip || selectedTarget}${peerPortSuffix}`
       });
     }
   }
@@ -1748,6 +1750,10 @@ function renderStatusSnapshot(st) {
   const wfLinks = document.getElementById('webframe-links-box');
   const hostName = st.mdns_hostname || window.location.hostname || 'photoframe.local';
   const hostIp = st.lan_ip || window.location.hostname || 'photoframe.local';
+  const peerObj = (selectedTarget && selectedTarget !== 'self' && selectedTarget !== 'all')
+    ? (fleetNodes.find(n => n.id === selectedTarget) || {})
+    : (fleetNodes.find(n => n.is_self) || {});
+  const targetPort = st.web_port || st.port || peerObj.port || window.location.port || 8080;
   if (wfBadge) {
     if (wfEnabled) {
       wfBadge.textContent = `🟢 Enabled (${wfClients} active viewer${wfClients === 1 ? '' : 's'})`;
@@ -1764,13 +1770,13 @@ function renderStatusSnapshot(st) {
   if (wfOpen) {
     wfOpen.classList.toggle('hidden', !wfEnabled || selectedTarget === 'all');
     wfOpen.href = (selectedTarget && selectedTarget !== 'self' && selectedTarget !== 'all')
-      ? `http://${hostIp}:8080/frame`
+      ? `http://${hostIp}:${targetPort}/frame`
       : '/frame';
   }
   if (wfLinks) {
     wfLinks.classList.toggle('hidden', !wfEnabled || selectedTarget === 'all');
     if (wfEnabled && selectedTarget !== 'all') {
-      wfLinks.innerHTML = `📺 <b>Web Slideshow Viewer URL (no login required):</b> <a href="http://${hostName}:8080/frame" target="_blank" style="color:#38bdf8;">http://${hostName}:8080/frame</a> &nbsp;or&nbsp; <a href="http://${hostIp}:8080/frame" target="_blank" style="color:#38bdf8;">http://${hostIp}:8080/frame</a>`;
+      wfLinks.innerHTML = `📺 <b>Web Slideshow Viewer URL (no login required):</b> <a href="http://${hostName}:${targetPort}/frame" target="_blank" style="color:#38bdf8;">http://${hostName}:${targetPort}/frame</a> &nbsp;or&nbsp; <a href="http://${hostIp}:${targetPort}/frame" target="_blank" style="color:#38bdf8;">http://${hostIp}:${targetPort}/frame</a>`;
     }
   }
 }
@@ -2481,22 +2487,32 @@ def start_web_config_server(app: "SlideshowApp", config_store: FrameConfigStore,
     if port <= 0:
         return
 
-    handler_cls = create_portal_handler(app, config_store, port=port)
     initial_host = getattr(app.args, "device_name", "") or MDNS_HOSTNAME
     start_mdns_responder(app._get_local_ip, hostname=initial_host)
 
     def _server_worker():
-        try:
-            ssl_ctx = create_portal_ssl_context()
-            srv = _ThreadingHTTPServer(("0.0.0.0", port), handler_cls, ssl_context=ssl_ctx)
-            logger.info(
-                "🌐 Password-protected Web Control Portal listening on http://%s:%d (http://0.0.0.0:%d)",
-                get_active_mdns_hostname(),
-                port,
-                port,
-            )
-            srv.serve_forever()
-        except Exception as e:
-            logger.error("Failed to start Web Control Portal on port %d: %s", port, e)
+        ssl_ctx = create_portal_ssl_context()
+        candidates = [port] + [p for p in (8080, 8081, 8082, 8088) if p != port]
+        for cand_port in candidates:
+            try:
+                handler_cls = create_portal_handler(app, config_store, port=cand_port)
+                srv = _ThreadingHTTPServer(("0.0.0.0", cand_port), handler_cls, ssl_context=ssl_ctx)
+                try:
+                    app.args.web_port = cand_port
+                    app._cached_demo_pill = None
+                    app.full_redraw_needed = True
+                except Exception:
+                    pass
+                logger.info(
+                    "🌐 Password-protected Web Control Portal listening on http://%s:%d (http://0.0.0.0:%d)",
+                    get_active_mdns_hostname(),
+                    cand_port,
+                    cand_port,
+                )
+                srv.serve_forever()
+                return
+            except Exception as e:
+                logger.warning("Could not bind Web Control Portal on port %d (%s); trying next candidate port...", cand_port, e)
+        logger.error("Failed to start Web Control Portal on any candidate port %s", candidates)
 
     threading.Thread(target=_server_worker, name="WebConfigServerThread", daemon=True).start()

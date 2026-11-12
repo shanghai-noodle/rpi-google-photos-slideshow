@@ -1465,6 +1465,7 @@ class SlideshowApp:
             "app_version_code": build_num,
             "mdns_hostname": get_active_mdns_hostname(),
             "lan_ip": self._get_local_ip(),
+            "web_port": int(getattr(self.args, "web_port", 8080) or 8080),
             "edition": "gphotos",
             "platform": "linux",
             **wf_status,

@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 PEER_AUTH_HEADER = "X-PhotoFrame-Peer"
 _CLUSTER_SECRET = b"PhotoFrame-LAN-Fleet-Trust-v1-2026"
 PEER_TOKEN = hmac.new(_CLUSTER_SECRET, b"photoframe-lan-peer-v1", hashlib.sha256).hexdigest()
+CANDIDATE_WEB_PORTS = (8080, 8081, 8082, 8088)
 
 SHARED_SETTINGS_KEYS = (
     "language",
@@ -304,12 +305,22 @@ class FleetManager:
             norm = normalize_peer_target(mp, self.port)
             if norm:
                 candidates.add(norm[2])
+        scan_ports = [self.port] + [p for p in CANDIDATE_WEB_PORTS if p != self.port]
         for mdns_ip in get_discovered_lan_ips():
-            candidates.add(f"{mdns_ip}:{self.port}")
+            has_known = any(k.startswith(f"{mdns_ip}:") for k in candidates)
+            if not has_known:
+                for p in scan_ports:
+                    candidates.add(f"{mdns_ip}:{p}")
+            else:
+                candidates.add(f"{mdns_ip}:{self.port}")
 
         my_target = self.get_self_target()
+        my_ip = self._get_my_ip()
+        for p in scan_ports:
+            candidates.discard(f"127.0.0.1:{p}")
+            if p == self.port:
+                candidates.discard(f"{my_ip}:{p}")
         candidates.discard(my_target)
-        candidates.discard(f"127.0.0.1:{self.port}")
         if not candidates:
             return
 
@@ -335,23 +346,29 @@ class FleetManager:
                 if len(parts) == 4 and is_private_lan_ip(my_ip) and not my_ip.startswith("127."):
                     prefix = f"{parts[0]}.{parts[1]}.{parts[2]}."
                     my_last = int(parts[3])
+                    scan_ports = [self.port] + [p for p in CANDIDATE_WEB_PORTS if p != self.port]
 
                     def _check_host(last_octet: int):
                         if last_octet == my_last:
                             return
                         ip = f"{prefix}{last_octet}"
-                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        sock.settimeout(0.22)
-                        try:
-                            if sock.connect_ex((ip, self.port)) == 0:
-                                self.probe_peer(f"{ip}:{self.port}", timeout=0.75)
-                        except Exception:
-                            pass
-                        finally:
+                        for cand_port in scan_ports:
+                            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                            sock.settimeout(0.20)
+                            connected = False
                             try:
-                                sock.close()
+                                connected = (sock.connect_ex((ip, cand_port)) == 0)
                             except Exception:
                                 pass
+                            finally:
+                                try:
+                                    sock.close()
+                                except Exception:
+                                    pass
+                            if connected:
+                                node = self.probe_peer(f"{ip}:{cand_port}", timeout=0.75)
+                                if node is not None:
+                                    break
 
                     with ThreadPoolExecutor(max_workers=32) as pool:
                         list(pool.map(_check_host, range(1, 255)))
@@ -415,11 +432,22 @@ class FleetManager:
         norm = normalize_peer_target(host_input, self.port)
         if not norm:
             return False, "Invalid IP address or hostname", None
-        _, _, target_id = norm
+        ip, initial_port, target_id = norm
         if self.is_self_target(target_id):
             return True, "This frame is already in the fleet", self.build_ping_payload()
 
         node = self.probe_peer(target_id, timeout=1.8)
+        if not node:
+            for alt_port in CANDIDATE_WEB_PORTS:
+                if alt_port == initial_port:
+                    continue
+                alt_target = f"{ip}:{alt_port}"
+                if self.is_self_target(alt_target):
+                    continue
+                node = self.probe_peer(alt_target, timeout=1.2)
+                if node:
+                    target_id = alt_target
+                    break
         if not node:
             return False, f"Could not reach a Photo Frame portal at {target_id}", None
 

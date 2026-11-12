@@ -328,6 +328,7 @@ def start_mdns_responder(
                         pass
 
             _broadcast_announcement(active_host, my_ip)
+            last_probed_ip = my_ip if my_ip not in ("127.0.0.1", "localhost", "0.0.0.0") else ""
             last_defend_time = 0.0
             last_periodic_announce = time.monotonic()
 
@@ -336,10 +337,18 @@ def start_mdns_responder(
                     latest_gen = _CONFIG_GENERATION
                     latest_base = _DESIRED_BASE_NAME
 
-                if latest_gen != seen_gen:
+                cur_ip = ip_provider()
+                ip_became_valid = (
+                    cur_ip not in ("127.0.0.1", "localhost", "0.0.0.0")
+                    and cur_ip != last_probed_ip
+                )
+
+                if latest_gen != seen_gen or ip_became_valid:
                     seen_gen = latest_gen
                     cur_base = latest_base
-                    my_ip = ip_provider()
+                    my_ip = cur_ip
+                    if my_ip not in ("127.0.0.1", "localhost", "0.0.0.0"):
+                        last_probed_ip = my_ip
                     active_host, cur_idx = select_non_conflicting_hostname(
                         sock, cur_base, my_ip, start_index=1
                     )
@@ -407,11 +416,15 @@ def start_mdns_responder(
                     if qname.lower().strip(".") == target_lower and qtype in (1, 255):
                         resp = build_mdns_a_response(tx_id, my_ip, hostname=active_host)
                         if resp:
-                            dest = addr if (qclass & 0x8000) else (MDNS_GROUP, MDNS_PORT)
                             try:
-                                sock.sendto(resp, dest)
+                                sock.sendto(resp, addr)
                             except OSError:
                                 pass
+                            if not (qclass & 0x8000):
+                                try:
+                                    sock.sendto(resp, (MDNS_GROUP, MDNS_PORT))
+                                except OSError:
+                                    pass
                         break
         except Exception as e:
             logger.debug("mDNS responder unavailable: %s", e)
