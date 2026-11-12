@@ -180,6 +180,35 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3);
     color: #bae6fd;
   }
+  .saved-albums-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 8px; margin-top: 4px;
+  }
+  .saved-album-pill {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: #0f172a; border: 1px solid #334155; border-radius: 10px;
+    padding: 9px 12px; transition: all 0.15s; cursor: pointer;
+  }
+  .saved-album-pill:hover { border-color: #60a5fa; background: #152036; }
+  .saved-album-pill.active {
+    border-color: var(--success); background: rgba(16, 185, 129, 0.10);
+    box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3);
+  }
+  .saved-album-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+  .saved-album-title {
+    font-weight: 700; font-size: 0.88rem; color: #f8fafc;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .saved-album-meta {
+    font-size: 0.74rem; color: #94a3b8;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .saved-album-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .saved-use-btn {
+    padding: 5px 10px; font-size: 0.76rem; border-radius: 7px;
+    background: #1e293b; border: 1px solid #475569; color: #bae6fd;
+  }
+  .saved-use-btn:hover { background: var(--accent); color: #0f172a; border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -325,6 +354,14 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
           <div class="form-group hidden" id="group-pwd">
             <label for="cfg-pwd" data-i18n="lbl_pwd">Baidu Pan Extract Code (pwd / 提取码)</label>
             <input type="text" id="cfg-pwd" maxlength="16" data-i18n-placeholder="ph_pwd" placeholder="4-char code (e.g. i5pp)">
+          </div>
+
+          <div class="form-group full" id="group-saved-albums">
+            <label style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+              <span data-i18n="lbl_saved_albums">🔐 Saved Connected Albums &amp; Folders (Encrypted Locally)</span>
+              <span id="active-album-title-badge" class="badge hidden" style="font-size:0.75rem; background:rgba(16,185,129,0.15); color:#6ee7b7; border:1px solid rgba(16,185,129,0.35);"></span>
+            </label>
+            <div id="saved-albums-list" class="saved-albums-grid"></div>
           </div>
 
           <div class="form-group">
@@ -649,7 +686,11 @@ const I18N = {
     btn_wf_turn_on: "🟢 Enable Web Viewer (/frame)",
     btn_wf_turn_off: "🛑 Disable Web Viewer (/frame)",
     btn_wf_open: "↗️ Launch Web Viewer (/frame)",
-    btn_open_webframe: "🖼️ Launch Web Viewer (/frame)"
+    btn_open_webframe: "🖼️ Launch Web Viewer (/frame)",
+    lbl_saved_albums: "🔐 Saved Connected Albums & Folders (Encrypted Locally)",
+    saved_albums_empty: "No connected links saved yet. Successfully connected Google Photos albums and Baidu Pan folders are automatically encrypted and stored here.",
+    btn_use_saved_album: "Switch",
+    badge_saved_active: "Active"
   },
   zh: {
     login_title: "🔒 数码相框管理登录",
@@ -778,7 +819,11 @@ const I18N = {
     btn_wf_turn_on: "🟢 启用网页端相框 (/frame)",
     btn_wf_turn_off: "🛑 关闭网页端相框 (/frame)",
     btn_wf_open: "↗️ 打开网页端相框 (/frame)",
-    btn_open_webframe: "🖼️ 打开网页端相框 (/frame)"
+    btn_open_webframe: "🖼️ 打开网页端相框 (/frame)",
+    lbl_saved_albums: "🔐 已保存的历史连接相册与网盘目录（本地加密存储）",
+    saved_albums_empty: "暂无已保存的历史链接。成功连接并加载媒体的 Google 相册或百度网盘分享链接将自动加密保存在此处。",
+    btn_use_saved_album: "切换",
+    badge_saved_active: "当前使用"
   },
   ja: {
     login_title: "🔒 フォトフレーム ログイン",
@@ -907,7 +952,11 @@ const I18N = {
     btn_wf_turn_on: "🟢 Web ビューアを有効化 (/frame)",
     btn_wf_turn_off: "🛑 Web ビューアを無効化 (/frame)",
     btn_wf_open: "↗️ Web ビューアを開く (/frame)",
-    btn_open_webframe: "🖼️ Web ビューアを開く (/frame)"
+    btn_open_webframe: "🖼️ Web ビューアを開く (/frame)",
+    lbl_saved_albums: "🔐 保存済みの接続アルバム・フォルダ（ローカル暗号化保存）",
+    saved_albums_empty: "保存されたリンクはまだありません。接続に成功した Google フォトアルバムや百度網盤フォルダは自動的に暗号化されてここに保存されます。",
+    btn_use_saved_album: "切替",
+    badge_saved_active: "使用中"
   },
   ko: {
     login_title: "🔒 디지털 액자 로그인",
@@ -1036,7 +1085,11 @@ const I18N = {
     btn_wf_turn_on: "🟢 웹 뷰어 켜기 (/frame)",
     btn_wf_turn_off: "🛑 웹 뷰어 끄기 (/frame)",
     btn_wf_open: "↗️ 웹 뷰어 열기 (/frame)",
-    btn_open_webframe: "🖼️ 웹 뷰어 열기 (/frame)"
+    btn_open_webframe: "🖼️ 웹 뷰어 열기 (/frame)",
+    lbl_saved_albums: "🔐 저장된 연결 앨범 및 폴더 (로컬 암호화 저장)",
+    saved_albums_empty: "저장된 링크가 없습니다. 연결에 성공한 Google 포토 앨범이나 바이두 클라우드 폴더는 자동으로 암호화되어 여기에 저장됩니다.",
+    btn_use_saved_album: "전환",
+    badge_saved_active: "사용 중"
   },
   es: {
     login_title: "🔒 Acceso al Marco Digital",
@@ -1165,7 +1218,11 @@ const I18N = {
     btn_wf_turn_on: "🟢 Activar Visor Web (/frame)",
     btn_wf_turn_off: "🛑 Desactivar Visor Web (/frame)",
     btn_wf_open: "↗️ Abrir Visor Web (/frame)",
-    btn_open_webframe: "🖼️ Abrir Visor Web (/frame)"
+    btn_open_webframe: "🖼️ Abrir Visor Web (/frame)",
+    lbl_saved_albums: "🔐 Álbumes y Carpetas Conectados Guardados (Cifrados Localmente)",
+    saved_albums_empty: "Aún no hay enlaces guardados. Los álbumes de Google Fotos y carpetas de Baidu Pan conectados con éxito se cifran y guardan aquí automáticamente.",
+    btn_use_saved_album: "Cambiar",
+    badge_saved_active: "Activo"
   },
   de: {
     login_title: "🔒 Bilderrahmen-Anmeldung",
@@ -1294,7 +1351,11 @@ const I18N = {
     btn_wf_turn_on: "🟢 Web-Viewer aktivieren (/frame)",
     btn_wf_turn_off: "🛑 Web-Viewer deaktivieren (/frame)",
     btn_wf_open: "↗️ Web-Viewer öffnen (/frame)",
-    btn_open_webframe: "🖼️ Web-Viewer öffnen (/frame)"
+    btn_open_webframe: "🖼️ Web-Viewer öffnen (/frame)",
+    lbl_saved_albums: "🔐 Gespeicherte verbundene Alben & Ordner (Lokal verschlüsselt)",
+    saved_albums_empty: "Noch keine verbundenen Links gespeichert. Erfolgreich verbundene Google Fotos-Alben und Baidu Pan-Ordner werden hier automatisch verschlüsselt gespeichert.",
+    btn_use_saved_album: "Wechseln",
+    badge_saved_active: "Aktiv"
   }
 };
 
@@ -1305,6 +1366,98 @@ let selectedTarget = 'self';
 let fleetNodes = [];
 let activeTargetEdition = 'gphotos';
 let activeTargetPlatform = 'linux';
+let savedAlbumsList = [];
+let lastActiveAlbumUrl = '';
+let lastActiveAlbumTitle = '';
+
+function escapeHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderSavedAlbums(list, currentAlbum, currentTitle) {
+  savedAlbumsList = Array.isArray(list) ? list : [];
+  if (typeof currentAlbum === 'string') lastActiveAlbumUrl = currentAlbum;
+  if (typeof currentTitle === 'string') lastActiveAlbumTitle = currentTitle;
+
+  const badgeEl = document.getElementById('active-album-title-badge');
+  if (badgeEl) {
+    if (lastActiveAlbumTitle && lastActiveAlbumUrl && lastActiveAlbumUrl !== 'demo') {
+      badgeEl.textContent = `📂 ${lastActiveAlbumTitle}`;
+      badgeEl.classList.remove('hidden');
+    } else {
+      badgeEl.classList.add('hidden');
+    }
+  }
+
+  const container = document.getElementById('saved-albums-list');
+  if (!container) return;
+  if (!savedAlbumsList.length) {
+    container.innerHTML = `<div style="font-size:0.79rem; color:var(--muted); grid-column:1/-1;">${escapeHtml(t('saved_albums_empty'))}</div>`;
+    return;
+  }
+
+  const normCur = String(lastActiveAlbumUrl || '').trim();
+  container.innerHTML = savedAlbumsList.map(item => {
+    const id = escapeHtml(item.id || item.album || '');
+    const url = String(item.album || '');
+    const pwd = String(item.pwd || '');
+    const isBaidu = item.edition === 'baidupan' || url.toLowerCase().includes('pan.baidu.com');
+    const icon = isBaidu ? '☁️' : '📸';
+    const rawName = String(item.name || '').trim();
+    const shortUrl = url.replace(/^https?:\/\//i, '');
+    const displayTitle = rawName || shortUrl;
+    const isCurrent = normCur && normCur !== 'demo' && (url === normCur || shortUrl === normCur.replace(/^https?:\/\//i, ''));
+    const pwdTag = pwd ? ` • pwd: ${escapeHtml(pwd)}` : '';
+    const subLine = rawName ? `${escapeHtml(shortUrl)}${pwdTag}` : (pwd ? `pwd: ${escapeHtml(pwd)}` : (isBaidu ? 'Baidu Pan' : 'Google Photos'));
+    const activeBadge = isCurrent
+      ? `<span class="badge active" style="font-size:0.7rem; padding:2px 7px;">🟢 ${escapeHtml(t('badge_saved_active'))}</span>`
+      : `<button type="button" class="saved-use-btn" onclick="applySavedAlbum(event, '${id}')">${escapeHtml(t('btn_use_saved_album'))}</button>`;
+    return `<div class="saved-album-pill ${isCurrent ? 'active' : ''}" onclick="applySavedAlbum(event, '${id}')">
+      <div class="saved-album-info">
+        <div class="saved-album-title" title="${escapeHtml(displayTitle)}">${icon} ${escapeHtml(displayTitle)}</div>
+        <div class="saved-album-meta" title="${escapeHtml(url)}">${subLine}</div>
+      </div>
+      <div class="saved-album-actions">
+        ${activeBadge}
+        <button type="button" class="fleet-remove-btn" title="Remove" onclick="deleteSavedAlbum(event, '${id}')">&times;</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function applySavedAlbum(ev, entryId) {
+  if (ev) ev.stopPropagation();
+  const entry = savedAlbumsList.find(x => (x.id || x.album) === entryId);
+  if (!entry) return;
+  const albumEl = document.getElementById('cfg-album');
+  const pwdEl = document.getElementById('cfg-pwd');
+  if (albumEl) albumEl.value = entry.album || '';
+  if (pwdEl) pwdEl.value = entry.pwd || '';
+  await sendAction('resync');
+}
+
+async function deleteSavedAlbum(ev, entryId) {
+  if (ev) ev.stopPropagation();
+  const res = await fetch('/api/action', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({action: 'delete_saved_album', album: entryId, target: selectedTarget})
+  });
+  const data = await res.json();
+  if (res.ok && data.ok) {
+    savedAlbumsList = savedAlbumsList.filter(x => (x.id || x.album) !== entryId);
+    renderSavedAlbums(savedAlbumsList, lastActiveAlbumUrl, lastActiveAlbumTitle);
+    showToast(data.message || 'Removed saved link');
+    fetchStatus(false);
+  } else {
+    showToast(data.error || 'Failed to remove link', true);
+  }
+}
 
 function t(key, vars = {}) {
   const dict = I18N[currentLang] || I18N.en;
@@ -1358,6 +1511,7 @@ function setLanguage(lang, syncSelectors = true, userPicked = false) {
   if (fleetNodes && fleetNodes.length > 0) {
     renderFleetBar(fleetNodes);
   }
+  renderSavedAlbums(savedAlbumsList, lastActiveAlbumUrl, lastActiveAlbumTitle);
 }
 
 function renderFleetBar(nodes) {
@@ -1526,7 +1680,8 @@ function renderStatusSnapshot(st) {
     document.getElementById('btn-wake-sleep').textContent = t('btn_sleep_now');
   }
 
-  const modePrefix = st.is_demo_mode ? '✨ Demo: ' : '';
+  const titlePrefix = (!st.is_demo_mode && st.album_title) ? `📂 ${st.album_title} • ` : '';
+  const modePrefix = st.is_demo_mode ? '✨ Demo: ' : titlePrefix;
   document.getElementById('stat-album').textContent = t('stat_items_fmt', {
     prefix: modePrefix,
     photos: st.photo_count,
@@ -1654,6 +1809,13 @@ async function fetchStatus(populateForm = false, triggerScan = false) {
     }
     renderStatusSnapshot(data.status);
     document.getElementById('log-box').textContent = data.log_tail || '(No log entries)';
+    if (data.settings && Array.isArray(data.settings.saved_albums)) {
+      renderSavedAlbums(
+        data.settings.saved_albums,
+        data.settings.album || '',
+        data.status?.album_title || data.settings?.album_title || ''
+      );
+    }
 
     if (populateForm || !formPopulated) {
       const cfg = data.settings;

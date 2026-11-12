@@ -456,6 +456,86 @@ class TestWebFrameUnit(unittest.TestCase):
             portal_srv.shutdown()
             portal_srv.server_close()
 
+    def test_encrypted_album_history_vault_and_only_connected_links(self):
+        # 1. Verify Google Photos album title extraction
+        html_og = '<meta property="og:title" content="M3 · Friday, Nov 21, 2025 📸"><title>Google Photos</title>'
+        self.assertEqual(PhotoManager.extract_gphotos_album_title(html_og), "M3")
+
+        html_title = "<title>Family Vacation &amp; 2025 - Google Photos</title>"
+        self.assertEqual(PhotoManager.extract_gphotos_album_title(html_title), "Family Vacation & 2025")
+
+        self.assertEqual(PhotoManager.extract_gphotos_album_title("<title>Google Photos</title>"), "")
+        self.assertEqual(PhotoManager.extract_gphotos_album_title("<title>Sign in - Google Accounts</title>"), "")
+        self.assertEqual(PhotoManager.extract_gphotos_album_title(""), "")
+
+        # 2. Verify encrypted storage at rest in .frame_config.json
+        secret_url = "https://photos.app.goo.gl/SecretAlbumToken999"
+        secret_title = "Hawaii Sunset Collection"
+        self.assertFalse(self.store.record_connected_album("demo", "Ignored"))
+        self.assertFalse(self.store.record_connected_album("", "Ignored"))
+        self.assertTrue(
+            self.store.record_connected_album(
+                secret_url,
+                name=secret_title,
+                edition="gphotos",
+            )
+        )
+
+        with open(self.cfg_path, "r", encoding="utf-8") as f:
+            raw_disk = f.read()
+        self.assertNotIn("SecretAlbumToken999", raw_disk)
+        self.assertNotIn("Hawaii Sunset Collection", raw_disk)
+        disk_json = json.loads(raw_disk)
+        self.assertTrue(len(disk_json.get("vault_secret", "")) >= 32)
+        self.assertEqual(len(disk_json.get("encrypted_album_history", [])), 1)
+        self.assertTrue(disk_json["encrypted_album_history"][0].startswith("v1."))
+
+        # 3. Verify decryption, deduplication, and name preservation
+        history = self.store.get_album_history()
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["album"], secret_url)
+        self.assertEqual(history[0]["name"], secret_title)
+        entry_id = history[0]["id"]
+
+        # Re-recording with empty name preserves existing title
+        self.store.record_connected_album(secret_url, name="")
+        history2 = self.store.get_album_history()
+        self.assertEqual(len(history2), 1)
+        self.assertEqual(history2[0]["name"], secret_title)
+
+        # Tampered token in encrypted_album_history is rejected by HMAC verification
+        disk_json["encrypted_album_history"].append("v1.00112233445566778899aabbccddeeff.YWJj.deadbeef")
+        disk_json["encrypted_album_history"].append("malformed_token")
+        with open(self.cfg_path, "w", encoding="utf-8") as f:
+            json.dump(disk_json, f)
+        reloaded_store = FrameConfigStore(self.cfg_path)
+        self.assertEqual(len(reloaded_store.get_album_history()), 1)
+
+        # 4. Verify PhotoManager ONLY calls on_album_connected when >0 remote items are discovered
+        connected_calls = []
+        self.app.photo_manager.on_album_connected = lambda u, t, p="": connected_calls.append((u, t, p))
+
+        with mock.patch.object(self.app.photo_manager, "fetch_google_photos", return_value=[]):
+            self.app.photo_manager.gphotos_url = "https://photos.app.goo.gl/InvalidOrEmptyLink"
+            self.app.photo_manager.refresh_sources()
+        self.assertEqual(connected_calls, [])
+
+        def _fake_fetch(url):
+            self.app.photo_manager.album_title = "M3"
+            return ["https://lh3.googleusercontent.com/pw/img1=w1080-h1080"]
+
+        with mock.patch.object(self.app.photo_manager, "fetch_google_photos", side_effect=_fake_fetch):
+            self.app.photo_manager.gphotos_url = "https://photos.app.goo.gl/ValidAlbumLink"
+            self.app.photo_manager.refresh_sources()
+        self.assertEqual(len(connected_calls), 1)
+        self.assertEqual(connected_calls[0][0], "https://photos.app.goo.gl/ValidAlbumLink")
+        self.assertEqual(connected_calls[0][1], "M3")
+
+        # 5. Verify deletion via queue_web_action and remove_album_history_entry
+        del_msg = self.app.queue_web_action("delete_saved_album", entry_id)
+        self.assertIn("Removed", del_msg)
+        self.assertFalse(self.store.remove_album_history_entry("nonexistent_id"))
+
 
 if __name__ == "__main__":
     unittest.main()

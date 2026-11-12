@@ -69,9 +69,11 @@ class PhotoManager(GooglePhotosMixin):
         cache_file: str = DEFAULT_RAM_CACHE,
         hw_profile: Optional[Dict[str, Any]] = None,
         auto_refresh: bool = True,
+        on_album_connected: Optional[Any] = None,
     ):
         self.target_w = target_w
         self.target_h = target_h
+        self.on_album_connected = on_album_connected
         self.hw_profile = hw_profile or HARDWARE_PROFILES["standard"]
         self.cdn_scale = float(self.hw_profile.get("cdn_scale", 1.0))
         cdn_max = max(320, int(round(max(self.target_w, self.target_h) * self.cdn_scale)))
@@ -82,6 +84,7 @@ class PhotoManager(GooglePhotosMixin):
         self.video_fps = int(self.hw_profile.get("video_fps", 18))
 
         self.gphotos_url = self.normalize_gphotos_url(album_url)
+        self.album_title = ""
         self.local_dir = os.path.abspath(local_dir) if local_dir else None
         self.shuffle = shuffle
         self.photo_fit = photo_fit

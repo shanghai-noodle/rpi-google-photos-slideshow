@@ -9,6 +9,7 @@ built-in Demo Showcase (`demo_media/`) discovery.
 from __future__ import annotations
 
 import glob
+import html as html_lib
 import io
 import json
 import os
@@ -106,6 +107,33 @@ class GooglePhotosMixin:
         with self._sources_lock:
             return base in self.video_bases
 
+    @staticmethod
+    def extract_gphotos_album_title(page_html: str) -> str:
+        if not page_html:
+            return ""
+        og_m = re.search(
+            r'<meta\s+[^>]*property=["\']og:title["\'][^>]*content=["\'](.*?)["\']',
+            page_html,
+            re.IGNORECASE | re.DOTALL,
+        ) or re.search(
+            r'<meta\s+[^>]*content=["\'](.*?)["\'][^>]*property=["\']og:title["\']',
+            page_html,
+            re.IGNORECASE | re.DOTALL,
+        )
+        raw = ""
+        if og_m:
+            raw = html_lib.unescape(og_m.group(1)).strip()
+            raw = re.sub(r"\s*·\s*.*$", "", raw).strip()
+        if not raw:
+            t_m = re.search(r"<title[^>]*>(.*?)</title>", page_html, re.IGNORECASE | re.DOTALL)
+            if t_m:
+                raw = html_lib.unescape(t_m.group(1)).strip()
+                raw = re.sub(r"\s*-\s*Google\s+Photos\s*$", "", raw, flags=re.IGNORECASE).strip()
+        low = raw.lower()
+        if low in ("google photos", "shared album", "") or "sign in" in low or "google accounts" in low:
+            return ""
+        return raw
+
     def _load_cached_photos(self) -> Tuple[List[str], float, bool]:
         """Returns `(formatted_urls, updated_at, has_video_metadata)`."""
         candidates = [self.cache_file]
@@ -126,6 +154,9 @@ class GooglePhotosMixin:
                 has_videos_key = "videos" in data
                 raw_videos = data.get("videos", []) if has_videos_key else []
                 updated_at = float(data.get("updated_at", 0.0))
+                cached_title = str(data.get("album_title") or "").strip()
+                if cached_title:
+                    self.album_title = cached_title
                 if raw_urls:
                     with self._sources_lock:
                         self.video_bases = set(
@@ -164,6 +195,7 @@ class GooglePhotosMixin:
                 )))
             payload = {
                 "album_url": self.gphotos_url,
+                "album_title": getattr(self, "album_title", "") or "",
                 "urls": clean_urls,
                 "videos": clean_videos,
                 "count": len(clean_urls),
@@ -236,6 +268,9 @@ class GooglePhotosMixin:
             if auth_req_m:
                 auth_key = auth_req_m.group(1)
 
+        extracted_title = self.extract_gphotos_album_title(html)
+        if extracted_title:
+            self.album_title = extracted_title
         return photos, videos, page_token, album_key, auth_key, wiz_data
 
     def fetch_google_photos(self, url: str) -> List[str]:
@@ -286,7 +321,7 @@ class GooglePhotosMixin:
                     initial_photos=result_urls,
                     initial_videos=page1_videos,
                 )
-            else:
+            elif result_urls:
                 self._save_cached_photos(result_urls, list(page1_videos))
 
             return shuffled_page1
@@ -482,7 +517,13 @@ class GooglePhotosMixin:
             "Google Photos album sync complete: %d total items (%d videos).",
             len(all_urls), len(all_vids)
         )
-        self._save_cached_photos(all_urls, all_vids)
+        if all_urls:
+            self._save_cached_photos(all_urls, all_vids)
+            if callable(getattr(self, "on_album_connected", None)):
+                try:
+                    self.on_album_connected(self.gphotos_url, getattr(self, "album_title", ""), "")
+                except Exception as e:
+                    logger.debug("on_album_connected callback error: %s", e)
 
     def scan_local_directory(self, directory: Optional[str] = None) -> List[str]:
         target_dir = directory or self.local_dir
@@ -511,6 +552,11 @@ class GooglePhotosMixin:
         sources: List[str] = []
         if self.gphotos_url:
             sources = self.fetch_google_photos(self.gphotos_url)
+            if sources and callable(getattr(self, "on_album_connected", None)):
+                try:
+                    self.on_album_connected(self.gphotos_url, getattr(self, "album_title", ""), "")
+                except Exception as e:
+                    logger.debug("on_album_connected callback error: %s", e)
         if not sources:
             with self._sources_lock:
                 self.video_bases = set()
@@ -542,6 +588,7 @@ class GooglePhotosMixin:
         self._album_generation += 1
         self._is_syncing_album = False
         self.gphotos_url = normalized
+        self.album_title = ""
 
         if self.cache_file and os.path.exists(self.cache_file):
             try:

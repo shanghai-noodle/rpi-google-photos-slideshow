@@ -1348,6 +1348,7 @@ class SlideshowApp:
             "is_paused": self.is_paused,
             "video_playing": self._video_playing,
             "is_demo_mode": is_demo,
+            "album_title": str(getattr(self.photo_manager, "album_title", "") or "") if self.photo_manager else "",
             "photo_count": items_count,
             "media_count": items_count,
             "video_count": videos_count,
@@ -1373,6 +1374,8 @@ class SlideshowApp:
         wf_status = self.web_frame.get_status_dict() if hasattr(self, "web_frame") and self.web_frame else {}
         return {
             "album": self.args.album,
+            "album_title": str(getattr(self.photo_manager, "album_title", "") or "") if self.photo_manager else "",
+            "saved_albums": self.config_store.get_album_history(),
             "device_name": getattr(self.args, "device_name", ""),
             "language": getattr(self.args, "language", "en"),
             "landscape_mode": self.args.landscape_mode,
@@ -1479,7 +1482,23 @@ class SlideshowApp:
         self._web_action_queue.append(("apply_settings", clean))
         return "Settings saved and applied live!"
 
+    def _on_album_connected(self, album_url: str, title: str = "", pwd: str = "") -> None:
+        if not album_url or str(album_url).strip().lower() in ("demo", "none", "default"):
+            return
+        try:
+            self.config_store.record_connected_album(
+                album_url=album_url,
+                name=title or "",
+                pwd=pwd or "",
+                edition="gphotos",
+            )
+        except Exception as e:
+            logger.debug("Failed to record connected album: %s", e)
+
     def queue_web_action(self, action: str, album_arg: str = "") -> str:
+        if action == "delete_saved_album":
+            removed = self.config_store.remove_album_history_entry(album_arg)
+            return "Removed saved album from encrypted history." if removed else "Saved album not found."
         if action in ("web_frame_on", "web_frame_off", "web_frame_toggle"):
             if hasattr(self, "web_frame") and self.web_frame:
                 target_state = (
@@ -1681,6 +1700,7 @@ class SlideshowApp:
             resync_hours=self.args.refresh_hours,
             cache_file=self.args.cache_file,
             hw_profile=self.hw_profile,
+            on_album_connected=self._on_album_connected,
         )
         self.current_photo_surf, self.current_video_list = self.photo_manager.get_initial_slide()
         self.full_redraw_needed = True

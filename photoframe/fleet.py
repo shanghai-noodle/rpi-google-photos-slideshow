@@ -502,8 +502,8 @@ class FleetManager:
                         payload["album"] = album_arg
                         if pwd_arg:
                             payload["pwd"] = pwd_arg
-                elif action == "check_update":
-                    if album_arg and node_edition == self.edition:
+                elif action in ("check_update", "delete_saved_album"):
+                    if album_arg and (action == "delete_saved_album" or node_edition == self.edition):
                         payload["album"] = album_arg
                 body = json.dumps(payload).encode("utf-8")
                 code, resp = self._http_request_peer(ip, port, "POST", "/api/action", body_bytes=body, timeout=3.5)
