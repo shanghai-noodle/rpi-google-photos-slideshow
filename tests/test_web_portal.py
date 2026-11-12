@@ -321,14 +321,18 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
         self.assertEqual(st_b["settings"]["duration"], 10)
 
         # 5. Smart Broadcast settings to "all" from Frame A -> updates duration on both A and B,
-        #    while preserving each frame's individual device_name!
+        #    while preserving each frame's individual device_name, album, and rotate!
+        self.store.update_settings({"album": "https://photos.app.goo.gl/FrameAAlbum", "rotate": 270})
+        store_b.update_settings({"album": "https://photos.app.goo.gl/FrameBAlbum", "rotate": 0})
         code, bcast_res, _ = req_a(
             "/api/settings",
             method="POST",
             cookie=cookie_a,
             payload={
                 "target": "all",
+                "album": "https://photos.app.goo.gl/ShouldNotOverwriteInAllMode",
                 "device_name": "should-not-overwrite-in-all-mode",
+                "rotate": 90,
                 "duration": 42,
                 "transition": "fade",
             },
@@ -339,8 +343,64 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
         app_b._process_web_actions()
         self.assertEqual(app_a.slide_duration, 42.0)
         self.assertEqual(app_b.slide_duration, 42.0)
+        self.assertEqual(self.store.get_settings()["album"], "https://photos.app.goo.gl/FrameAAlbum")
+        self.assertEqual(store_b.get_settings()["album"], "https://photos.app.goo.gl/FrameBAlbum")
+        self.assertEqual(self.store.get_settings()["rotate"], 270)
+        self.assertEqual(store_b.get_settings()["rotate"], 0)
         self.assertEqual(self.store.get_settings()["device_name"], "living-room")
         self.assertEqual(store_b.get_settings()["device_name"], "bedroom-frame")
+
+    def test_touchscreen_and_mouse_pause_toggle_with_debounce(self):
+        """
+        Verifies that tapping the screen (MOUSEBUTTONDOWN button=1 or FINGERDOWN) toggles
+        pause/resume, wakes from Night Mode if sleeping, and debounces duplicate events within 250ms.
+        """
+        import types
+        from unittest.mock import patch
+        import photoframe.app as app_mod
+
+        fake_pg = types.SimpleNamespace(
+            QUIT=256,
+            KEYDOWN=768,
+            MOUSEBUTTONDOWN=1025,
+            FINGERDOWN=1792,
+            K_ESCAPE=27,
+            K_q=113,
+            K_SPACE=32,
+            K_RETURN=13,
+            K_RIGHT=1073741903,
+            K_n=110,
+            K_LEFT=1073741904,
+            K_p=112,
+        )
+
+        app = SlideshowApp(parse_args([]), hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
+        self.assertFalse(app.is_paused)
+
+        class FakeEvent:
+            def __init__(self, ev_type, **kwargs):
+                self.type = ev_type
+                for k, v in kwargs.items():
+                    setattr(self, k, v)
+
+        # 1. Single MOUSEBUTTONDOWN (left click / X11 touch) pauses slideshow
+        app._last_touch_toggle_time = 0.0
+        fake_pg.event = types.SimpleNamespace(get=lambda: [FakeEvent(fake_pg.MOUSEBUTTONDOWN, button=1)])
+        with patch.object(app_mod, "pygame", fake_pg):
+            app.handle_events()
+        self.assertTrue(app.is_paused)
+
+        # 2. Immediate FINGERDOWN within 250ms is debounced (stays paused)
+        fake_pg.event = types.SimpleNamespace(get=lambda: [FakeEvent(fake_pg.FINGERDOWN)])
+        with patch.object(app_mod, "pygame", fake_pg):
+            app.handle_events()
+        self.assertTrue(app.is_paused)
+
+        # 3. Tap after 250ms resumes slideshow
+        app._last_touch_toggle_time = time.time() - 1.0
+        with patch.object(app_mod, "pygame", fake_pg):
+            app.handle_events()
+        self.assertFalse(app.is_paused)
 
 
 if __name__ == "__main__":

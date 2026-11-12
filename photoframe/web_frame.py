@@ -366,13 +366,17 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
 
   window.toggleHud = function() {
     var hud = document.getElementById("hud");
-    if (!hud) return;
-    if (hud.style.display === "block") {
-      hud.style.display = "none";
+    localPaused = !localPaused;
+    var btn = document.getElementById("btn-pause");
+    if (btn) btn.innerHTML = localPaused ? "▶" : "⏸";
+    if (localPaused) {
+      if (slideTimer) { clearTimeout(slideTimer); slideTimer = null; }
+      if (hud) hud.style.display = "block";
       if (hudTimer) { clearTimeout(hudTimer); hudTimer = null; }
     } else {
-      hud.style.display = "block";
-      resetHudTimer();
+      if (hud) hud.style.display = "none";
+      if (hudTimer) { clearTimeout(hudTimer); hudTimer = null; }
+      scheduleNextSlide();
     }
   };
 

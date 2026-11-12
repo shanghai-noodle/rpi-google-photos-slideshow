@@ -35,12 +35,12 @@ SHARED_SETTINGS_KEYS = (
     "videos",
     "max_video_seconds",
     "fit",
-    "rotate",
     "refresh_hours",
     "shuffle",
     "night_mode_enabled",
     "night_start",
     "night_end",
+    "timezone",
     "web_frame_enabled",
     "web_frame_profile",
     "web_frame_port",
@@ -543,35 +543,13 @@ class FleetManager:
         if not is_broadcast_all:
             return dict(raw_settings)
 
+        # In "all" broadcast mode, only broadcast shared slideshow/collage/schedule
+        # settings. Per-frame settings (album, pwd, device_name, rotate, update_url)
+        # are never overwritten across the fleet.
         filtered: Dict[str, Any] = {}
         for k in SHARED_SETTINGS_KEYS:
             if k in raw_settings:
                 filtered[k] = raw_settings[k]
-
-        # Smart Album / Folder URL broadcast:
-        # - Never overwrite individual device_name in "all" broadcast mode
-        # - Apply album/pwd only to compatible edition frames (or all frames if explicitly 'demo')
-        raw_album = str(raw_settings.get("album", "")).strip()
-        raw_pwd = str(raw_settings.get("pwd", "")).strip()
-        if raw_album:
-            if raw_album.lower() == "demo":
-                filtered["album"] = "demo"
-                filtered["pwd"] = ""
-            elif "pan.baidu.com" in raw_album.lower() or raw_pwd:
-                if node_edition == "baidupan":
-                    filtered["album"] = raw_album
-                    filtered["pwd"] = raw_pwd
-            elif "photos.app.goo.gl" in raw_album.lower() or "photos.google.com" in raw_album.lower():
-                if node_edition == "gphotos":
-                    filtered["album"] = raw_album
-            elif node_edition == source_edition:
-                filtered["album"] = raw_album
-                if node_edition == "baidupan":
-                    filtered["pwd"] = raw_pwd
-
-        raw_update_url = str(raw_settings.get("update_url", "")).strip()
-        if raw_update_url and node_edition == source_edition:
-            filtered["update_url"] = raw_update_url
 
         return filtered
 

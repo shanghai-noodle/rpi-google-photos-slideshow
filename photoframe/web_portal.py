@@ -341,9 +341,12 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     <!-- SLIDESHOW & ALBUM SETTINGS -->
     <div class="card">
       <h2 data-i18n="sec_settings">🎨 Album, Collage & Schedule Settings</h2>
+      <div id="broadcast-settings-note" class="target-banner hidden" style="margin-bottom: 14px;" data-i18n="broadcast_settings_note">
+        🌐 Broadcast Mode: Only shared slideshow, collage, video, and schedule settings that can be broadcast to all frames are shown. Select an individual frame above to modify its Album/Folder URL, Saved Links, Hostname, Screen Rotation, or APK Update.
+      </div>
       <form id="settings-form" onsubmit="saveSettings(event)">
         <div class="form-grid">
-          <div class="form-group full">
+          <div class="form-group full" id="group-album">
             <label for="cfg-album" id="lbl-album-dynamic" data-i18n="lbl_album">Google Photos Shared Album URL (leave blank or 'demo' for Demo Showcase Pack)</label>
             <input type="text" id="cfg-album" oninput="autoExtractBaiduPwd()" data-i18n-placeholder="ph_album" placeholder="https://photos.app.goo.gl/... (or leave blank for Demo Showcase)">
             <div style="font-size: 0.78rem; color: var(--muted); margin-top: 2px;" data-i18n="demo_ai_note">
@@ -364,7 +367,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
             <div id="saved-albums-list" class="saved-albums-grid"></div>
           </div>
 
-          <div class="form-group">
+          <div class="form-group" id="group-device-name">
             <label for="cfg-device-name" data-i18n="lbl_device_name">Device Hostname (.local — auto-numbers on conflict)</label>
             <input type="text" id="cfg-device-name" data-i18n-placeholder="ph_device_name" placeholder="photoframe (or e.g. living-room)">
           </div>
@@ -440,7 +443,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
             </select>
           </div>
 
-          <div class="form-group">
+          <div class="form-group" id="group-rotate">
             <label for="cfg-rotate" data-i18n="lbl_rotate">Screen Rotation</label>
             <select id="cfg-rotate">
               <option value="0" data-i18n="opt_rot_0">0° (Landscape)</option>
@@ -544,7 +547,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     <div class="card">
       <h2>
         <span data-i18n="sec_system">🛠️ System Control & RAM Log</span>
-        <button onclick="fetchStatus(false)" style="padding:5px 10px; font-size:0.78rem;" data-i18n="btn_refresh_log">🔄 Refresh Log</button>
+        <button id="btn-refresh-log" onclick="fetchStatus(false)" style="padding:5px 10px; font-size:0.78rem;" data-i18n="btn_refresh_log">🔄 Refresh Log</button>
       </h2>
       <pre class="log-box" id="log-box">Loading RAM log...</pre>
       <div class="btn-grid" style="margin-top: 14px;">
@@ -690,7 +693,8 @@ const I18N = {
     lbl_saved_albums: "🔐 Saved Connected Albums & Folders (Encrypted Locally)",
     saved_albums_empty: "No connected links saved yet. Successfully connected Google Photos albums and Baidu Pan folders are automatically encrypted and stored here.",
     btn_use_saved_album: "Switch",
-    badge_saved_active: "Active"
+    badge_saved_active: "Active",
+    broadcast_settings_note: "🌐 Broadcast Mode: Only shared slideshow, collage, video, and schedule settings that can be broadcast to all frames are shown. Select an individual frame above to modify its Album/Folder URL, Saved Links, Hostname, Screen Rotation, or APK Update."
   },
   zh: {
     login_title: "🔒 数码相框管理登录",
@@ -823,7 +827,8 @@ const I18N = {
     lbl_saved_albums: "🔐 已保存的历史连接相册与网盘目录（本地加密存储）",
     saved_albums_empty: "暂无已保存的历史链接。成功连接并加载媒体的 Google 相册或百度网盘分享链接将自动加密保存在此处。",
     btn_use_saved_album: "切换",
-    badge_saved_active: "当前使用"
+    badge_saved_active: "当前使用",
+    broadcast_settings_note: "🌐 群控广播模式：当前仅显示可同步广播至所有相框的通用播放、拼图、视频与夜间定时设置。如需修改相册/网盘链接、已保存记录、主机名、屏幕旋转或 APK 更新，请在上方选择单个相框。"
   },
   ja: {
     login_title: "🔒 フォトフレーム ログイン",
@@ -956,7 +961,8 @@ const I18N = {
     lbl_saved_albums: "🔐 保存済みの接続アルバム・フォルダ（ローカル暗号化保存）",
     saved_albums_empty: "保存されたリンクはまだありません。接続に成功した Google フォトアルバムや百度網盤フォルダは自動的に暗号化されてここに保存されます。",
     btn_use_saved_album: "切替",
-    badge_saved_active: "使用中"
+    badge_saved_active: "使用中",
+    broadcast_settings_note: "🌐 一括配信モード：すべてのフレームに一括適用できる共通設定のみ表示しています。アルバムURL、保存済みリンク、ホスト名、画面回転、APK更新を変更するには、上で個別のフレームを選択してください。"
   },
   ko: {
     login_title: "🔒 디지털 액자 로그인",
@@ -1089,7 +1095,8 @@ const I18N = {
     lbl_saved_albums: "🔐 저장된 연결 앨범 및 폴더 (로컬 암호화 저장)",
     saved_albums_empty: "저장된 링크가 없습니다. 연결에 성공한 Google 포토 앨범이나 바이두 클라우드 폴더는 자동으로 암호화되어 여기에 저장됩니다.",
     btn_use_saved_album: "전환",
-    badge_saved_active: "사용 중"
+    badge_saved_active: "사용 중",
+    broadcast_settings_note: "🌐 전체 브로드캐스트 모드: 모든 액자에 동시에 적용할 수 있는 공통 설정만 표시됩니다. 앨범/폴더 링크, 저장된 링크, 호스트 이름, 화면 회전, APK 업데이트를 변경하려면 위에서 개별 액자를 선택하세요."
   },
   es: {
     login_title: "🔒 Acceso al Marco Digital",
@@ -1222,7 +1229,8 @@ const I18N = {
     lbl_saved_albums: "🔐 Álbumes y Carpetas Conectados Guardados (Cifrados Localmente)",
     saved_albums_empty: "Aún no hay enlaces guardados. Los álbumes de Google Fotos y carpetas de Baidu Pan conectados con éxito se cifran y guardan aquí automáticamente.",
     btn_use_saved_album: "Cambiar",
-    badge_saved_active: "Activo"
+    badge_saved_active: "Activo",
+    broadcast_settings_note: "🌐 Modo Difusión: Solo se muestran los ajustes compartidos que pueden enviarse a todos los marcos. Selecciona un marco individual arriba para cambiar su URL de Álbum/Carpeta, Enlaces Guardados, Nombre de Host, Rotación de Pantalla o Actualización APK."
   },
   de: {
     login_title: "🔒 Bilderrahmen-Anmeldung",
@@ -1355,7 +1363,8 @@ const I18N = {
     lbl_saved_albums: "🔐 Gespeicherte verbundene Alben & Ordner (Lokal verschlüsselt)",
     saved_albums_empty: "Noch keine verbundenen Links gespeichert. Erfolgreich verbundene Google Fotos-Alben und Baidu Pan-Ordner werden hier automatisch verschlüsselt gespeichert.",
     btn_use_saved_album: "Wechseln",
-    badge_saved_active: "Aktiv"
+    badge_saved_active: "Aktiv",
+    broadcast_settings_note: "🌐 Broadcast-Modus: Es werden nur gemeinsame Einstellungen angezeigt, die an alle Rahmen gesendet werden können. Wählen Sie oben einen einzelnen Rahmen aus, um Album-/Ordner-URL, Gespeicherte Links, Hostname, Bildschirmdrehung oder APK-Update zu ändern."
   }
 };
 
@@ -1585,21 +1594,43 @@ function renderFleetBar(nodes) {
 }
 
 function updateDynamicFormVisibility() {
-  const hasBaiduInFleet = fleetNodes.some(n => n.edition === 'baidupan');
-  const hasTvInFleet = fleetNodes.some(n => n.platform === 'android_tv');
-  const showBaiduPwd = (selectedTarget === 'all' && hasBaiduInFleet) || (activeTargetEdition === 'baidupan');
-  const showTvApkCard = (selectedTarget === 'all' && hasTvInFleet) || (activeTargetPlatform === 'android_tv');
+  const isAll = (selectedTarget === 'all');
+  const showBaiduPwd = !isAll && (activeTargetEdition === 'baidupan');
+  const showTvApkCard = !isAll && (activeTargetPlatform === 'android_tv');
+
+  const bcastNote = document.getElementById('broadcast-settings-note');
+  if (bcastNote) bcastNote.classList.toggle('hidden', !isAll);
+
+  const albumGroup = document.getElementById('group-album');
+  if (albumGroup) albumGroup.classList.toggle('hidden', isAll);
+  const albumInput = document.getElementById('cfg-album');
+  if (albumInput) albumInput.disabled = isAll;
 
   const pwdGroup = document.getElementById('group-pwd');
   if (pwdGroup) pwdGroup.classList.toggle('hidden', !showBaiduPwd);
+  const pwdInput = document.getElementById('cfg-pwd');
+  if (pwdInput) pwdInput.disabled = !showBaiduPwd;
+
+  const savedGroup = document.getElementById('group-saved-albums');
+  if (savedGroup) savedGroup.classList.toggle('hidden', isAll);
+
+  const devGroup = document.getElementById('group-device-name');
+  if (devGroup) devGroup.classList.toggle('hidden', isAll);
+  const devInput = document.getElementById('cfg-device-name');
+  if (devInput) devInput.disabled = isAll;
+
+  const rotGroup = document.getElementById('group-rotate');
+  if (rotGroup) rotGroup.classList.toggle('hidden', isAll);
+  const rotInput = document.getElementById('cfg-rotate');
+  if (rotInput) rotInput.disabled = isAll;
 
   const apkCard = document.getElementById('card-apk-update');
   if (apkCard) apkCard.classList.toggle('hidden', !showTvApkCard);
 
-  const devInput = document.getElementById('cfg-device-name');
-  if (devInput) {
-    devInput.disabled = (selectedTarget === 'all');
-  }
+  const logBox = document.getElementById('log-box');
+  if (logBox) logBox.classList.toggle('hidden', isAll);
+  const btnRefreshLog = document.getElementById('btn-refresh-log');
+  if (btnRefreshLog) btnRefreshLog.classList.toggle('hidden', isAll);
 }
 
 function selectFleetTarget(target) {
@@ -1731,14 +1762,14 @@ function renderStatusSnapshot(st) {
     wfBtn.className = wfEnabled ? 'danger' : 'primary';
   }
   if (wfOpen) {
-    wfOpen.classList.toggle('hidden', !wfEnabled);
+    wfOpen.classList.toggle('hidden', !wfEnabled || selectedTarget === 'all');
     wfOpen.href = (selectedTarget && selectedTarget !== 'self' && selectedTarget !== 'all')
       ? `http://${hostIp}:8080/frame`
       : '/frame';
   }
   if (wfLinks) {
-    wfLinks.classList.toggle('hidden', !wfEnabled);
-    if (wfEnabled) {
+    wfLinks.classList.toggle('hidden', !wfEnabled || selectedTarget === 'all');
+    if (wfEnabled && selectedTarget !== 'all') {
       wfLinks.innerHTML = `📺 <b>Web Slideshow Viewer URL (no login required):</b> <a href="http://${hostName}:8080/frame" target="_blank" style="color:#38bdf8;">http://${hostName}:8080/frame</a> &nbsp;or&nbsp; <a href="http://${hostIp}:8080/frame" target="_blank" style="color:#38bdf8;">http://${hostIp}:8080/frame</a>`;
     }
   }
@@ -1878,7 +1909,7 @@ async function handleLogout() {
 
 async function sendAction(action) {
   const bodyObj = {action, target: selectedTarget};
-  if (action === 'resync') {
+  if (action === 'resync' && selectedTarget !== 'all') {
     autoExtractBaiduPwd();
     const albumEl = document.getElementById('cfg-album');
     const pwdEl = document.getElementById('cfg-pwd');
@@ -1930,11 +1961,9 @@ async function saveSettings(e) {
   localStorage.setItem('frame_lang_user_set', '1');
   setLanguage(selectedLang);
 
+  const isAll = (selectedTarget === 'all');
   const payload = {
     target: selectedTarget,
-    album: document.getElementById('cfg-album').value.trim(),
-    pwd: (document.getElementById('cfg-pwd')?.value || '').trim(),
-    device_name: (document.getElementById('cfg-device-name')?.value || '').trim(),
     language: selectedLang,
     landscape_mode: document.getElementById('cfg-layout').value,
     duration: parseFloat(document.getElementById('cfg-duration').value),
@@ -1942,16 +1971,21 @@ async function saveSettings(e) {
     videos: document.getElementById('cfg-videos').value,
     max_video_seconds: parseFloat(document.getElementById('cfg-max-vid').value),
     fit: document.getElementById('cfg-fit').value,
-    rotate: parseInt(document.getElementById('cfg-rotate').value, 10),
     refresh_hours: parseFloat(document.getElementById('cfg-refresh').value),
     shuffle: document.getElementById('cfg-shuffle').checked,
     night_mode_enabled: document.getElementById('cfg-night-enabled').checked,
     night_start: document.getElementById('cfg-night-start').value,
     night_end: document.getElementById('cfg-night-end').value,
     timezone: (typeof Intl !== 'undefined' && Intl.DateTimeFormat ? (Intl.DateTimeFormat().resolvedOptions().timeZone || '') : ''),
-    update_url: (document.getElementById('cfg-update-url')?.value || '').trim(),
     web_frame_profile: document.getElementById('cfg-webframe-profile')?.value || 'auto',
   };
+  if (!isAll) {
+    payload.album = document.getElementById('cfg-album').value.trim();
+    payload.pwd = (document.getElementById('cfg-pwd')?.value || '').trim();
+    payload.device_name = (document.getElementById('cfg-device-name')?.value || '').trim();
+    payload.rotate = parseInt(document.getElementById('cfg-rotate').value, 10);
+    payload.update_url = (document.getElementById('cfg-update-url')?.value || '').trim();
+  }
   try {
     const res = await fetch('/api/settings', {
       method: 'POST',

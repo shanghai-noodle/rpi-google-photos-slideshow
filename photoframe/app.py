@@ -899,12 +899,26 @@ class SlideshowApp:
                         self.photo_manager.target_w = self.canvas_w
                         self.photo_manager.target_h = self.canvas_h
                     self.full_redraw_needed = True
-            elif event.type == pygame.MOUSEBUTTONDOWN:
+            elif event.type == pygame.MOUSEBUTTONDOWN or (
+                hasattr(pygame, "FINGERDOWN") and event.type == pygame.FINGERDOWN
+            ):
+                if event.type == pygame.MOUSEBUTTONDOWN and getattr(event, "button", 1) not in (1,):
+                    continue
+                now_ts = time.time()
+                if now_ts - getattr(self, "_last_touch_toggle_time", 0.0) < 0.25:
+                    continue
+                self._last_touch_toggle_time = now_ts
                 if self.is_night_mode:
                     self.is_night_mode = False
+                    self.last_slide_switch = now_ts
                     self.full_redraw_needed = True
                 else:
-                    self.advance_slide()
+                    self.is_paused = not self.is_paused
+                    if not self.is_paused:
+                        self._startup_overlay_expired = True
+                    self.last_slide_switch = now_ts
+                    self.full_redraw_needed = True
+                    logger.info("Slideshow %s via touch/click", "paused" if self.is_paused else "resumed")
 
     def _compose_screen_surface(self, photo_surf: Any) -> Optional[Any]:
         """
