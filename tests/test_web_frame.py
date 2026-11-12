@@ -73,6 +73,9 @@ class FakeTestImage:
     def save(self, buf, format="JPEG", quality=80, optimize=False, progressive=False):
         buf.write(_MINIMAL_1X1_JPEG)
 
+    def getdraw(self, mode=None):
+        return FakeTestImageDraw._Drawer()
+
 
 class FakeTestImageDraw:
     class _Drawer:

@@ -3,6 +3,11 @@ import os
 import tempfile
 import unittest
 
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
+
 from photoframe.app import SlideshowApp, parse_args
 from photoframe.collage import PhotoManager
 from photoframe.config import FrameConfigStore
