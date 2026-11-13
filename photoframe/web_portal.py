@@ -75,8 +75,28 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     --md-sys-color-on-success-container: #A7F3D0;
     --md-sys-color-warn-container: #4A3208;
     --md-sys-color-on-warn-container: #FDE68A;
-    --md-switch-selected-icon-color: #89CEFF;
-    --md-switch-icon-color: #E2E8F0;
+    --md-sys-color-secondary: #B7C8D9;
+    --md-sys-color-shadow: #000000;
+    --md-sys-color-neutral-btn-bg: #212B3A;
+    --md-sys-color-neutral-btn-hover: #2C384B;
+    --md-sys-color-neutral-btn-active: #334157;
+    --md-sys-color-primary-hover: #9AD6FF;
+    --md-sys-color-primary-active: #AEDDFF;
+    --md-sys-color-tonal-hover: #354C60;
+    --md-sys-color-tonal-active: #3E576D;
+    --md-sys-color-outlined-hover: rgba(137, 206, 255, 0.10);
+    --md-sys-color-outlined-active: rgba(137, 206, 255, 0.16);
+    --md-sys-color-success-hover: #164B39;
+    --md-sys-color-warn-hover: #573C0D;
+    --md-sys-color-danger-hover: #6B2222;
+    --md-sys-color-subtle-hover: rgba(226, 232, 240, 0.06);
+    --md-sys-color-hover-outline: #435368;
+    --md-switch-icon-color: #0F141C;
+    --md-switch-hover-icon-color: #0F141C;
+    --md-switch-selected-icon-color: #CBE6FF;
+    --md-switch-selected-hover-icon-color: #CBE6FF;
+    --md-switch-hover-state-layer-opacity: 0.06;
+    --md-switch-selected-hover-state-layer-opacity: 0.06;
     --bg: var(--md-sys-color-surface);
     --card: var(--md-sys-color-surface-container);
     --card-border: var(--md-sys-color-outline-variant);
@@ -112,9 +132,29 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     --md-sys-color-success-container: #D1FAE5;
     --md-sys-color-on-success-container: #065F46;
     --md-sys-color-warn-container: #FEF3C7;
-    --md-sys-color-on-warn-container: #92400E;
-    --md-switch-selected-icon-color: #006495;
-    --md-switch-icon-color: #414852;
+    --md-sys-color-on-warn-container: #78350F;
+    --md-sys-color-secondary: #4F606F;
+    --md-sys-color-shadow: #000000;
+    --md-sys-color-neutral-btn-bg: #EEF2F7;
+    --md-sys-color-neutral-btn-hover: #E2E8F0;
+    --md-sys-color-neutral-btn-active: #D8E0EB;
+    --md-sys-color-primary-hover: #005682;
+    --md-sys-color-primary-active: #00496E;
+    --md-sys-color-tonal-hover: #C4D9EE;
+    --md-sys-color-tonal-active: #B5CEE8;
+    --md-sys-color-outlined-hover: rgba(0, 100, 149, 0.08);
+    --md-sys-color-outlined-active: rgba(0, 100, 149, 0.14);
+    --md-sys-color-success-hover: #BCEFD6;
+    --md-sys-color-warn-hover: #FDE68A;
+    --md-sys-color-danger-hover: #F4CECB;
+    --md-sys-color-subtle-hover: rgba(23, 28, 34, 0.05);
+    --md-sys-color-hover-outline: #94A3B8;
+    --md-switch-icon-color: #FFFFFF;
+    --md-switch-hover-icon-color: #FFFFFF;
+    --md-switch-selected-icon-color: #001E30;
+    --md-switch-selected-hover-icon-color: #001E30;
+    --md-switch-hover-state-layer-opacity: 0.06;
+    --md-switch-selected-hover-state-layer-opacity: 0.06;
     --bg: var(--md-sys-color-surface);
     --card: var(--md-sys-color-surface-container);
     --card-border: var(--md-sys-color-outline-variant);
@@ -214,6 +254,10 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     --md-primary-tab-inactive-hover-label-text-color: var(--md-sys-color-on-surface);
     --md-primary-tab-active-icon-color: var(--md-sys-color-primary);
     --md-primary-tab-inactive-icon-color: var(--md-sys-color-on-surface-variant);
+    --md-primary-tab-hover-state-layer-color: var(--md-sys-color-on-surface);
+    --md-primary-tab-hover-state-layer-opacity: 0.06;
+    --md-primary-tab-active-hover-state-layer-color: var(--md-sys-color-primary);
+    --md-primary-tab-active-hover-state-layer-opacity: 0.06;
     width: 100%;
   }
   md-tabs:not(:defined) {
@@ -289,77 +333,110 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     color: var(--md-sys-color-on-surface-variant);
   }
 
-  /* M3 Chips */
-  .m3-chip {
-    appearance: none; display: inline-flex; align-items: center; gap: 6px;
-    min-height: 40px; padding: 6px 14px; border-radius: 10px;
-    background: var(--md-sys-color-surface-container-low);
-    color: var(--md-sys-color-on-surface);
-    border: 1px solid var(--md-sys-color-outline-variant);
-    font-size: 0.82rem; font-weight: 600; cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease;
-  }
-  .m3-chip:hover {
-    background: var(--md-sys-color-surface-container-high);
-    border-color: var(--md-sys-color-outline);
-  }
-  .m3-chip[aria-expanded="true"] {
-    background: var(--md-sys-color-secondary-container);
-    color: var(--md-sys-color-on-secondary-container);
-    border-color: transparent;
-  }
-
-  /* M3 Buttons */
+  /* M3 Buttons (custom properties prevent :hover specificity collisions) */
   button, .m3-btn {
+    --btn-bg: var(--md-sys-color-neutral-btn-bg);
+    --btn-fg: var(--md-sys-color-on-surface);
+    --btn-border: var(--md-sys-color-outline-variant);
+    --btn-hover-bg: var(--md-sys-color-neutral-btn-hover);
+    --btn-hover-fg: var(--btn-fg);
+    --btn-hover-border: var(--md-sys-color-hover-outline);
+    --btn-active-bg: var(--md-sys-color-neutral-btn-active);
     appearance: none; font-family: inherit;
-    border: 1px solid var(--md-sys-color-outline-variant);
-    background: var(--md-sys-color-surface-container-high);
-    color: var(--md-sys-color-on-surface);
+    border: 1px solid var(--btn-border);
+    background: var(--btn-bg);
+    color: var(--btn-fg);
     font-weight: 600; font-size: 0.88rem;
     min-height: 44px; padding: 10px 18px; border-radius: 999px;
-    cursor: pointer; transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+    cursor: pointer; transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
     text-decoration: none;
   }
+  button .m3-icon-sm, .m3-btn .m3-icon-sm { color: currentColor; }
   button:hover:not(:disabled), .m3-btn:hover:not(:disabled) {
-    background: var(--md-sys-color-surface-container-highest);
-    border-color: var(--md-sys-color-outline);
+    background: var(--btn-hover-bg);
+    color: var(--btn-hover-fg);
+    border-color: var(--btn-hover-border);
+  }
+  button:active:not(:disabled), .m3-btn:active:not(:disabled) {
+    background: var(--btn-active-bg);
   }
   button:disabled { opacity: 0.55; cursor: not-allowed; }
   button.primary, .m3-btn.primary {
-    background: var(--md-sys-color-primary);
-    color: var(--md-sys-color-on-primary);
-    border-color: transparent;
-  }
-  button.primary:hover:not(:disabled), .m3-btn.primary:hover:not(:disabled) {
-    filter: brightness(1.06);
+    --btn-bg: var(--md-sys-color-primary);
+    --btn-fg: var(--md-sys-color-on-primary);
+    --btn-border: transparent;
+    --btn-hover-bg: var(--md-sys-color-primary-hover);
+    --btn-hover-fg: var(--md-sys-color-on-primary);
+    --btn-hover-border: transparent;
+    --btn-active-bg: var(--md-sys-color-primary-active);
   }
   button.tonal, .m3-btn.tonal {
-    background: var(--md-sys-color-secondary-container);
-    color: var(--md-sys-color-on-secondary-container);
-    border-color: transparent;
+    --btn-bg: var(--md-sys-color-secondary-container);
+    --btn-fg: var(--md-sys-color-on-secondary-container);
+    --btn-border: transparent;
+    --btn-hover-bg: var(--md-sys-color-tonal-hover);
+    --btn-hover-fg: var(--md-sys-color-on-secondary-container);
+    --btn-hover-border: transparent;
+    --btn-active-bg: var(--md-sys-color-tonal-active);
   }
-  button.outlined {
-    background: transparent;
-    border: 1px solid var(--md-sys-color-outline);
-    color: var(--md-sys-color-primary);
+  button.outlined, .m3-btn.outlined {
+    --btn-bg: transparent;
+    --btn-fg: var(--md-sys-color-primary);
+    --btn-border: var(--md-sys-color-outline-variant);
+    --btn-hover-bg: var(--md-sys-color-outlined-hover);
+    --btn-hover-fg: var(--md-sys-color-primary);
+    --btn-hover-border: var(--md-sys-color-primary);
+    --btn-active-bg: var(--md-sys-color-outlined-active);
   }
   button.success {
-    background: var(--md-sys-color-success-container);
-    color: var(--md-sys-color-on-success-container);
-    border-color: transparent;
+    --btn-bg: var(--md-sys-color-success-container);
+    --btn-fg: var(--md-sys-color-on-success-container);
+    --btn-border: transparent;
+    --btn-hover-bg: var(--md-sys-color-success-hover);
+    --btn-hover-fg: var(--md-sys-color-on-success-container);
+    --btn-hover-border: transparent;
+    --btn-active-bg: var(--md-sys-color-success-hover);
   }
   button.warn {
-    background: var(--md-sys-color-warn-container);
-    color: var(--md-sys-color-on-warn-container);
-    border-color: transparent;
+    --btn-bg: var(--md-sys-color-warn-container);
+    --btn-fg: var(--md-sys-color-on-warn-container);
+    --btn-border: transparent;
+    --btn-hover-bg: var(--md-sys-color-warn-hover);
+    --btn-hover-fg: var(--md-sys-color-on-warn-container);
+    --btn-hover-border: transparent;
+    --btn-active-bg: var(--md-sys-color-warn-hover);
   }
   button.danger {
-    background: var(--md-sys-color-error-container);
-    color: var(--md-sys-color-on-error-container);
-    border-color: transparent;
+    --btn-bg: var(--md-sys-color-error-container);
+    --btn-fg: var(--md-sys-color-on-error-container);
+    --btn-border: transparent;
+    --btn-hover-bg: var(--md-sys-color-danger-hover);
+    --btn-hover-fg: var(--md-sys-color-on-error-container);
+    --btn-hover-border: transparent;
+    --btn-active-bg: var(--md-sys-color-danger-hover);
   }
   button.btn-sm { min-height: 40px; padding: 6px 14px; font-size: 0.82rem; }
+  button.m3-chip, .m3-chip {
+    --btn-bg: var(--md-sys-color-surface-container-low);
+    --btn-fg: var(--md-sys-color-on-surface);
+    --btn-border: var(--md-sys-color-outline-variant);
+    --btn-hover-bg: var(--md-sys-color-neutral-btn-bg);
+    --btn-hover-fg: var(--md-sys-color-on-surface);
+    --btn-hover-border: var(--md-sys-color-hover-outline);
+    --btn-active-bg: var(--md-sys-color-neutral-btn-hover);
+    min-height: 40px; padding: 6px 14px; border-radius: 10px;
+    font-size: 0.82rem; gap: 6px;
+  }
+  button.m3-chip[aria-expanded="true"], .m3-chip[aria-expanded="true"] {
+    --btn-bg: var(--md-sys-color-secondary-container);
+    --btn-fg: var(--md-sys-color-on-secondary-container);
+    --btn-border: transparent;
+    --btn-hover-bg: var(--md-sys-color-tonal-hover);
+    --btn-hover-fg: var(--md-sys-color-on-secondary-container);
+    --btn-hover-border: transparent;
+    --btn-active-bg: var(--md-sys-color-tonal-active);
+  }
 
   /* Stats & Transport Grids */
   .stats-grid {
@@ -464,6 +541,9 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   details.m3-disclosure[open] > summary {
     border-bottom: 1px solid var(--md-sys-color-outline-variant);
   }
+  details.m3-disclosure > summary:hover {
+    background: var(--md-sys-color-subtle-hover);
+  }
   details.m3-disclosure > summary .m3-chevron {
     width: 22px; height: 22px; transition: transform 0.2s ease;
   }
@@ -482,10 +562,17 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     transition: border-color 0.15s ease, background-color 0.15s ease;
     display: flex; flex-direction: column; gap: 4px; text-align: left;
   }
-  .fleet-pill:hover { border-color: var(--md-sys-color-outline); }
+  .fleet-pill:hover {
+    border-color: var(--md-sys-color-hover-outline);
+    background: var(--md-sys-color-subtle-hover);
+  }
   .fleet-pill.selected {
     border-color: var(--md-sys-color-primary);
     background: var(--md-sys-color-secondary-container);
+  }
+  .fleet-pill.selected:hover {
+    border-color: var(--md-sys-color-primary);
+    background: var(--md-sys-color-tonal-hover);
   }
   .fleet-pill-top {
     display: flex; align-items: center; justify-content: space-between;
@@ -493,15 +580,15 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   }
   .fleet-pill-meta { font-size: 0.76rem; color: var(--md-sys-color-primary); font-weight: 600; }
   .fleet-pill-sub { font-size: 0.76rem; color: var(--md-sys-color-on-surface-variant); }
-  .icon-remove-btn {
-    appearance: none; background: transparent; border: none;
-    color: var(--md-sys-color-on-surface-variant);
-    min-width: 40px; min-height: 40px; padding: 8px; border-radius: 999px;
-    cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
-  }
-  .icon-remove-btn:hover {
-    background: var(--md-sys-color-error-container);
-    color: var(--md-sys-color-on-error-container);
+  button.icon-remove-btn, .icon-remove-btn {
+    --btn-bg: transparent;
+    --btn-fg: var(--md-sys-color-on-surface-variant);
+    --btn-border: transparent;
+    --btn-hover-bg: var(--md-sys-color-error-container);
+    --btn-hover-fg: var(--md-sys-color-on-error-container);
+    --btn-hover-border: transparent;
+    --btn-active-bg: var(--md-sys-color-danger-hover);
+    min-width: 40px; min-height: 40px; padding: 8px;
   }
   .target-banner {
     margin-top: 12px; padding: 10px 14px; border-radius: 12px;
@@ -518,9 +605,12 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     background: var(--md-sys-color-surface-container-low);
     border: 1px solid var(--md-sys-color-outline-variant);
     border-radius: 14px; padding: 10px 12px; cursor: pointer;
-    transition: border-color 0.15s ease;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
   }
-  .saved-album-pill:hover { border-color: var(--md-sys-color-primary); }
+  .saved-album-pill:hover {
+    border-color: var(--md-sys-color-hover-outline);
+    background: var(--md-sys-color-subtle-hover);
+  }
   .saved-album-pill.active {
     border-color: var(--md-sys-color-success);
     background: var(--md-sys-color-surface-container-high);
@@ -578,6 +668,11 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     padding: 10px 14px; border-radius: 12px;
     border: 1px solid var(--md-sys-color-outline-variant);
     display: inline-block; word-break: break-all;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+  a.webframe-url-pill:hover {
+    border-color: var(--md-sys-color-hover-outline);
+    background: var(--md-sys-color-subtle-hover);
   }
   .modal-backdrop {
     position: fixed; inset: 0; z-index: 9500;
@@ -620,14 +715,22 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       background: var(--nav-bg); backdrop-filter: blur(12px);
       border-top: 1px solid var(--md-sys-color-outline-variant);
     }
-    .m3-nav-tab {
-      appearance: none; background: transparent; border: none; border-radius: 14px;
+    button.m3-nav-tab, .m3-nav-tab {
+      --btn-bg: transparent;
+      --btn-fg: var(--md-sys-color-on-surface-variant);
+      --btn-border: transparent;
+      --btn-hover-bg: transparent;
+      --btn-hover-fg: var(--md-sys-color-on-surface);
+      --btn-hover-border: transparent;
+      --btn-active-bg: transparent;
+      border-radius: 14px;
       padding: 4px 2px; min-height: 56px;
       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-      color: var(--md-sys-color-on-surface-variant);
-      font-size: 0.75rem; font-weight: 600; cursor: pointer;
+      font-size: 0.75rem; font-weight: 600;
     }
-    .m3-nav-tab:hover { background: transparent; border: none; }
+    .m3-nav-tab:hover:not([aria-selected="true"]) .m3-nav-pill {
+      background: var(--md-sys-color-subtle-hover);
+    }
     .m3-nav-pill {
       width: 64px; height: 32px; border-radius: 999px;
       display: inline-flex; align-items: center; justify-content: center;
@@ -826,10 +929,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
             <h2><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M21 3H3c-1.1 0-2 .9-2 2v3h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11z"/></svg><span data-i18n="sec_webframe">Web Slideshow Viewer (/frame)</span></h2>
             <div style="display:flex; align-items:center; gap:10px;">
               <span id="webframe-state-badge" class="badge"><span class="status-dot" aria-hidden="true"></span><span class="badge-text">OFF</span></span>
-              <md-switch id="sw-webframe-power" icons role="switch" aria-checked="false" aria-label="Toggle Web Slideshow Viewer" onchange="onWebFrameSwitchChange(this)" onclick="onWebFrameSwitchFallbackClick(event, this)" onkeydown="onWebFrameSwitchFallbackKey(event, this)">
-                <svg class="m3-switch-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" slot="off-icon"><path fill="currentColor" d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.79 1.42-1.41zM4 10.5H1v2h3v-2zm9-9.95h-2V3.5h2V.55zm7.45 3.91l-1.41-1.41-1.79 1.79 1.41 1.41 1.79-1.79zm-3.21 13.7l1.79 1.8 1.41-1.41-1.8-1.79-1.4 1.4zM20 10.5v2h3v-2h-3zm-8-5c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm-1 16.95h2V19.5h-2v2.95zm-7.45-3.91l1.41 1.41 1.79-1.8-1.41-1.41-1.79 1.8z"/></svg>
-                <svg class="m3-switch-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" slot="on-icon"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/></svg>
-              </md-switch>
+              <md-switch id="sw-webframe-power" role="switch" aria-checked="false" aria-label="Toggle Web Slideshow Viewer" onchange="onWebFrameSwitchChange(this)" onclick="onWebFrameSwitchFallbackClick(event, this)" onkeydown="onWebFrameSwitchFallbackKey(event, this)"></md-switch>
             </div>
           </div>
           <p class="card-sub-desc" data-i18n="webframe_desc">
