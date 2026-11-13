@@ -1,3 +1,4 @@
+import gzip
 import json
 import os
 import re
@@ -100,9 +101,27 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
 
     def test_portal_light_dark_theme_toggle_support(self):
         self.assertIn(':root[data-theme="light"]', WEB_PORTAL_HTML)
-        self.assertIn('id="header-theme-btn"', WEB_PORTAL_HTML)
-        self.assertIn('id="login-theme-btn"', WEB_PORTAL_HTML)
+        self.assertIn('id="header-theme-switch"', WEB_PORTAL_HTML)
+        self.assertIn('id="login-theme-switch"', WEB_PORTAL_HTML)
+        self.assertIn("<md-switch", WEB_PORTAL_HTML)
+        self.assertIn("--md-sys-color-primary", WEB_PORTAL_HTML)
+        self.assertIn("prefers-color-scheme", WEB_PORTAL_HTML)
+        self.assertIn("function onThemeSwitchChange(el)", WEB_PORTAL_HTML)
         self.assertIn("function toggleTheme()", WEB_PORTAL_HTML)
+        self.assertIn('id="panel-control"', WEB_PORTAL_HTML)
+        self.assertIn('id="panel-display"', WEB_PORTAL_HTML)
+        self.assertIn('id="panel-system"', WEB_PORTAL_HTML)
+        self.assertIn('role="tabpanel"', WEB_PORTAL_HTML)
+        self.assertIn('id="desktop-m3-tabs"', WEB_PORTAL_HTML)
+        self.assertIn('id="mobile-bottom-nav"', WEB_PORTAL_HTML)
+        self.assertIn('id="advanced-settings-disclosure"', WEB_PORTAL_HTML)
+        self.assertIn('class="skip-link"', WEB_PORTAL_HTML)
+        self.assertIn('aria-live="polite"', WEB_PORTAL_HTML)
+        self.assertIn("lbl_dark_theme_switch", WEB_PORTAL_HTML)
+        self.assertIn("nav_control", WEB_PORTAL_HTML)
+        self.assertIn("nav_display", WEB_PORTAL_HTML)
+        self.assertIn("nav_system", WEB_PORTAL_HTML)
+        self.assertIn("sec_advanced_options", WEB_PORTAL_HTML)
 
     def test_web_portal_http_api_endpoints(self):
         """
@@ -145,6 +164,30 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
                 self.assertIn("executeConfirmedExit()", html)
                 self.assertIn("closeExitModal()", html)
                 self.assertNotIn("confirm(t(", html)
+
+            # 1b. GET /assets/m3/*.js serves bundled Material 3 ES modules (plain, gzip, and traversal 404)
+            with urllib.request.urlopen(f"{base_url}/assets/m3/index.js", timeout=5) as resp:
+                self.assertEqual(resp.status, 200)
+                self.assertIn("javascript", resp.headers.get("Content-Type", ""))
+                self.assertIn("material-web-2.5.0-switch-switch.js", resp.read().decode("utf-8"))
+
+            with urllib.request.urlopen(f"{base_url}/assets/m3/material-web-2.5.0-switch-switch.js", timeout=5) as resp:
+                self.assertEqual(resp.status, 200)
+                self.assertIn("javascript", resp.headers.get("Content-Type", ""))
+                self.assertIn("MdSwitch", resp.read().decode("utf-8"))
+
+            gzip_req = urllib.request.Request(
+                f"{base_url}/assets/m3/material-web-2.5.0-switch-switch.js",
+                headers={"Accept-Encoding": "gzip"},
+            )
+            with urllib.request.urlopen(gzip_req, timeout=5) as resp:
+                self.assertEqual(resp.status, 200)
+                self.assertEqual(resp.headers.get("Content-Encoding", "").lower(), "gzip")
+                self.assertIn("MdSwitch", gzip.decompress(resp.read()).decode("utf-8"))
+
+            with self.assertRaises(urllib.error.HTTPError) as ctx:
+                urllib.request.urlopen(f"{base_url}/assets/m3/../../etc/passwd", timeout=5)
+            self.assertEqual(ctx.exception.code, 404)
 
             # 2. Unauthenticated GET /api/status
             code, st_unauth, _ = request_json("/api/status")
