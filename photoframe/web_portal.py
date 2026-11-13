@@ -652,6 +652,14 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   .fleet-pill.locked {
     border-style: dashed;
   }
+  .fleet-pill.locked[data-accented="true"] {
+    border-left-style: solid;
+  }
+  .fleet-pill-top > span:first-child { min-width: 0; flex: 1 1 auto; }
+  .fleet-host-wrap { display: flex; flex-direction: column; min-width: 0; }
+  .fleet-host { overflow-wrap: anywhere; line-height: 1.25; }
+  .fleet-self-tag { font-size: 0.74rem; font-weight: 600; }
+  .fleet-pill-meta .meta-line { display: block; overflow-wrap: anywhere; }
   .fleet-lock-badge {
     display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
     font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 999px;
@@ -853,6 +861,46 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     button, .m3-btn { min-height: 48px; }
     .icon-remove-btn { min-width: 48px; min-height: 48px; }
     .m3-card { padding: 16px; border-radius: 18px; }
+
+    /* Header: row 1 = fleet chip + sign-out (icon), row 2 = theme switch + language */
+    .top-app-bar { flex-direction: column; align-items: stretch; }
+    .header-actions { width: 100%; gap: 8px; flex-wrap: wrap; align-items: center; }
+    #header-fleet-chip { order: 1; flex: 1 1 calc(100% - 64px); min-width: 0; max-width: calc(100% - 64px); justify-content: flex-start; }
+    #header-fleet-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    #btn-signout { order: 2; flex: 0 0 auto; min-width: 48px; padding: 8px 14px; }
+    #btn-signout .btn-label {
+      position: absolute; width: 1px; height: 1px; overflow: hidden;
+      clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+    }
+    .header-actions .theme-switch-wrap { order: 3; flex: 0 0 auto; }
+    #header-lang-select { order: 4; flex: 1 1 120px; min-width: 110px; }
+
+    /* Controls: roomy, evenly sized, wrap-safe buttons */
+    .stat-label { letter-spacing: 0.02em; }
+    .stat-val { font-size: 0.88rem; }
+    .transport-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .transport-row #btn-pause { grid-column: 1 / -1; order: -1; min-height: 52px; }
+    .btn-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn-grid > button, .transport-row > button {
+      border-radius: 26px; padding: 10px 14px; min-height: 52px;
+      line-height: 1.2; text-align: center;
+    }
+    .btn-grid > button .btn-label, .transport-row > button .btn-label { min-width: 0; overflow-wrap: anywhere; }
+    .card-header { flex-wrap: wrap; gap: 10px; }
+    .m3-nav-tab span:not(.m3-nav-pill) {
+      max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.72rem;
+    }
+  }
+  @media (max-width: 400px) {
+    body { padding-left: 10px; padding-right: 10px; }
+    .m3-card { padding: 14px; }
+    .btn-grid { grid-template-columns: 1fr; }
+    .m3-nav-pill { width: 52px; }
+    .stat-box { padding: 10px 12px; }
+    .webframe-url-pill { font-size: 0.8rem; }
+  }
+  @media (max-width: 680px) {
+    .fleet-grid { grid-template-columns: 1fr; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition: none !important; animation: none !important; }
@@ -2808,7 +2856,7 @@ function renderFleetBar(nodes) {
     const statusDotColor = node.online === false ? '#D9534F' : (isLocked ? pillColors.border : (node.is_night_mode ? '#D49B38' : (node.is_paused ? '#8E8E93' : '#30A46C')));
     const platLabel = node.platform === 'android_tv' ? 'Android TV' : 'Linux';
     const edLabel = node.edition === 'baidupan' ? 'Baidu' : 'Google';
-    const selfTag = node.is_self ? ` <span style="font-size:0.74rem; color:${multiFrame ? pillColors.text : 'var(--md-sys-color-accent-text)'};">(${escapeHtml(t('fleet_this_frame'))})</span>` : '';
+    const selfTag = node.is_self ? `<span class="fleet-self-tag" style="color:${multiFrame ? pillColors.text : 'var(--md-sys-color-accent-text)'};">${escapeHtml(t('fleet_this_frame'))}</span>` : '';
     const lockBadge = isLocked ? `<span class="fleet-lock-badge">${lockSvg}<span>${escapeHtml(t('fleet_locked_badge'))}</span></span>` : '';
     const removeBtn = (!node.is_self && (node.is_manual || node.online === false))
       ? `<button type="button" class="icon-remove-btn" aria-label="Remove frame" title="Remove" onclick="removePeer(event, '${escapeHtml(node.id)}')">${closeSvg}</button>`
@@ -2822,10 +2870,10 @@ function renderFleetBar(nodes) {
     const pillAccentAttr = multiFrame ? ` data-accented="true" style="--pill-accent:${pillColors.text}; --pill-border:${pillColors.border}; --pill-tint:${pillColors.tint};"` : '';
     html += `<div class="fleet-pill ${isSelected ? 'selected' : ''} ${isLocked ? 'locked' : ''}"${pillAccentAttr} role="button" tabindex="0" onclick="selectFleetTarget('${escapeHtml(targetKey)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectFleetTarget('${escapeHtml(targetKey)}');}">
       <div class="fleet-pill-top">
-        <span style="display:inline-flex; align-items:center; gap:7px;">${multiFrame ? `<span class="frame-badge" aria-hidden="true">${String.fromCharCode(65 + (nodeIdx % 26))}</span>` : ''}<span class="status-dot" aria-hidden="true" style="color:${statusDotColor}"></span>${hostTitle}${selfTag}</span>
+        <span style="display:inline-flex; align-items:center; gap:7px; min-width:0;">${multiFrame ? `<span class="frame-badge" aria-hidden="true">${String.fromCharCode(65 + (nodeIdx % 26))}</span>` : ''}<span class="status-dot" aria-hidden="true" style="color:${statusDotColor}"></span><span class="fleet-host-wrap"><span class="fleet-host">${hostTitle}</span>${selfTag}</span></span>
         <span style="display:inline-flex; align-items:center; gap:4px;">${lockBadge}${removeBtn}</span>
       </div>
-      <div class="fleet-pill-meta">${escapeHtml(node.ip)}:${node.port || 8080} • ${platLabel} (${edLabel}) • v${escapeHtml(node.app_version || '1.0')}</div>
+      <div class="fleet-pill-meta"><span class="meta-line">${escapeHtml(node.ip)}:${node.port || 8080}</span><span class="meta-line">${platLabel} (${edLabel}) • v${escapeHtml(node.app_version || '1.0')}</span></div>
       <div class="fleet-pill-sub">${mediaSummary}</div>
     </div>`;
   });
