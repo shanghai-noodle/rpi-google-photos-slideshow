@@ -2321,7 +2321,15 @@ let activeTab = (function() {
 })();
 let formPopulated = false;
 let lastStatusSnapshot = null;
-let selectedTarget = 'self';
+let selectedTarget = (function() {
+  try {
+    const ss = sessionStorage.getItem('frame_selected_target');
+    if (ss) return ss;
+    const ls = localStorage.getItem('frame_selected_target');
+    if (ls) return ls;
+  } catch (e) {}
+  return 'self';
+})();
 let fleetNodes = [];
 let fleetDrawerExpanded = false;
 let activeTargetEdition = 'gphotos';
@@ -2335,6 +2343,25 @@ let lastModalTriggerEl = null;
 let pendingAuthTarget = '';
 let pendingSelectOnUnlock = true;
 let lastAuthModalTriggerEl = null;
+let statusReqSeq = 0;
+let statusAbortCtrl = null;
+let statusPollTimer = null;
+let portalLangInitialized = false;
+let hasLoadedFleetOnce = false;
+const settingsCacheByTarget = {};
+
+function setSelectedTarget(target, persist = true) {
+  selectedTarget = target || 'self';
+  if (persist) {
+    try { sessionStorage.setItem('frame_selected_target', selectedTarget); } catch (e) {}
+    try { localStorage.setItem('frame_selected_target', selectedTarget); } catch (e) {}
+  }
+}
+
+function scheduleStatusPoll(delayMs = 5000) {
+  clearTimeout(statusPollTimer);
+  statusPollTimer = setTimeout(() => fetchStatus(false, false), delayMs);
+}
 
 const FRAME_ACCENTS = [
   { name: 'slate', lightText: '#1D528E', lightBorder: '#2B6CB0', lightTint: '#EDF4FC', darkText: '#94B4D4', darkBorder: '#6E8FAE', darkTint: '#1E2630' },
@@ -2724,9 +2751,15 @@ function renderFleetBar(nodes) {
   const lockedOnlineNodes = onlineNodes.filter(n => !n.is_self && Boolean(n.locked));
   const unlockedOnlineNodes = onlineNodes.filter(n => n.is_self || !n.locked);
   const selfNode = fleetNodes.find(n => n.is_self) || fleetNodes[0] || {};
-  if (selectedTarget !== 'all' && selectedTarget !== 'self') {
+  if (selectedTarget === 'all' && hasLoadedFleetOnce && fleetNodes.length <= 1) {
+    setSelectedTarget('self', true);
+  } else if (selectedTarget !== 'all' && selectedTarget !== 'self') {
     const curNode = fleetNodes.find(n => n.id === selectedTarget);
-    if (!curNode || (!curNode.is_self && curNode.locked)) selectedTarget = 'self';
+    if (fleetNodes.some(n => n.is_self && n.id === selectedTarget)) {
+      setSelectedTarget('self', true);
+    } else if (curNode && !curNode.is_self && curNode.locked) {
+      setSelectedTarget('self', true);
+    }
   }
 
   const closeSvg = `<svg class="m3-icon-sm" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`;
@@ -2889,15 +2922,105 @@ function updateDynamicFormVisibility() {
   if (btnRefreshLog) btnRefreshLog.classList.toggle('hidden', isAll);
 }
 
+function applySettingsToForm(cfg) {
+  if (!cfg || typeof cfg !== 'object') return;
+  const albumEl = document.getElementById('cfg-album');
+  if (albumEl) albumEl.value = (cfg.album && cfg.album !== 'demo') ? cfg.album : '';
+  const pwdEl = document.getElementById('cfg-pwd');
+  if (pwdEl) pwdEl.value = cfg.pwd || '';
+  const devEl = document.getElementById('cfg-device-name');
+  if (devEl) devEl.value = cfg.device_name || '';
+  const langEl = document.getElementById('cfg-language');
+  if (langEl) langEl.value = cfg.language || currentLang || 'en';
+  const layEl = document.getElementById('cfg-layout');
+  if (layEl) layEl.value = cfg.landscape_mode || 'collage';
+  const durEl = document.getElementById('cfg-duration');
+  if (durEl) durEl.value = cfg.duration ?? 15;
+  const transEl = document.getElementById('cfg-transition');
+  if (transEl) transEl.value = cfg.transition || 'none';
+  const vidEl = document.getElementById('cfg-videos');
+  if (vidEl) vidEl.value = cfg.videos || 'play';
+  const maxVidEl = document.getElementById('cfg-max-vid');
+  if (maxVidEl) maxVidEl.value = cfg.max_video_seconds ?? 20;
+  const fitEl = document.getElementById('cfg-fit');
+  if (fitEl) fitEl.value = cfg.fit || 'contain-blur';
+  const rotEl = document.getElementById('cfg-rotate');
+  if (rotEl) rotEl.value = String(cfg.rotate ?? 0);
+  const refEl = document.getElementById('cfg-refresh');
+  if (refEl) refEl.value = cfg.refresh_hours ?? 12;
+  const shufEl = document.getElementById('cfg-shuffle');
+  if (shufEl) shufEl.checked = Boolean(cfg.shuffle);
+  const nightEnEl = document.getElementById('cfg-night-enabled');
+  if (nightEnEl) nightEnEl.checked = Boolean(cfg.night_mode_enabled);
+  const nightStartEl = document.getElementById('cfg-night-start');
+  if (nightStartEl) nightStartEl.value = cfg.night_start || '22:00';
+  const nightEndEl = document.getElementById('cfg-night-end');
+  if (nightEndEl) nightEndEl.value = cfg.night_end || '06:00';
+  syncNightFieldsVisibility();
+  const upUrlEl = document.getElementById('cfg-update-url');
+  if (upUrlEl) upUrlEl.value = cfg.update_url || '';
+  const wfProfEl = document.getElementById('cfg-webframe-profile');
+  if (wfProfEl && cfg.web_frame_profile) wfProfEl.value = cfg.web_frame_profile;
+}
+
 function selectFleetTarget(target) {
-  const node = fleetNodes.find(n => (n.is_self ? 'self' : n.id) === target || n.id === target);
+  const node = (target === 'self')
+    ? fleetNodes.find(n => n.is_self)
+    : fleetNodes.find(n => (n.is_self ? 'self' : n.id) === target || n.id === target);
   if (node && !node.is_self && node.locked) {
     openPeerAuthModal(node.id, true);
     return;
   }
-  selectedTarget = target;
+  const nextTarget = (node && node.is_self) ? 'self' : (target || 'self');
+  setSelectedTarget(nextTarget, true);
   formPopulated = false;
+
+  if (nextTarget === 'all') {
+    const selfNode = fleetNodes.find(n => n.is_self) || {};
+    activeTargetEdition = selfNode.edition || activeTargetEdition || 'gphotos';
+    activeTargetPlatform = selfNode.platform || activeTargetPlatform || 'linux';
+  } else if (node) {
+    activeTargetEdition = node.edition || activeTargetEdition || 'gphotos';
+    activeTargetPlatform = node.platform || activeTargetPlatform || 'linux';
+  }
+
   renderFleetBar(fleetNodes);
+
+  if (node && nextTarget !== 'all') {
+    renderStatusSnapshot(Object.assign({}, node, {
+      lan_ip: node.ip,
+      web_port: node.port
+    }));
+    if (settingsCacheByTarget[nextTarget]) {
+      applySettingsToForm(settingsCacheByTarget[nextTarget]);
+    } else {
+      const albumEl = document.getElementById('cfg-album');
+      if (albumEl) albumEl.value = '';
+      const pwdEl = document.getElementById('cfg-pwd');
+      if (pwdEl) pwdEl.value = '';
+      const devEl = document.getElementById('cfg-device-name');
+      if (devEl) devEl.value = node.device_name || '';
+      const layEl = document.getElementById('cfg-layout');
+      if (layEl && node.landscape_mode) layEl.value = node.landscape_mode;
+      const durEl = document.getElementById('cfg-duration');
+      if (durEl && node.slide_duration !== undefined) durEl.value = node.slide_duration;
+      const rotEl = document.getElementById('cfg-rotate');
+      if (rotEl && node.rotation !== undefined) rotEl.value = String(node.rotation);
+      const nightEnEl = document.getElementById('cfg-night-enabled');
+      if (nightEnEl && node.night_mode_enabled !== undefined) nightEnEl.checked = Boolean(node.night_mode_enabled);
+      const nightStartEl = document.getElementById('cfg-night-start');
+      if (nightStartEl && node.night_start) nightStartEl.value = node.night_start;
+      const nightEndEl = document.getElementById('cfg-night-end');
+      if (nightEndEl && node.night_end) nightEndEl.value = node.night_end;
+      syncNightFieldsVisibility();
+      const wfProfEl = document.getElementById('cfg-webframe-profile');
+      if (wfProfEl && node.web_frame_profile) wfProfEl.value = node.web_frame_profile;
+      renderSavedAlbums([], '', '');
+    }
+    const logBox = document.getElementById('log-box');
+    if (logBox) logBox.textContent = 'Loading...';
+  }
+
   fetchStatus(true, false);
 }
 
@@ -2959,7 +3082,7 @@ async function removePeer(ev, targetId) {
   });
   const data = await res.json();
   if (res.ok && data.ok) {
-    if (selectedTarget === targetId) selectedTarget = 'self';
+    if (selectedTarget === targetId) setSelectedTarget('self', true);
     if (data.fleet) renderFleetBar(data.fleet);
   }
 }
@@ -3133,15 +3256,27 @@ function markPortalOfflineUI(bannerMsg) {
 }
 
 async function fetchStatus(populateForm = false, triggerScan = false) {
+  const requestedTarget = selectedTarget || 'self';
+  if (statusAbortCtrl) {
+    try { statusAbortCtrl.abort(); } catch (e) {}
+  }
+  const abortCtrl = (typeof AbortController === 'function') ? new AbortController() : null;
+  statusAbortCtrl = abortCtrl;
+  const mySeq = ++statusReqSeq;
+  scheduleStatusPoll(5000);
+
   try {
     const q = new URLSearchParams();
-    if (selectedTarget && selectedTarget !== 'self' && selectedTarget !== 'all') {
-      q.set('target', selectedTarget);
+    if (requestedTarget && requestedTarget !== 'self' && requestedTarget !== 'all') {
+      q.set('target', requestedTarget);
     }
     if (triggerScan) q.set('scan', '1');
     const url = '/api/status' + (q.toString() ? `?${q.toString()}` : '');
-    const res = await fetch(url);
+    const res = abortCtrl ? await fetch(url, {signal: abortCtrl.signal}) : await fetch(url);
     const data = await res.json();
+    if (mySeq !== statusReqSeq || selectedTarget !== requestedTarget) {
+      return;
+    }
     consecutiveStatusFailures = 0;
     if (portalExitedOffline) {
       portalExitedOffline = false;
@@ -3150,8 +3285,11 @@ async function fetchStatus(populateForm = false, triggerScan = false) {
       const sysBanner = document.getElementById('system-confirm-banner');
       if (sysBanner) sysBanner.style.display = 'none';
     }
-    if (data.language && !localStorage.getItem('frame_lang_user_set')) {
+    if (data.language && !portalLangInitialized && !localStorage.getItem('frame_lang_user_set')) {
+      portalLangInitialized = true;
       setLanguage(data.language);
+    } else {
+      portalLangInitialized = true;
     }
     if (!data.authenticated) {
       document.getElementById('login-view').classList.remove('hidden');
@@ -3166,22 +3304,39 @@ async function fetchStatus(populateForm = false, triggerScan = false) {
 
     const pendingLockedTarget = (data.target_locked && data.locked_target) ? data.locked_target : '';
     if (pendingLockedTarget) {
-      selectedTarget = 'self';
+      setSelectedTarget('self', true);
       formPopulated = false;
-    } else if (selectedTarget && selectedTarget !== 'self' && selectedTarget !== 'all' && data.target === 'self') {
-      selectedTarget = 'self';
     }
-    activeTargetEdition = data.target_edition || data.status?.edition || 'gphotos';
-    activeTargetPlatform = data.target_platform || data.status?.platform || 'linux';
+
     if (data.fleet) {
+      hasLoadedFleetOnce = true;
       renderFleetBar(data.fleet);
     } else {
       updateFleetCardVisibility();
     }
+
+    if (data.target_unreachable && requestedTarget !== 'self' && requestedTarget !== 'all') {
+      const knownInFleet = fleetNodes.some(n => n.id === requestedTarget);
+      if (!knownInFleet) {
+        setSelectedTarget('self', true);
+        formPopulated = false;
+        fetchStatus(true, false);
+        return;
+      }
+      setBadgeContent('state-badge', 'badge offline', t('badge_offline'));
+      return;
+    }
+
+    activeTargetEdition = data.target_edition || data.status?.edition || 'gphotos';
+    activeTargetPlatform = data.target_platform || data.status?.platform || 'linux';
+    updateDynamicFormVisibility();
+
     if (pendingLockedTarget) {
       openPeerAuthModal(pendingLockedTarget, true);
     }
-    renderStatusSnapshot(data.status);
+    if (data.status) {
+      renderStatusSnapshot(data.status);
+    }
     document.getElementById('log-box').textContent = data.log_tail || '(No log entries)';
     if (data.settings && Array.isArray(data.settings.saved_albums)) {
       renderSavedAlbums(
@@ -3191,37 +3346,19 @@ async function fetchStatus(populateForm = false, triggerScan = false) {
       );
     }
 
-    if (populateForm || !formPopulated) {
-      const cfg = data.settings;
-      if (cfg.language) {
-        setLanguage(cfg.language);
-      }
-      document.getElementById('cfg-album').value = (cfg.album && cfg.album !== 'demo') ? cfg.album : '';
-      const pwdEl = document.getElementById('cfg-pwd');
-      if (pwdEl) pwdEl.value = cfg.pwd || '';
-      const devEl = document.getElementById('cfg-device-name');
-      if (devEl) devEl.value = cfg.device_name || '';
-      document.getElementById('cfg-language').value = cfg.language || currentLang || 'en';
-      document.getElementById('cfg-layout').value = cfg.landscape_mode || 'collage';
-      document.getElementById('cfg-duration').value = cfg.duration ?? 15;
-      document.getElementById('cfg-transition').value = cfg.transition || 'none';
-      document.getElementById('cfg-videos').value = cfg.videos || 'play';
-      document.getElementById('cfg-max-vid').value = cfg.max_video_seconds ?? 20;
-      document.getElementById('cfg-fit').value = cfg.fit || 'contain-blur';
-      document.getElementById('cfg-rotate').value = String(cfg.rotate ?? 0);
-      document.getElementById('cfg-refresh').value = cfg.refresh_hours ?? 12;
-      document.getElementById('cfg-shuffle').checked = Boolean(cfg.shuffle);
-      document.getElementById('cfg-night-enabled').checked = Boolean(cfg.night_mode_enabled);
-      document.getElementById('cfg-night-start').value = cfg.night_start || '22:00';
-      document.getElementById('cfg-night-end').value = cfg.night_end || '06:00';
-      syncNightFieldsVisibility();
-      const upUrlEl = document.getElementById('cfg-update-url');
-      if (upUrlEl) upUrlEl.value = cfg.update_url || '';
-      const wfProfEl = document.getElementById('cfg-webframe-profile');
-      if (wfProfEl && cfg.web_frame_profile) wfProfEl.value = cfg.web_frame_profile;
+    if (data.settings && !pendingLockedTarget) {
+      const cacheKey = (requestedTarget === 'all' || requestedTarget === 'self') ? 'self' : requestedTarget;
+      settingsCacheByTarget[cacheKey] = data.settings;
+    }
+
+    if (data.settings && (populateForm || !formPopulated)) {
+      applySettingsToForm(data.settings);
       formPopulated = true;
     }
   } catch (err) {
+    if ((err && err.name === 'AbortError') || mySeq !== statusReqSeq) {
+      return;
+    }
     consecutiveStatusFailures += 1;
     if (portalExitedOffline || consecutiveStatusFailures >= 2) {
       markPortalOfflineUI(portalExitedOffline ? t('msg_exited_offline') : null);
@@ -3251,6 +3388,7 @@ async function handleLogin(e) {
 
 async function handleLogout() {
   await fetch('/api/logout', {method: 'POST'});
+  setSelectedTarget('self', true);
   formPopulated = false;
   fetchStatus(false);
 }
@@ -3710,11 +3848,19 @@ function uploadAndInstallApk() {
   xhr.send(file);
 }
 
+if (typeof document.addEventListener === 'function') {
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') {
+      fetchStatus(false, false);
+    }
+  });
+}
+
 applyTheme(currentTheme, false);
 setLanguage(currentLang);
 switchPortalTab(activeTab);
 fetchStatus(true);
-setInterval(() => fetchStatus(false), 5000);
+scheduleStatusPoll(5000);
 </script>
 </body>
 </html>"""
@@ -3964,18 +4110,21 @@ def create_portal_handler(
 
                 # Avoid recursive fleet scan when another peer is querying our /api/status
                 is_peer_call = self._is_peer_authed()
-                fleet_nodes = [] if is_peer_call else fleet_manager.get_fleet_nodes(trigger_scan=trigger_scan)
 
                 target_locked = False
                 locked_target = ""
+                remote: Optional[Dict[str, Any]] = None
                 if target and not fleet_manager.is_self_target(target) and target != "all":
                     remote = fleet_manager.get_target_status(target)
+                fleet_nodes = [] if is_peer_call else fleet_manager.get_fleet_nodes(trigger_scan=trigger_scan)
+
+                if remote is not None:
                     if remote.get("ok"):
                         self._send_json(200, {
                             "authenticated": True,
                             "is_default_password": config_store.is_default_password(),
                             "language": cur_settings.get("language", "en"),
-                            "target": target,
+                            "target": remote.get("target", target),
                             "target_edition": remote.get("edition", "gphotos"),
                             "target_platform": remote.get("platform", "linux"),
                             "status": remote["status"],
@@ -3986,7 +4135,18 @@ def create_portal_handler(
                         return
                     if remote.get("locked"):
                         target_locked = True
-                        locked_target = target
+                        locked_target = remote.get("target") or target
+                    elif remote.get("unreachable"):
+                        self._send_json(200, {
+                            "authenticated": True,
+                            "is_default_password": config_store.is_default_password(),
+                            "language": cur_settings.get("language", "en"),
+                            "target": remote.get("target", target),
+                            "target_unreachable": True,
+                            "target_error": remote.get("error", f"Peer {target} is temporarily unreachable"),
+                            "fleet": fleet_nodes,
+                        })
+                        return
 
                 st = app.get_status_snapshot()
                 fallback_payload = {

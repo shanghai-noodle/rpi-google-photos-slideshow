@@ -157,6 +157,8 @@ class FleetManager:
         self._peers: Dict[str, Dict[str, Any]] = {}
         self._scanning = False
         self._last_scan_ts = 0.0
+        self._last_peer_refresh_ts = 0.0
+        self._dead_mdns_ips: Dict[str, float] = {}
         self._enable_background_scan = enable_background_scan
 
         if enable_background_scan:
@@ -350,20 +352,35 @@ class FleetManager:
                 self._peers[target_id]["online"] = False
         return None
 
-    def refresh_known_peers(self) -> None:
-        candidates = set(self.get_known_peer_targets())
+    def refresh_known_peers(self, include_mdns: bool = False, force: bool = False) -> None:
+        manual_targets = set()
         for mp in self._get_manual_peers():
             norm = normalize_peer_target(mp, self.port)
-            if norm:
-                candidates.add(norm[2])
+            if norm and not self.is_self_target(norm[2]):
+                manual_targets.add(norm[2])
+
+        now = time.time()
+        if not include_mdns and not force:
+            with self._lock:
+                all_manual_known = all(mt in self._peers for mt in manual_targets)
+            if all_manual_known and (now - self._last_peer_refresh_ts) < 2.5:
+                return
+
+        candidates = set(self.get_known_peer_targets()) | manual_targets
         scan_ports = [self.port] + [p for p in CANDIDATE_WEB_PORTS if p != self.port]
-        for mdns_ip in get_discovered_lan_ips():
-            has_known = any(k.startswith(f"{mdns_ip}:") for k in candidates)
-            if not has_known:
-                for p in scan_ports:
-                    candidates.add(f"{mdns_ip}:{p}")
-            else:
-                candidates.add(f"{mdns_ip}:{self.port}")
+        probed_new_mdns: List[str] = []
+        if include_mdns:
+            for mdns_ip in get_discovered_lan_ips():
+                has_known = any(k.startswith(f"{mdns_ip}:") for k in candidates)
+                if not has_known:
+                    dead_ts = self._dead_mdns_ips.get(mdns_ip, 0.0)
+                    if (now - dead_ts) < 120.0:
+                        continue
+                    probed_new_mdns.append(mdns_ip)
+                    for p in scan_ports:
+                        candidates.add(f"{mdns_ip}:{p}")
+                else:
+                    candidates.add(f"{mdns_ip}:{self.port}")
 
         my_target = self.get_self_target()
         my_ip = self._get_my_ip()
@@ -373,6 +390,7 @@ class FleetManager:
                 candidates.discard(f"{my_ip}:{p}")
         candidates.discard(my_target)
         if not candidates:
+            self._last_peer_refresh_ts = time.time()
             return
 
         with ThreadPoolExecutor(max_workers=min(16, len(candidates))) as pool:
@@ -383,6 +401,17 @@ class FleetManager:
                 except Exception:
                     pass
 
+        if probed_new_mdns:
+            done_ts = time.time()
+            with self._lock:
+                known_keys = list(self._peers.keys())
+            for mip in probed_new_mdns:
+                if any(k.startswith(f"{mip}:") for k in known_keys):
+                    self._dead_mdns_ips.pop(mip, None)
+                else:
+                    self._dead_mdns_ips[mip] = done_ts
+        self._last_peer_refresh_ts = time.time()
+
     def scan_lan_subnet(self, blocking: bool = False) -> None:
         with self._lock:
             if self._scanning:
@@ -391,7 +420,7 @@ class FleetManager:
 
         def _run_scan():
             try:
-                self.refresh_known_peers()
+                self.refresh_known_peers(include_mdns=True, force=True)
                 my_ip = self._get_my_ip()
                 parts = my_ip.split(".")
                 if len(parts) == 4 and is_private_lan_ip(my_ip) and not my_ip.startswith("127."):
@@ -439,7 +468,7 @@ class FleetManager:
         while True:
             time.sleep(25.0)
             try:
-                self.refresh_known_peers()
+                self.refresh_known_peers(include_mdns=True, force=True)
                 if time.time() - self._last_scan_ts > 90.0:
                     self.scan_lan_subnet(blocking=True)
             except Exception:
@@ -449,7 +478,7 @@ class FleetManager:
         if trigger_scan:
             self.scan_lan_subnet(blocking=True)
         else:
-            self.refresh_known_peers()
+            self.refresh_known_peers(include_mdns=False, force=False)
 
         self_node = self.build_ping_payload()
         self_node["is_self"] = True
@@ -565,23 +594,74 @@ class FleetManager:
         if not norm:
             return {"ok": False, "error": f"Invalid target: {target}"}
         ip, port, target_id = norm
-        code, data = self._http_request_peer(ip, port, "GET", "/api/status", timeout=2.5)
+        code, data = self._http_request_peer(ip, port, "GET", "/api/status", timeout=3.5)
         if code == 403 or (isinstance(data, dict) and data.get("locked")):
             self._mark_peer_locked(target_id)
-            return {"ok": False, "locked": True, "error": "Password required for this frame"}
+            return {"ok": False, "locked": True, "target": target_id, "error": "Password required for this frame"}
         if code == 200 and isinstance(data, dict) and data.get("status"):
             st = data["status"]
+            cfg = data.get("settings", {}) or {}
+            ed = st.get("edition") or ("baidupan" if "pwd" in cfg else "gphotos")
+            plat = st.get("platform") or ("android_tv" if "update_url" in cfg else "linux")
+            with self._lock:
+                prev = dict(self._peers.get(target_id, {}))
+                upserted = {
+                    **prev,
+                    "photoframe": True,
+                    "service": "photoframe",
+                    "id": target_id,
+                    "ip": ip,
+                    "port": port,
+                    "is_self": False,
+                    "online": True,
+                    "locked": False,
+                    "last_seen": time.time(),
+                    "mdns_hostname": st.get("mdns_hostname") or prev.get("mdns_hostname") or target_id,
+                    "device_name": cfg.get("device_name") or prev.get("device_name") or "photoframe",
+                    "edition": ed,
+                    "platform": plat,
+                    "profile": st.get("profile", prev.get("profile", "")),
+                    "app_version": st.get("app_version", prev.get("app_version", "1.0.0")),
+                    "app_version_code": st.get("app_version_code", prev.get("app_version_code", 1)),
+                    "is_night_mode": bool(st.get("is_night_mode", False)),
+                    "night_mode_enabled": bool(st.get("night_mode_enabled", True)),
+                    "is_paused": bool(st.get("is_paused", False)),
+                    "is_demo_mode": bool(st.get("is_demo_mode", False)),
+                    "photo_count": int(st.get("photo_count", 0)),
+                    "video_count": int(st.get("video_count", 0)),
+                    "landscape_mode": st.get("landscape_mode", "collage"),
+                    "slide_duration": st.get("slide_duration", 15),
+                    "night_start": st.get("night_start", "22:00"),
+                    "night_end": st.get("night_end", "06:00"),
+                    "rotation": int(st.get("rotation", 0)),
+                    "canvas_w": int(st.get("canvas_w", 1920)),
+                    "canvas_h": int(st.get("canvas_h", 1080)),
+                    "web_frame_enabled": bool(st.get("web_frame_enabled", False)),
+                    "web_frame_running": bool(st.get("web_frame_running", False)),
+                    "web_frame_port": int(st.get("web_frame_port", 8081)),
+                    "web_frame_profile": str(st.get("web_frame_profile", "auto")),
+                    "web_frame_clients": int(st.get("web_frame_clients", 0)),
+                }
+                self._peers[target_id] = upserted
             return {
                 "ok": True,
                 "target": target_id,
                 "is_self": False,
-                "edition": st.get("edition") or ("baidupan" if "pwd" in data.get("settings", {}) else "gphotos"),
-                "platform": st.get("platform") or ("android_tv" if "update_url" in data.get("settings", {}) else "linux"),
+                "edition": ed,
+                "platform": plat,
                 "status": st,
-                "settings": data.get("settings", {}),
+                "settings": cfg,
                 "log_tail": data.get("log_tail", ""),
             }
-        return {"ok": False, "error": f"Peer {target_id} is unreachable"}
+        with self._lock:
+            if target_id in self._peers:
+                self._peers[target_id]["online"] = False
+        return {
+            "ok": False,
+            "unreachable": True,
+            "target": target_id,
+            "error": f"Peer {target_id} is temporarily unreachable",
+        }
 
     def _dispatch_action_local(self, action: str, album_arg: str, pwd_arg: str) -> str:
         try:

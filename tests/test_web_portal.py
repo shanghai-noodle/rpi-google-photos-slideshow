@@ -516,6 +516,12 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
         self.assertFalse(match_add["requires_password"])
         self.assertFalse(match_add["node"]["locked"])
 
+        # 7. Transiently unreachable target preserves requested target with target_unreachable=True
+        code, unreach_st, _ = req_a("/api/status?target=127.0.0.1:59999", cookie=cookie_a)
+        self.assertEqual(code, 200)
+        self.assertTrue(unreach_st.get("target_unreachable"))
+        self.assertEqual(unreach_st.get("target"), "127.0.0.1:59999")
+
     def test_touchscreen_and_mouse_pause_toggle_with_debounce(self):
         """
         Verifies that tapping the screen (MOUSEBUTTONDOWN button=1 or FINGERDOWN) toggles
