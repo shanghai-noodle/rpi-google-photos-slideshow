@@ -128,6 +128,8 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
         self.assertIn("--md-sys-color-accent-text", WEB_PORTAL_HTML)
         self.assertNotIn('id="active-frame-tie-strip"', WEB_PORTAL_HTML)
         self.assertIn('id="broadcast-pw-note"', WEB_PORTAL_HTML)
+        self.assertIn('id="card-system-control"', WEB_PORTAL_HTML)
+        self.assertIn("frame-badge", WEB_PORTAL_HTML)
         self.assertNotIn("filter: brightness", WEB_PORTAL_HTML)
 
     def test_web_portal_http_api_endpoints(self):
@@ -511,6 +513,26 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
         self.assertFalse(pw_bcast_res["ok"])
         self.assertTrue(self.store.verify_password("admin"))
         self.assertTrue(store_b.verify_password("DifferentSecretOnFrameB!"))
+
+        # 5c. Only transport/sleep/sync/demo/test-video actions are allowed in Broadcast Mode
+        code, exit_bcast, _ = req_a(
+            "/api/action",
+            method="POST",
+            cookie=cookie_a,
+            payload={"target": "all", "action": "exit_app"},
+        )
+        self.assertEqual(code, 400)
+        self.assertFalse(exit_bcast["ok"])
+        self.assertTrue(app_a.is_running)
+        self.assertTrue(app_b.is_running)
+        code, next_bcast, _ = req_a(
+            "/api/action",
+            method="POST",
+            cookie=cookie_a,
+            payload={"target": "all", "action": "next"},
+        )
+        self.assertEqual(code, 200)
+        self.assertTrue(next_bcast["ok"])
 
         # 6. Rotating Frame B's password re-locks the peer; matching Frame A's password auto-unlocks
         store_b.change_password("RotatedSecretB2!")

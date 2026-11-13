@@ -610,7 +610,24 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     display: flex; flex-direction: column; gap: 4px; text-align: left;
   }
   .fleet-pill[data-accented="true"] {
-    border-left: 4px solid var(--pill-border, var(--md-sys-color-subtle-border));
+    border-left: 9px solid var(--pill-border, var(--md-sys-color-subtle-border));
+    background: var(--pill-tint, var(--md-sys-color-surface-container-low));
+  }
+  .fleet-pill[data-accented="true"]:hover {
+    background: var(--pill-tint, var(--md-sys-color-subtle-hover));
+    border-color: var(--pill-border, var(--md-sys-color-hover-outline));
+  }
+  .fleet-pill[data-accented="true"].selected,
+  .fleet-pill[data-accented="true"].selected:hover {
+    border-width: 2.5px; border-left-width: 9px;
+    box-shadow: 0 0 0 3px var(--pill-tint, transparent), 0 0 0 5px var(--pill-border, transparent);
+  }
+  .frame-badge {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    min-width: 24px; height: 24px; padding: 0 7px; border-radius: 12px;
+    font-size: 0.74rem; font-weight: 800; letter-spacing: 0.02em;
+    background: var(--pill-border, var(--md-sys-color-outline));
+    color: var(--pill-tint, var(--md-sys-color-surface));
   }
   .fleet-pill:hover {
     border-color: var(--md-sys-color-hover-outline);
@@ -666,6 +683,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     border: 1.5px solid var(--md-sys-color-tonal-border);
   }
   #header-fleet-chip[data-tied="true"] {
+    border-width: 2.5px;
     border-color: var(--active-frame-border);
     background: var(--active-frame-tint);
     color: var(--active-frame-accent);
@@ -674,10 +692,10 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     background: var(--active-frame-tint);
     color: var(--md-sys-color-on-surface);
     border-color: var(--active-frame-border);
-    border-left-width: 4px;
+    border-width: 2px; border-left-width: 9px;
   }
   #app-view[data-fleet-tied="true"] section[role="tabpanel"] > .m3-card {
-    border-top: 3px solid var(--active-frame-border);
+    border-top: 7px solid var(--active-frame-border);
   }
   .saved-albums-grid {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
@@ -1273,7 +1291,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
           <div id="update-confirm-banner" class="confirm-banner" role="status" aria-live="polite"></div>
         </div>
 
-        <div class="m3-card">
+        <div class="m3-card" id="card-system-control">
           <div class="card-header">
             <h2><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"/></svg><span data-i18n="sec_system">System Control &amp; RAM Log</span></h2>
             <button type="button" id="btn-refresh-log" class="btn-sm tonal" onclick="fetchStatus(false)">
@@ -2357,15 +2375,15 @@ function scheduleStatusPoll(delayMs = 5000) {
 }
 
 const FRAME_ACCENTS = [
-  { name: 'slate', lightText: '#1D528E', lightBorder: '#2B6CB0', lightTint: '#EDF4FC', darkText: '#94B4D4', darkBorder: '#6E8FAE', darkTint: '#1E2630' },
-  { name: 'sage',  lightText: '#1E6346', lightBorder: '#2C7A59', lightTint: '#ECF6F1', darkText: '#8EC2AA', darkBorder: '#699E86', darkTint: '#1C2924' },
-  { name: 'ochre', lightText: '#7C4D12', lightBorder: '#9C651C', lightTint: '#FAF3E8', darkText: '#CFB38A', darkBorder: '#A88C64', darkTint: '#2B251D' },
-  { name: 'iris',  lightText: '#5B3E82', lightBorder: '#72519D', lightTint: '#F3EFFA', darkText: '#B5A3CF', darkBorder: '#8E7BA8', darkTint: '#26212E' },
-  { name: 'rose',  lightText: '#8A3843', lightBorder: '#A64B57', lightTint: '#FBEFF1', darkText: '#CFA0A7', darkBorder: '#8E676E', darkTint: '#2D2123' },
-  { name: 'teal',  lightText: '#195E6A', lightBorder: '#267887', lightTint: '#EBF5F7', darkText: '#8BBEC7', darkBorder: '#679AA3', darkTint: '#1C282B' }
+  { name: 'azure', lightText: '#0A337B', lightBorder: '#1D52AF', lightTint: '#D9E6FC', darkText: '#A3BAE0', darkBorder: '#668BCC', darkTint: '#1F2C42' },
+  { name: 'amber', lightText: '#7B3F0A', lightBorder: '#AF611D', lightTint: '#FCE9D9', darkText: '#E0C0A3', darkBorder: '#CC9666', darkTint: '#422F1F' },
+  { name: 'emerald', lightText: '#0A7B20', lightBorder: '#1DAF3A', lightTint: '#D9FCE0', darkText: '#A3E0AF', darkBorder: '#66CC7A', darkTint: '#1F4226' },
+  { name: 'violet', lightText: '#4C0A7B', lightBorder: '#721DAF', lightTint: '#EDD9FC', darkText: '#C7A3E0', darkBorder: '#A166CC', darkTint: '#331F42' },
+  { name: 'magenta', lightText: '#7B0A42', lightBorder: '#AF1D66', lightTint: '#FCD9EB', darkText: '#E0A3C2', darkBorder: '#CC6699', darkTint: '#421F30' },
+  { name: 'cyan', lightText: '#0A7B73', lightBorder: '#1DAFA6', lightTint: '#D9FCFA', darkText: '#A3E0DC', darkBorder: '#66CCC5', darkTint: '#1F4240' }
 ];
 const ALL_FRAMES_ACCENT = {
-  name: 'broadcast', lightText: '#2A4E7C', lightBorder: '#3E689E', lightTint: '#EEF3FA', darkText: '#9EB8D6', darkBorder: '#7893B2', darkTint: '#1F2630'
+  name: 'broadcast', lightText: '#2B2F36', lightBorder: '#4A5260', lightTint: '#E4E7EC', darkText: '#C9CDD4', darkBorder: '#8A919C', darkTint: '#2B2E34'
 };
 
 function resolveAccentColors(swatch) {
@@ -2770,7 +2788,7 @@ function renderFleetBar(nodes) {
     const allPillStyle = `--pill-accent:${allColors.text}; --pill-border:${allColors.border}; --pill-tint:${allColors.tint};`;
     html += `<div class="fleet-pill ${isAll ? 'selected' : ''}" data-accented="true" style="${allPillStyle}" role="button" tabindex="0" onclick="selectFleetTarget('all')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectFleetTarget('all');}">
       <div class="fleet-pill-top">
-        <span>${escapeHtml(t('fleet_all_frames', {count: unlockedOnlineNodes.length}))}</span>
+        <span style="display:inline-flex; align-items:center; gap:8px;"><span class="frame-badge" aria-hidden="true">ALL</span><span>${escapeHtml(t('fleet_all_frames', {count: unlockedOnlineNodes.length}))}</span></span>
       </div>
       <div class="fleet-pill-meta">Broadcast Mode</div>
       <div class="fleet-pill-sub">${escapeHtml(allSubText)}</div>
@@ -2778,7 +2796,7 @@ function renderFleetBar(nodes) {
   }
 
   let peerColorIdx = 0;
-  fleetNodes.forEach(node => {
+  fleetNodes.forEach((node, nodeIdx) => {
     const swatch = node.is_self
       ? FRAME_ACCENTS[0]
       : FRAME_ACCENTS[1 + (peerColorIdx++ % (FRAME_ACCENTS.length - 1))];
@@ -2804,7 +2822,7 @@ function renderFleetBar(nodes) {
     const pillAccentAttr = multiFrame ? ` data-accented="true" style="--pill-accent:${pillColors.text}; --pill-border:${pillColors.border}; --pill-tint:${pillColors.tint};"` : '';
     html += `<div class="fleet-pill ${isSelected ? 'selected' : ''} ${isLocked ? 'locked' : ''}"${pillAccentAttr} role="button" tabindex="0" onclick="selectFleetTarget('${escapeHtml(targetKey)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectFleetTarget('${escapeHtml(targetKey)}');}">
       <div class="fleet-pill-top">
-        <span style="display:inline-flex; align-items:center; gap:7px;"><span class="status-dot" aria-hidden="true" style="color:${statusDotColor}"></span>${hostTitle}${selfTag}</span>
+        <span style="display:inline-flex; align-items:center; gap:7px;">${multiFrame ? `<span class="frame-badge" aria-hidden="true">${String.fromCharCode(65 + (nodeIdx % 26))}</span>` : ''}<span class="status-dot" aria-hidden="true" style="color:${statusDotColor}"></span>${hostTitle}${selfTag}</span>
         <span style="display:inline-flex; align-items:center; gap:4px;">${lockBadge}${removeBtn}</span>
       </div>
       <div class="fleet-pill-meta">${escapeHtml(node.ip)}:${node.port || 8080} • ${platLabel} (${edLabel}) • v${escapeHtml(node.app_version || '1.0')}</div>
@@ -2907,6 +2925,13 @@ function updateDynamicFormVisibility() {
   if (logBox) logBox.classList.toggle('hidden', isAll);
   const btnRefreshLog = document.getElementById('btn-refresh-log');
   if (btnRefreshLog) btnRefreshLog.classList.toggle('hidden', isAll);
+
+  const sysCard = document.getElementById('card-system-control');
+  if (sysCard) sysCard.classList.toggle('hidden', isAll);
+  const btnExit = document.getElementById('btn-exit-app');
+  if (btnExit) btnExit.disabled = isAll || portalExitedOffline;
+  const wfCard = document.getElementById('webframe-card');
+  if (wfCard) wfCard.classList.toggle('hidden', isAll);
 
   const pwNote = document.getElementById('broadcast-pw-note');
   if (pwNote) pwNote.classList.toggle('hidden', !isAll);

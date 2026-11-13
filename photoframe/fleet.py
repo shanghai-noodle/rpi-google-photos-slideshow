@@ -29,6 +29,11 @@ _CLUSTER_SECRET = b"PhotoFrame-LAN-Fleet-Trust-v1-2026"
 PEER_TOKEN = hmac.new(_CLUSTER_SECRET, b"photoframe-lan-peer-v1", hashlib.sha256).hexdigest()
 CANDIDATE_WEB_PORTS = (8080, 8081, 8082, 8088)
 
+# Only these remote-control actions may be broadcast to all frames at once.
+BROADCAST_ALLOWED_ACTIONS = frozenset(
+    {"prev", "next", "pause_toggle", "toggle_night", "resync", "demo", "test_videos"}
+)
+
 SHARED_SETTINGS_KEYS = (
     "language",
     "landscape_mode",
@@ -677,6 +682,8 @@ class FleetManager:
             return 200, {"ok": True, "message": msg}
 
         if target == "all":
+            if action not in BROADCAST_ALLOWED_ACTIONS:
+                return 400, {"ok": False, "error": "This action is not available in Broadcast Mode. Select an individual frame."}
             nodes = self.get_fleet_nodes(trigger_scan=False)
             unlocked_nodes = [n for n in nodes if n.get("online", True) and not n.get("locked", False)]
             remote_nodes = [n for n in unlocked_nodes if not n.get("is_self")]
