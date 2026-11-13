@@ -656,6 +656,23 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     border-left-style: solid;
   }
   .fleet-pill-top > span:first-child { min-width: 0; flex: 1 1 auto; }
+  .fleet-pill.fleet-row { cursor: default; }
+  .fleet-pill.fleet-row:hover {
+    background: var(--md-sys-color-surface-container-low); border-color: var(--md-sys-color-subtle-border);
+  }
+  .fleet-pill.fleet-row.selected:not([data-accented]):hover {
+    background: var(--md-sys-color-secondary-container); border-color: var(--md-sys-color-accent-text);
+  }
+  .fleet-pill.fleet-row[data-accented="true"]:hover {
+    background: var(--pill-tint); border-color: var(--pill-border);
+  }
+  .fleet-row-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; min-height: 40px; }
+  .fleet-current-chip {
+    display: inline-flex; align-items: center; min-height: 32px; padding: 4px 12px; border-radius: 999px;
+    font-size: 0.78rem; font-weight: 700;
+    background: var(--pill-border, var(--md-sys-color-accent-text));
+    color: var(--pill-tint, var(--md-sys-color-surface));
+  }
   .fleet-host-wrap { display: flex; flex-direction: column; min-width: 0; }
   .fleet-host { overflow-wrap: anywhere; line-height: 1.25; }
   .fleet-self-tag { font-size: 0.74rem; font-weight: 600; }
@@ -1244,6 +1261,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
           <input type="text" id="add-peer-input" style="flex:1; min-width:200px;" data-i18n-placeholder="ph_add_peer" placeholder="192.168.86.x or photoframe-2.local:8080">
           <button type="button" class="primary" onclick="addManualPeer()" data-i18n="btn_connect_peer">Connect Frame</button>
         </div>
+        <p class="card-sub-desc" data-i18n="fleet_manage_hint">Switch frames from the header menu. Use this list to add, unlock, or remove frames.</p>
         <div id="fleet-nodes-grid" class="fleet-grid"></div>
       </section>
 
@@ -1584,6 +1602,10 @@ const I18N = {
     lbl_frame_picker: "Frame being controlled",
     opt_manage_frames: "Manage frames…",
     broadcast_admin_note: "Broadcast Mode: Web Viewer, app update, and Exit are per-frame controls. Pick a single frame in the header to use them.",
+    btn_control_frame: "Control",
+    badge_controlling_now: "Controlling",
+    btn_remove_frame: "Remove",
+    fleet_manage_hint: "Switch frames from the header menu. Use this list to add, unlock, or remove frames.",
     lbl_dark_theme_switch: "Dark theme",
     btn_theme_light: "Light",
     btn_theme_dark: "Dark",
@@ -1744,6 +1766,10 @@ const I18N = {
     lbl_frame_picker: "当前控制的相框",
     opt_manage_frames: "管理相框…",
     broadcast_admin_note: "全局广播模式：网页相框、应用更新和退出均为单个相框的功能。请在顶部选择单个相框后使用。",
+    btn_control_frame: "控制",
+    badge_controlling_now: "正在控制",
+    btn_remove_frame: "移除",
+    fleet_manage_hint: "请通过顶部菜单切换相框。此列表用于添加、解锁或移除相框。",
     lbl_dark_theme_switch: "深色主题",
     btn_theme_light: "浅色",
     btn_theme_dark: "深色",
@@ -1904,6 +1930,10 @@ const I18N = {
     lbl_frame_picker: "操作中のフレーム",
     opt_manage_frames: "フレームを管理…",
     broadcast_admin_note: "一括配信モード：Web ビューア、アプリ更新、終了は個別フレーム用の操作です。上部でフレームを選択してください。",
+    btn_control_frame: "操作する",
+    badge_controlling_now: "操作中",
+    btn_remove_frame: "削除",
+    fleet_manage_hint: "フレームの切り替えは上部のメニューから行います。この一覧ではフレームの追加・ロック解除・削除ができます。",
     lbl_dark_theme_switch: "ダークテーマ",
     btn_theme_light: "ライト",
     btn_theme_dark: "ダーク",
@@ -2064,6 +2094,10 @@ const I18N = {
     lbl_frame_picker: "제어 중인 액자",
     opt_manage_frames: "액자 관리…",
     broadcast_admin_note: "전체 브로드캐스트 모드: 웹 뷰어, 앱 업데이트, 종료는 개별 액자 기능입니다. 상단에서 액자를 선택하세요.",
+    btn_control_frame: "제어",
+    badge_controlling_now: "제어 중",
+    btn_remove_frame: "삭제",
+    fleet_manage_hint: "액자 전환은 상단 메뉴에서 합니다. 이 목록에서는 액자를 추가, 잠금 해제 또는 삭제할 수 있습니다.",
     lbl_dark_theme_switch: "다크 테마",
     btn_theme_light: "라이트",
     btn_theme_dark: "다크",
@@ -2224,6 +2258,10 @@ const I18N = {
     lbl_frame_picker: "Marco bajo control",
     opt_manage_frames: "Gestionar marcos…",
     broadcast_admin_note: "Modo Difusión: el Visor Web, la actualización y Salir son controles de cada marco. Elige un marco en la cabecera para usarlos.",
+    btn_control_frame: "Controlar",
+    badge_controlling_now: "Controlando",
+    btn_remove_frame: "Quitar",
+    fleet_manage_hint: "Cambia de marco desde el menú de la cabecera. Usa esta lista para añadir, desbloquear o quitar marcos.",
     lbl_dark_theme_switch: "Tema oscuro",
     btn_theme_light: "Claro",
     btn_theme_dark: "Oscuro",
@@ -2384,6 +2422,10 @@ const I18N = {
     lbl_frame_picker: "Gesteuerter Rahmen",
     opt_manage_frames: "Rahmen verwalten…",
     broadcast_admin_note: "Broadcast-Modus: Web-Viewer, App-Update und Beenden gelten pro Rahmen. Wählen Sie oben einen einzelnen Rahmen aus.",
+    btn_control_frame: "Steuern",
+    badge_controlling_now: "Wird gesteuert",
+    btn_remove_frame: "Entfernen",
+    fleet_manage_hint: "Rahmen wechseln Sie im Menü oben. Diese Liste dient zum Hinzufügen, Entsperren oder Entfernen von Rahmen.",
     lbl_dark_theme_switch: "Dunkles Design",
     btn_theme_light: "Hell",
     btn_theme_dark: "Dunkel",
@@ -2892,53 +2934,51 @@ function renderFleetBar(nodes) {
   if (selectedTarget === 'all') activeColors = allColors;
 
   let html = '';
-  if (multiFrame) {
-    const isAll = (selectedTarget === 'all');
-    const allSubText = lockedOnlineNodes.length > 0
-      ? t('fleet_all_sub_locked', {unlocked: unlockedOnlineNodes.length, locked: lockedOnlineNodes.length})
-      : t('fleet_all_sub');
-    const allPillStyle = `--pill-accent:${allColors.text}; --pill-border:${allColors.border}; --pill-tint:${allColors.tint};`;
-    html += `<div class="fleet-pill ${isAll ? 'selected' : ''}" data-accented="true" style="${allPillStyle}" role="button" tabindex="0" onclick="selectFleetTarget('all')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectFleetTarget('all');}">
-      <div class="fleet-pill-top">
-        <span style="display:inline-flex; align-items:center; gap:8px;"><span class="frame-badge" aria-hidden="true">ALL</span><span>${escapeHtml(t('fleet_all_frames', {count: unlockedOnlineNodes.length}))}</span></span>
-      </div>
-      <div class="fleet-pill-meta">Broadcast Mode</div>
-      <div class="fleet-pill-sub">${escapeHtml(allSubText)}</div>
-    </div>`;
-  }
-
   let peerColorIdx = 0;
+  const curKey = (selectedTarget === 'self' || selectedTarget === selfNode.id) ? 'self' : selectedTarget;
   fleetNodes.forEach((node, nodeIdx) => {
     const swatch = node.is_self
       ? FRAME_ACCENTS[0]
       : FRAME_ACCENTS[1 + (peerColorIdx++ % (FRAME_ACCENTS.length - 1))];
     const pillColors = resolveAccentColors(swatch);
     const targetKey = node.is_self ? 'self' : node.id;
-    const isSelected = (selectedTarget === targetKey) || (node.is_self && selectedTarget === node.id);
+    const isSelected = (curKey === targetKey);
     if (isSelected) activeColors = pillColors;
     const isLocked = (!node.is_self && Boolean(node.locked));
-    const statusDotColor = node.online === false ? '#D9534F' : (isLocked ? pillColors.border : (node.is_night_mode ? '#D49B38' : (node.is_paused ? '#8E8E93' : '#30A46C')));
+    const isOffline = (node.online === false);
+    const statusDotColor = isOffline ? '#D9534F' : (isLocked ? pillColors.border : (node.is_night_mode ? '#D49B38' : (node.is_paused ? '#8E8E93' : '#30A46C')));
     const platLabel = node.platform === 'android_tv' ? 'Android TV' : 'Linux';
     const edLabel = node.edition === 'baidupan' ? 'Baidu' : 'Google';
     const selfTag = node.is_self ? `<span class="fleet-self-tag" style="color:${multiFrame ? pillColors.text : 'var(--md-sys-color-accent-text)'};">${escapeHtml(t('fleet_this_frame'))}</span>` : '';
     const lockBadge = isLocked ? `<span class="fleet-lock-badge">${lockSvg}<span>${escapeHtml(t('fleet_locked_badge'))}</span></span>` : '';
-    const removeBtn = (!node.is_self && (node.is_manual || node.online === false))
-      ? `<button type="button" class="icon-remove-btn" aria-label="Remove frame" title="Remove" onclick="removePeer(event, '${escapeHtml(node.id)}')">${closeSvg}</button>`
-      : '';
     const hostTitle = escapeHtml(node.mdns_hostname || node.ip || node.id);
     const mediaSummary = isLocked
       ? escapeHtml(t('fleet_locked_sub'))
-      : (node.online === false
+      : (isOffline
           ? 'Offline'
           : `${node.is_demo_mode ? 'Demo • ' : ''}${node.photo_count ?? 0} items • ${escapeHtml(node.landscape_mode || 'collage')}`);
+    const idAttr = escapeHtml(node.id);
+    const keyAttr = escapeHtml(targetKey);
+    let primary = '';
+    if (isLocked) {
+      primary = `<button type="button" class="primary btn-sm" onclick="openPeerAuthModal('${idAttr}', true)">${lockSvg}<span class="btn-label">${escapeHtml(t('btn_unlock_peer'))}</span></button>`;
+    } else if (isSelected) {
+      primary = `<span class="fleet-current-chip">${escapeHtml(t('badge_controlling_now'))}</span>`;
+    } else if (!isOffline) {
+      primary = `<button type="button" class="tonal btn-sm" onclick="controlFrame('${keyAttr}')"><span class="btn-label">${escapeHtml(t('btn_control_frame'))}</span></button>`;
+    }
+    const removeBtn = (!node.is_self && (node.is_manual || isOffline))
+      ? `<button type="button" class="outlined btn-sm" aria-label="${escapeHtml(t('btn_remove_frame'))} ${hostTitle}" onclick="removePeer(event, '${idAttr}')">${closeSvg}<span class="btn-label">${escapeHtml(t('btn_remove_frame'))}</span></button>`
+      : '';
     const pillAccentAttr = multiFrame ? ` data-accented="true" style="--pill-accent:${pillColors.text}; --pill-border:${pillColors.border}; --pill-tint:${pillColors.tint};"` : '';
-    html += `<div class="fleet-pill ${isSelected ? 'selected' : ''} ${isLocked ? 'locked' : ''}"${pillAccentAttr} role="button" tabindex="0" onclick="selectFleetTarget('${escapeHtml(targetKey)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectFleetTarget('${escapeHtml(targetKey)}');}">
+    html += `<div class="fleet-pill fleet-row ${isSelected ? 'selected' : ''} ${isLocked ? 'locked' : ''}"${pillAccentAttr}>
       <div class="fleet-pill-top">
         <span style="display:inline-flex; align-items:center; gap:7px; min-width:0;">${multiFrame ? `<span class="frame-badge" aria-hidden="true">${String.fromCharCode(65 + (nodeIdx % 26))}</span>` : ''}<span class="status-dot" aria-hidden="true" style="color:${statusDotColor}"></span><span class="fleet-host-wrap"><span class="fleet-host">${hostTitle}</span>${selfTag}</span></span>
-        <span style="display:inline-flex; align-items:center; gap:4px;">${lockBadge}${removeBtn}</span>
+        ${lockBadge}
       </div>
       <div class="fleet-pill-meta"><span class="meta-line">${escapeHtml(node.ip)}:${node.port || 8080}</span><span class="meta-line">${platLabel} (${edLabel}) • v${escapeHtml(node.app_version || '1.0')}</span></div>
       <div class="fleet-pill-sub">${mediaSummary}</div>
+      <div class="fleet-row-actions">${primary}${removeBtn}</div>
     </div>`;
   });
   grid.innerHTML = html;
@@ -3110,6 +3150,11 @@ function applySettingsToForm(cfg) {
   if (upUrlEl) upUrlEl.value = cfg.update_url || '';
   const wfProfEl = document.getElementById('cfg-webframe-profile');
   if (wfProfEl && cfg.web_frame_profile) wfProfEl.value = cfg.web_frame_profile;
+}
+
+function controlFrame(key) {
+  selectFleetTarget(key);
+  if (key === 'self' || selectedTarget === key) switchPortalTab('control');
 }
 
 function selectFleetTarget(target) {

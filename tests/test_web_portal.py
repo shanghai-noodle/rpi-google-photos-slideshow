@@ -132,6 +132,8 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
         self.assertIn("frame-badge", WEB_PORTAL_HTML)
         self.assertIn('id="header-frame-select"', WEB_PORTAL_HTML)
         self.assertIn('id="broadcast-admin-note"', WEB_PORTAL_HTML)
+        self.assertIn("function controlFrame(", WEB_PORTAL_HTML)
+        self.assertIn("fleet_manage_hint", WEB_PORTAL_HTML)
         self.assertNotIn('id="header-fleet-chip"', WEB_PORTAL_HTML)
         # Task-first tabs: fleet management and the Web Viewer live in Frames & Admin (panel-system)
         sys_idx = WEB_PORTAL_HTML.index('id="panel-system"')
