@@ -1245,7 +1245,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       <!-- TAB 3: FRAMES & ADMIN -->
       <section id="panel-system" role="tabpanel" aria-labelledby="tab-system" class="hidden">
       <!-- FRAME FLEET (Frames & Admin tab) -->
-      <section class="m3-card" id="fleet-card" aria-labelledby="sec-fleet-heading">
+      <section class="m3-card hidden" id="fleet-card" aria-labelledby="sec-fleet-heading">
         <div class="card-header">
           <h2 id="sec-fleet-heading"><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z"/></svg><span data-i18n="sec_fleet">Connected Photo Frames (LAN Fleet)</span></h2>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -2473,6 +2473,7 @@ let statusPollTimer = null;
 let portalLangInitialized = false;
 let hasLoadedFleetOnce = false;
 let lastIsDefaultPassword = false;
+let manageMode = false;
 const settingsCacheByTarget = {};
 
 function setSelectedTarget(target, persist = true) {
@@ -2623,6 +2624,10 @@ function switchPortalTab(tabName, focusMobTab = false) {
   if (!PORTAL_TABS.includes(tabName)) tabName = 'control';
   activeTab = tabName;
   try { sessionStorage.setItem('frame_active_tab', tabName); } catch (e) {}
+  if (manageMode && tabName !== 'system') {
+    manageMode = false;
+    renderFleetBar(fleetNodes);
+  }
 
   PORTAL_TABS.forEach((name, idx) => {
     const isSel = (name === tabName);
@@ -2677,6 +2682,7 @@ function onTabListKeyDown(ev, curTab) {
 }
 
 function openPasswordTab() {
+  if (manageMode) setManageMode(false);
   if (selectedTarget === 'all') {
     selectFleetTarget('self');
   }
@@ -2712,13 +2718,13 @@ function renderHeaderPicker() {
     else if (node.online === false) label += ' (offline)';
     opts.push({v: node.is_self ? 'self' : node.id, label, swatch, letter});
   });
-  const cur = (selectedTarget === 'all') ? 'all'
-    : ((selectedTarget === 'self' || (selfNode && selectedTarget === selfNode.id)) ? 'self' : selectedTarget);
+  const cur = manageMode ? '__manage__' : ((selectedTarget === 'all') ? 'all'
+    : ((selectedTarget === 'self' || (selfNode && selectedTarget === selfNode.id)) ? 'self' : selectedTarget));
   sel.innerHTML = opts.map(o => `<option value="${escapeHtml(o.v)}"${o.v === cur ? ' selected' : ''}>${escapeHtml(o.label)}</option>`).join('')
     + `<option value="__manage__">${escapeHtml(t('opt_manage_frames'))}</option>`;
   sel.value = cur;
   sel.setAttribute('aria-label', t('lbl_frame_picker'));
-  const active = opts.find(o => o.v === cur) || opts[0];
+  const active = manageMode ? null : (opts.find(o => o.v === cur) || opts[0]);
   if (badge) {
     if (multi && active) {
       const c = resolveAccentColors(active.swatch);
@@ -2739,8 +2745,8 @@ function renderHeaderPicker() {
 function onHeaderFrameChange(sel) {
   const v = sel ? sel.value : '';
   if (v === '__manage__') {
-    renderHeaderPicker();
     switchPortalTab('system');
+    setManageMode(true);
     setTimeout(() => {
       const card = document.getElementById('fleet-card');
       if (card && typeof card.scrollIntoView === 'function') card.scrollIntoView({block: 'start'});
@@ -2749,6 +2755,11 @@ function onHeaderFrameChange(sel) {
   }
   selectFleetTarget(v || 'self');
   renderHeaderPicker();
+}
+
+function setManageMode(on) {
+  manageMode = Boolean(on);
+  renderFleetBar(fleetNodes);
 }
 
 function updateFleetCardVisibility() {
@@ -2961,7 +2972,7 @@ function renderFleetBar(nodes) {
     const keyAttr = escapeHtml(targetKey);
     let primary = '';
     if (isLocked) {
-      primary = `<button type="button" class="primary btn-sm" onclick="openPeerAuthModal('${idAttr}', true)">${lockSvg}<span class="btn-label">${escapeHtml(t('btn_unlock_peer'))}</span></button>`;
+      primary = `<button type="button" class="primary btn-sm" onclick="openPeerAuthModal('${idAttr}', false)">${lockSvg}<span class="btn-label">${escapeHtml(t('btn_unlock_peer'))}</span></button>`;
     } else if (isSelected) {
       primary = `<span class="fleet-current-chip">${escapeHtml(t('badge_controlling_now'))}</span>`;
     } else if (!isOffline) {
@@ -3006,7 +3017,7 @@ function renderFleetBar(nodes) {
   }
   if (banner) {
     banner.textContent = bannerText;
-    banner.classList.toggle('hidden', !multiFrame);
+    banner.classList.toggle('hidden', !multiFrame || manageMode);
   }
 
   if (multiFrame) {
@@ -3067,7 +3078,11 @@ function updateDynamicFormVisibility() {
   if (rotInput) rotInput.disabled = isAll;
 
   const apkCard = document.getElementById('card-apk-update');
-  if (apkCard) apkCard.classList.toggle('hidden', !showTvApkCard);
+  if (apkCard) apkCard.classList.toggle('hidden', !showTvApkCard || manageMode);
+  const fleetCardEl = document.getElementById('fleet-card');
+  if (fleetCardEl) fleetCardEl.classList.toggle('hidden', !manageMode);
+  const pwCardEl = document.getElementById('card-password');
+  if (pwCardEl) pwCardEl.classList.toggle('hidden', manageMode);
 
   const wfUrlGroup = document.getElementById('group-webframe-url');
   if (wfUrlGroup) wfUrlGroup.classList.toggle('hidden', isAll);
@@ -3080,15 +3095,15 @@ function updateDynamicFormVisibility() {
   if (btnRefreshLog) btnRefreshLog.classList.toggle('hidden', isAll);
 
   const sysCard = document.getElementById('card-system-control');
-  if (sysCard) sysCard.classList.toggle('hidden', isAll);
+  if (sysCard) sysCard.classList.toggle('hidden', isAll || manageMode);
   const btnExit = document.getElementById('btn-exit-app');
   if (btnExit) btnExit.disabled = isAll || portalExitedOffline;
   const wfCard = document.getElementById('webframe-card');
-  if (wfCard) wfCard.classList.toggle('hidden', isAll);
+  if (wfCard) wfCard.classList.toggle('hidden', isAll || manageMode);
   const statsGrid = document.getElementById('stats-grid');
   if (statsGrid) statsGrid.classList.toggle('hidden', isAll);
   const adminNote = document.getElementById('broadcast-admin-note');
-  if (adminNote) adminNote.classList.toggle('hidden', !isAll);
+  if (adminNote) adminNote.classList.toggle('hidden', !isAll || manageMode);
 
   const pwNote = document.getElementById('broadcast-pw-note');
   if (pwNote) pwNote.classList.toggle('hidden', !isAll);
@@ -3166,6 +3181,7 @@ function selectFleetTarget(target) {
     return;
   }
   const nextTarget = (node && node.is_self) ? 'self' : (target || 'self');
+  manageMode = false;
   setSelectedTarget(nextTarget, true);
   formPopulated = false;
 
