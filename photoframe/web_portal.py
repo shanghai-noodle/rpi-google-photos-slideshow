@@ -676,15 +676,6 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     border-color: var(--active-frame-border);
     border-left-width: 4px;
   }
-  #active-frame-tie-strip {
-    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
-    gap: 10px; padding: 8px 14px; margin-bottom: 14px; border-radius: 12px;
-    background: var(--active-frame-tint, var(--md-sys-color-secondary-container));
-    border: 1.5px solid var(--active-frame-border, var(--md-sys-color-tonal-border));
-    border-left-width: 5px;
-    font-size: 0.83rem; font-weight: 600; color: var(--md-sys-color-on-surface);
-    cursor: pointer;
-  }
   #app-view[data-fleet-tied="true"] section[role="tabpanel"] > .m3-card {
     border-top: 3px solid var(--active-frame-border);
   }
@@ -967,14 +958,6 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
         <div id="active-target-banner" class="target-banner" role="status" aria-live="polite"></div>
       </section>
 
-      <div id="active-frame-tie-strip" class="hidden" role="status" aria-live="polite" onclick="toggleFleetDrawer()">
-        <span style="display:inline-flex; align-items:center; gap:8px;">
-          <span id="active-frame-tie-dot" aria-hidden="true" style="width:10px; height:10px; border-radius:50%; background:var(--active-frame-border, currentColor); display:inline-block; flex-shrink:0;"></span>
-          <span id="active-frame-tie-label"></span>
-        </span>
-        <span id="active-frame-tie-meta" style="font-size:0.76rem; color:var(--active-frame-accent, var(--md-sys-color-accent-text));"></span>
-      </div>
-
       <!-- TAB 1: CONTROL -->
       <section id="panel-control" role="tabpanel" aria-labelledby="tab-control">
         <div class="m3-card">
@@ -1230,9 +1213,12 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
 
       <!-- TAB 3: SYSTEM -->
       <section id="panel-system" role="tabpanel" aria-labelledby="tab-system" class="hidden">
-        <div class="m3-card">
+        <div class="m3-card" id="card-password">
           <div class="card-header">
             <h2><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg><span data-i18n="sec_security">Security &amp; Change Password</span></h2>
+          </div>
+          <div id="broadcast-pw-note" class="target-banner hidden" role="status" aria-live="polite" data-i18n="broadcast_pw_note">
+            Broadcast Mode: Password changes are disabled when managing all frames. Select an individual frame above to update its password.
           </div>
           <form id="pw-form" onsubmit="changePassword(event)">
             <div class="form-grid">
@@ -1521,6 +1507,7 @@ const I18N = {
     btn_use_saved_album: "Switch",
     badge_saved_active: "Active",
     broadcast_settings_note: "Broadcast Mode: Showing shared slideshow, collage, video, and schedule settings. Select an individual frame to edit its Album URL, Hostname, Rotation, or APK Update.",
+    broadcast_pw_note: "Broadcast Mode: Password changes are disabled when managing all frames. Select an individual frame above to update its password.",
     lbl_dark_theme_switch: "Dark theme",
     btn_theme_light: "Light",
     btn_theme_dark: "Dark",
@@ -1677,6 +1664,7 @@ const I18N = {
     btn_use_saved_album: "切换",
     badge_saved_active: "当前使用",
     broadcast_settings_note: "群控广播模式：当前仅显示可同步广播的通用设置。如需修改相册链接、主机名、屏幕旋转或 APK 更新，请选择单个相框。",
+    broadcast_pw_note: "全局广播模式：群控全部相框时不支持修改密码。请在上方选择单个相框以更新其管理密码。",
     lbl_dark_theme_switch: "深色主题",
     btn_theme_light: "浅色",
     btn_theme_dark: "深色",
@@ -1833,6 +1821,7 @@ const I18N = {
     btn_use_saved_album: "切替",
     badge_saved_active: "使用中",
     broadcast_settings_note: "一括配信モード：すべてのフレームに適用できる共通設定のみ表示しています。個別の設定変更は上でフレームを選択してください。",
+    broadcast_pw_note: "一括配信モード：全フレーム一括管理中はパスワードを変更できません。上のリストから個別のフレームを選択してください。",
     lbl_dark_theme_switch: "ダークテーマ",
     btn_theme_light: "ライト",
     btn_theme_dark: "ダーク",
@@ -1989,6 +1978,7 @@ const I18N = {
     btn_use_saved_album: "전환",
     badge_saved_active: "사용 중",
     broadcast_settings_note: "전체 브로드캐스트 모드: 모든 액자에 적용 가능한 공통 설정만 표시됩니다. 개별 설정은 위에서 액자를 선택하세요.",
+    broadcast_pw_note: "전체 브로드캐스트 모드: 모든 액자를 동시 제어할 때는 비밀번호를 변경할 수 없습니다. 위에서 개별 액자를 선택하세요.",
     lbl_dark_theme_switch: "다크 테마",
     btn_theme_light: "라이트",
     btn_theme_dark: "다크",
@@ -2145,6 +2135,7 @@ const I18N = {
     btn_use_saved_album: "Cambiar",
     badge_saved_active: "Activo",
     broadcast_settings_note: "Modo Difusión: Solo se muestran los ajustes compartidos. Selecciona un marco individual para cambiar su URL, Hostname, Rotación o APK.",
+    broadcast_pw_note: "Modo Difusión: El cambio de contraseña está desactivado al gestionar todos los marcos. Selecciona un marco individual arriba para actualizar su contraseña.",
     lbl_dark_theme_switch: "Tema oscuro",
     btn_theme_light: "Claro",
     btn_theme_dark: "Oscuro",
@@ -2301,6 +2292,7 @@ const I18N = {
     btn_use_saved_album: "Wechseln",
     badge_saved_active: "Aktiv",
     broadcast_settings_note: "Broadcast-Modus: Nur gemeinsame Einstellungen werden angezeigt. Wählen Sie oben einen einzelnen Rahmen für Album-URL, Hostname oder Drehung.",
+    broadcast_pw_note: "Broadcast-Modus: Passwortänderungen sind bei der Verwaltung aller Rahmen deaktiviert. Wählen Sie oben einen einzelnen Rahmen aus, um sein Passwort zu ändern.",
     lbl_dark_theme_switch: "Dunkles Design",
     btn_theme_light: "Hell",
     btn_theme_dark: "Dunkel",
@@ -2348,6 +2340,7 @@ let statusAbortCtrl = null;
 let statusPollTimer = null;
 let portalLangInitialized = false;
 let hasLoadedFleetOnce = false;
+let lastIsDefaultPassword = false;
 const settingsCacheByTarget = {};
 
 function setSelectedTarget(target, persist = true) {
@@ -2552,10 +2545,13 @@ function onTabListKeyDown(ev, curTab) {
 }
 
 function openPasswordTab() {
+  if (selectedTarget === 'all') {
+    selectFleetTarget('self');
+  }
   switchPortalTab('system');
   setTimeout(() => {
     const pwEl = document.getElementById('pw-current');
-    if (pwEl) pwEl.focus();
+    if (pwEl && !pwEl.disabled) pwEl.focus();
   }, 60);
 }
 
@@ -2741,9 +2737,6 @@ function renderFleetBar(nodes) {
   const banner = document.getElementById('active-target-banner');
   const appView = document.getElementById('app-view');
   const chip = document.getElementById('header-fleet-chip');
-  const tieStrip = document.getElementById('active-frame-tie-strip');
-  const tieLabel = document.getElementById('active-frame-tie-label');
-  const tieMeta = document.getElementById('active-frame-tie-meta');
   if (!grid) return;
 
   const multiFrame = fleetNodes.length > 1;
@@ -2854,11 +2847,6 @@ function renderFleetBar(nodes) {
     }
     if (chip) chip.setAttribute('data-tied', 'true');
     if (banner) banner.setAttribute('data-tied', 'true');
-    if (tieStrip) {
-      tieStrip.classList.remove('hidden');
-      if (tieLabel) tieLabel.textContent = bannerText;
-      if (tieMeta) tieMeta.textContent = t('chip_fleet_multi', {count: fleetNodes.length});
-    }
   } else {
     if (appView) {
       appView.removeAttribute('data-fleet-tied');
@@ -2870,7 +2858,6 @@ function renderFleetBar(nodes) {
     }
     if (chip) chip.removeAttribute('data-tied');
     if (banner) banner.removeAttribute('data-tied');
-    if (tieStrip) tieStrip.classList.add('hidden');
   }
 
   updateFleetCardVisibility();
@@ -2920,6 +2907,26 @@ function updateDynamicFormVisibility() {
   if (logBox) logBox.classList.toggle('hidden', isAll);
   const btnRefreshLog = document.getElementById('btn-refresh-log');
   if (btnRefreshLog) btnRefreshLog.classList.toggle('hidden', isAll);
+
+  const pwNote = document.getElementById('broadcast-pw-note');
+  if (pwNote) pwNote.classList.toggle('hidden', !isAll);
+  const pwForm = document.getElementById('pw-form');
+  if (pwForm) pwForm.classList.toggle('hidden', isAll);
+  ['pw-current', 'pw-new', 'pw-confirm'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.disabled = isAll;
+      if (isAll) el.value = '';
+    }
+  });
+  const btnSavePw = document.getElementById('btn-save-pw');
+  if (btnSavePw) btnSavePw.disabled = isAll;
+  if (isAll) {
+    const pwBanner = document.getElementById('pw-confirm-banner');
+    if (pwBanner) pwBanner.style.display = 'none';
+  }
+  const defPwBanner = document.getElementById('default-pw-banner');
+  if (defPwBanner) defPwBanner.classList.toggle('hidden', !lastIsDefaultPassword || isAll);
 }
 
 function applySettingsToForm(cfg) {
@@ -3297,9 +3304,10 @@ async function fetchStatus(populateForm = false, triggerScan = false) {
       document.getElementById('default-pw-hint').classList.toggle('hidden', !data.is_default_password);
       return;
     }
+    lastIsDefaultPassword = Boolean(data.is_default_password);
     document.getElementById('login-view').classList.add('hidden');
     document.getElementById('app-view').classList.remove('hidden');
-    document.getElementById('default-pw-banner').classList.toggle('hidden', !data.is_default_password);
+    document.getElementById('default-pw-banner').classList.toggle('hidden', !lastIsDefaultPassword || selectedTarget === 'all');
     switchPortalTab(activeTab);
 
     const pendingLockedTarget = (data.target_locked && data.locked_target) ? data.locked_target : '';
@@ -3738,6 +3746,11 @@ async function saveSettings(e) {
 
 async function changePassword(e) {
   e.preventDefault();
+  if (selectedTarget === 'all') {
+    showToast(t('broadcast_pw_note'), true);
+    showInlineBanner('pw-confirm-banner', t('broadcast_pw_note'), true);
+    return;
+  }
   const current_password = document.getElementById('pw-current').value;
   const new_password = document.getElementById('pw-new').value;
   const confirm_password = document.getElementById('pw-confirm').value;

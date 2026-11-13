@@ -815,32 +815,20 @@ class FleetManager:
         current_pw: str,
         new_pw: str,
     ) -> Tuple[int, Dict[str, Any], Optional[str]]:
+        if (target or "").strip().lower() == "all":
+            return 400, {"ok": False, "error": "Password changes are not allowed in Broadcast Mode. Select an individual frame."}, None
+
         if len(new_pw) < 4:
             return 400, {"ok": False, "error": "New password must be at least 4 characters"}, None
 
-        cookie = None
-        if not target or target == "all" or self.is_self_target(target):
+        if not target or self.is_self_target(target):
             if not self.config_store.verify_password(current_pw):
                 return 400, {"ok": False, "error": "Current password is incorrect"}, None
             self.config_store.change_password(new_pw)
             token = self.config_store.create_session_token()
             cookie = f"frame_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000"
             logger.info("🔐 Web portal password updated by user.")
-            if target != "all":
-                return 200, {"ok": True}, cookie
-
-        if target == "all":
-            nodes = self.get_fleet_nodes(trigger_scan=False)
-            peers = [n for n in nodes if not n.get("is_self") and n.get("online", True) and not n.get("locked", False)]
-            body = json.dumps({"new_password": new_pw}).encode("utf-8")
-            synced = 0
-            for p in peers:
-                pid = str(p.get("id") or f"{p['ip']}:{p.get('port', self.port)}")
-                c, r = self._http_request_peer(p["ip"], int(p.get("port", self.port)), "POST", "/api/fleet/sync_password", body_bytes=body, timeout=3.0)
-                if c == 200 and r.get("ok"):
-                    synced += 1
-                    self.config_store.remove_peer_auth_token(pid)
-            return 200, {"ok": True, "message": f"Password updated across {synced + 1} frames"}, cookie
+            return 200, {"ok": True}, cookie
 
         norm = normalize_peer_target(target, self.port)
         if not norm:

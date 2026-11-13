@@ -126,6 +126,8 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
         self.assertIn("--md-sys-color-primary-hover", WEB_PORTAL_HTML)
         self.assertIn("--md-sys-color-control-border", WEB_PORTAL_HTML)
         self.assertIn("--md-sys-color-accent-text", WEB_PORTAL_HTML)
+        self.assertNotIn('id="active-frame-tie-strip"', WEB_PORTAL_HTML)
+        self.assertIn('id="broadcast-pw-note"', WEB_PORTAL_HTML)
         self.assertNotIn("filter: brightness", WEB_PORTAL_HTML)
 
     def test_web_portal_http_api_endpoints(self):
@@ -493,6 +495,22 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
         self.assertEqual(store_b.get_settings()["rotate"], 0)
         self.assertEqual(self.store.get_settings()["device_name"], "living-room")
         self.assertEqual(store_b.get_settings()["device_name"], "bedroom-frame")
+
+        # 5b. Password changes are disallowed in Broadcast Mode ("all")
+        code, pw_bcast_res, _ = req_a(
+            "/api/password",
+            method="POST",
+            cookie=cookie_a,
+            payload={
+                "target": "all",
+                "current_password": "admin",
+                "new_password": "BlockedBroadcastPw99",
+            },
+        )
+        self.assertEqual(code, 400)
+        self.assertFalse(pw_bcast_res["ok"])
+        self.assertTrue(self.store.verify_password("admin"))
+        self.assertTrue(store_b.verify_password("DifferentSecretOnFrameB!"))
 
         # 6. Rotating Frame B's password re-locks the peer; matching Frame A's password auto-unlocks
         store_b.change_password("RotatedSecretB2!")
