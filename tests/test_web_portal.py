@@ -130,6 +130,14 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
         self.assertIn('id="broadcast-pw-note"', WEB_PORTAL_HTML)
         self.assertIn('id="card-system-control"', WEB_PORTAL_HTML)
         self.assertIn("frame-badge", WEB_PORTAL_HTML)
+        self.assertIn('id="header-frame-select"', WEB_PORTAL_HTML)
+        self.assertIn('id="broadcast-admin-note"', WEB_PORTAL_HTML)
+        self.assertNotIn('id="header-fleet-chip"', WEB_PORTAL_HTML)
+        # Task-first tabs: fleet management and the Web Viewer live in Frames & Admin (panel-system)
+        sys_idx = WEB_PORTAL_HTML.index('id="panel-system"')
+        self.assertGreater(WEB_PORTAL_HTML.index('id="fleet-card"'), sys_idx)
+        self.assertGreater(WEB_PORTAL_HTML.index('id="webframe-card"'), sys_idx)
+        self.assertLess(WEB_PORTAL_HTML.index('id="btn-pause"'), sys_idx)
         self.assertNotIn("filter: brightness", WEB_PORTAL_HTML)
 
     def test_web_portal_http_api_endpoints(self):

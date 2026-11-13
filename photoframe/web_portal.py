@@ -690,12 +690,13 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     color: var(--md-sys-color-on-secondary-container);
     border: 1.5px solid var(--md-sys-color-tonal-border);
   }
-  #header-fleet-chip[data-tied="true"] {
-    border-width: 2.5px;
-    border-color: var(--active-frame-border);
-    background: var(--active-frame-tint);
-    color: var(--active-frame-accent);
+  .frame-picker { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+  #header-frame-select {
+    width: auto; min-width: 0; max-width: 100%; min-height: 44px; padding: 6px 34px 6px 12px;
+    font-size: 0.88rem; font-weight: 700; border-width: 2.5px; text-overflow: ellipsis;
   }
+  #active-target-banner, #broadcast-admin-note { margin: 0 0 14px; }
+  #app-view[data-fleet-tied="true"] #fleet-card { border-top: 1.5px solid var(--md-sys-color-card-border); }
   #active-target-banner[data-tied="true"] {
     background: var(--active-frame-tint);
     color: var(--md-sys-color-on-surface);
@@ -865,8 +866,8 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     /* Header: row 1 = fleet chip + sign-out (icon), row 2 = theme switch + language */
     .top-app-bar { flex-direction: column; align-items: stretch; }
     .header-actions { width: 100%; gap: 8px; flex-wrap: wrap; align-items: center; }
-    #header-fleet-chip { order: 1; flex: 1 1 calc(100% - 64px); min-width: 0; max-width: calc(100% - 64px); justify-content: flex-start; }
-    #header-fleet-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .frame-picker { order: 1; flex: 1 1 calc(100% - 64px); min-width: 0; max-width: calc(100% - 64px); }
+    #header-frame-select { flex: 1 1 auto; min-width: 0; min-height: 48px; }
     #btn-signout { order: 2; flex: 0 0 auto; min-width: 48px; padding: 8px 14px; }
     #btn-signout .btn-label {
       position: absolute; width: 1px; height: 1px; overflow: hidden;
@@ -954,10 +955,10 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
         <span id="state-badge" class="badge" role="status" aria-live="polite"><span class="status-dot" aria-hidden="true"></span><span class="badge-text">Loading...</span></span>
       </div>
       <div class="header-actions">
-        <button type="button" id="header-fleet-chip" class="m3-chip" aria-expanded="false" aria-controls="fleet-card" onclick="toggleFleetDrawer()">
-          <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z"/></svg>
-          <span id="header-fleet-chip-label" data-i18n="chip_fleet_single">LAN Frames</span>
-        </button>
+        <div class="frame-picker" id="header-frame-picker">
+          <span id="header-frame-badge" class="frame-badge hidden" aria-hidden="true">A</span>
+          <select id="header-frame-select" aria-label="Frame being controlled" onchange="onHeaderFrameChange(this)"></select>
+        </div>
         <label class="theme-switch-wrap" for="header-theme-switch" title="Toggle Dark Theme" data-i18n-title="title_toggle_theme">
           <svg class="m3-icon-sm" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.79 1.42-1.41zM4 10.5H1v2h3v-2zm9-9.95h-2V3.5h2V.55zm7.45 3.91l-1.41-1.41-1.79 1.79 1.41 1.41 1.79-1.79zm-3.21 13.7l1.79 1.8 1.41-1.41-1.8-1.79-1.4 1.4zM20 10.5v2h3v-2h-3zm-8-5c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm-1 16.95h2V19.5h-2v2.95zm-7.45-3.91l1.41 1.41 1.79-1.8-1.41-1.41-1.79 1.8z"/></svg>
           <md-switch id="header-theme-switch" icons role="switch" aria-checked="true" aria-label="Dark theme" onchange="onThemeSwitchChange(this)" onclick="onThemeSwitchFallbackClick(event, this)" onkeydown="onThemeSwitchFallbackKey(event, this)">
@@ -981,7 +982,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     </header>
 
     <div id="default-pw-banner" class="warn-banner hidden" role="button" tabindex="0" onclick="openPasswordTab()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPasswordTab();}" data-i18n-html="default_pw_banner">
-      You are currently using the default password (<b>admin</b>). Open the <b>System</b> tab to set a custom password.
+      You are currently using the default password (<b>admin</b>). Open the <b>Frames &amp; Admin</b> tab to set a custom password.
     </div>
 
     <!-- DESKTOP M3 TOP TABS -->
@@ -989,48 +990,29 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       <md-tabs id="desktop-m3-tabs" aria-label="Portal sections" onchange="onDesktopTabChange(this)">
         <md-primary-tab id="tab-control" active onclick="onDesktopTabFallback('control', 0)">
           <span class="tab-inline-icon" aria-hidden="true"><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M15 7.5V2H9v5.5l3 3 3-3zM7.5 9H2v6h5.5l3-3-3-3zM9 16.5V22h6v-5.5l-3-3-3 3zM16.5 9l-3 3 3 3H22V9h-5.5z"/></svg></span>
-          <span data-i18n="nav_control">Control</span>
+          <span data-i18n="nav_control">Remote</span>
         </md-primary-tab>
         <md-primary-tab id="tab-display" onclick="onDesktopTabFallback('display', 1)">
           <span class="tab-inline-icon" aria-hidden="true"><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg></span>
-          <span data-i18n="nav_display">Album &amp; Display</span>
+          <span data-i18n="nav_display">Settings</span>
         </md-primary-tab>
         <md-primary-tab id="tab-system" onclick="onDesktopTabFallback('system', 2)">
           <span class="tab-inline-icon" aria-hidden="true"><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></span>
-          <span data-i18n="nav_system">System</span>
+          <span data-i18n="nav_system">Frames &amp; Admin</span>
         </md-primary-tab>
       </md-tabs>
     </div>
 
     <main id="main-content" tabindex="-1">
-      <!-- COLLAPSIBLE / MULTI-FRAME LAN FLEET CARD -->
-      <section class="m3-card hidden" id="fleet-card" aria-labelledby="sec-fleet-heading">
-        <div class="card-header">
-          <h2 id="sec-fleet-heading"><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z"/></svg><span data-i18n="sec_fleet">Connected Photo Frames (LAN Fleet)</span></h2>
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button type="button" onclick="scanFleetNodes()" id="btn-scan-fleet" class="btn-sm tonal">
-              <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg><span class="btn-label" data-i18n="btn_scan_fleet">Scan LAN</span>
-            </button>
-            <button type="button" onclick="toggleAddPeerRow()" id="btn-add-peer" class="btn-sm outlined">
-              <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span class="btn-label" data-i18n="btn_add_peer">Add IP</span>
-            </button>
-          </div>
-        </div>
-        <div id="add-peer-row" class="hidden" style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
-          <input type="text" id="add-peer-input" style="flex:1; min-width:200px;" data-i18n-placeholder="ph_add_peer" placeholder="192.168.86.x or photoframe-2.local:8080">
-          <button type="button" class="primary" onclick="addManualPeer()" data-i18n="btn_connect_peer">Connect Frame</button>
-        </div>
-        <div id="fleet-nodes-grid" class="fleet-grid"></div>
-        <div id="active-target-banner" class="target-banner" role="status" aria-live="polite"></div>
-      </section>
+      <div id="active-target-banner" class="target-banner hidden" role="status" aria-live="polite"></div>
 
-      <!-- TAB 1: CONTROL -->
+      <!-- TAB 1: REMOTE -->
       <section id="panel-control" role="tabpanel" aria-labelledby="tab-control">
         <div class="m3-card">
           <div class="card-header">
             <h2><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M15 7.5V2H9v5.5l3 3 3-3zM7.5 9H2v6h5.5l3-3-3-3zM9 16.5V22h6v-5.5l-3-3-3 3zM16.5 9l-3 3 3 3H22V9h-5.5z"/></svg><span data-i18n="sec_remote">Quick Remote Controls</span></h2>
           </div>
-          <div class="stats-grid">
+          <div class="stats-grid" id="stats-grid">
             <div class="stat-box">
               <div class="stat-label" data-i18n="stat_album">Album Media</div>
               <div class="stat-val" id="stat-album">—</div>
@@ -1076,43 +1058,9 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
           </div>
         </div>
 
-        <div class="m3-card" id="webframe-card">
-          <div class="card-header">
-            <h2><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M21 3H3c-1.1 0-2 .9-2 2v3h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11z"/></svg><span data-i18n="sec_webframe">Web Slideshow Viewer (/frame)</span></h2>
-            <div style="display:flex; align-items:center; gap:10px;">
-              <span id="webframe-state-badge" class="badge"><span class="status-dot" aria-hidden="true"></span><span class="badge-text">OFF</span></span>
-              <md-switch id="sw-webframe-power" role="switch" aria-checked="false" aria-label="Toggle Web Slideshow Viewer" onchange="onWebFrameSwitchChange(this)" onclick="onWebFrameSwitchFallbackClick(event, this)" onkeydown="onWebFrameSwitchFallbackKey(event, this)"></md-switch>
-            </div>
-          </div>
-          <p class="card-sub-desc" data-i18n="webframe_desc">
-            Stream your album directly in any browser on your Wi-Fi without signing in. Each browser gets an independent order (videos render as static poster frames).
-          </p>
-          <div class="form-grid" style="margin-bottom:14px;">
-            <div class="form-group">
-              <label for="cfg-webframe-profile" data-i18n="lbl_webframe_profile">Picture Quality &amp; Device Profile</label>
-              <select id="cfg-webframe-profile" onchange="updateWebFrameProfileLive(this.value)">
-                <option value="auto" data-i18n="opt_wf_auto">Auto — Smart Match (1080p HD on Modern Screens, 768p on Legacy Tablets)</option>
-                <option value="hd" data-i18n="opt_wf_hd">1080p HD — Full Resolution, Crossfade &amp; All 9 Collages</option>
-                <option value="legacy" data-i18n="opt_wf_legacy">768p Standard — Lightweight Mode for Older Tablets</option>
-              </select>
-            </div>
-            <div class="form-group" id="group-webframe-url">
-              <label data-i18n="lbl_webframe_url">Web Viewer Address</label>
-              <a id="webframe-path-link" href="/frame" target="_blank" rel="noopener" class="webframe-url-pill">http://localhost:8080/frame</a>
-            </div>
-          </div>
-          <div class="btn-grid">
-            <button type="button" id="btn-webframe-toggle" class="primary" onclick="toggleWebFramePower()">
-              <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M21 3H3c-1.1 0-2 .9-2 2v3h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11z"/></svg><span class="btn-label" data-i18n="btn_wf_turn_on">Enable Web Viewer</span>
-            </button>
-            <button type="button" id="btn-open-webframe" class="tonal" onclick="openWebFrameViewer()">
-              <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg><span class="btn-label" data-i18n="btn_open_webframe">Launch Web Viewer (/frame)</span>
-            </button>
-          </div>
-        </div>
       </section>
 
-      <!-- TAB 2: ALBUM & DISPLAY -->
+      <!-- TAB 2: SETTINGS -->
       <section id="panel-display" role="tabpanel" aria-labelledby="tab-display" class="hidden">
         <div class="m3-card">
           <div class="card-header">
@@ -1277,8 +1225,67 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
         </div>
       </section>
 
-      <!-- TAB 3: SYSTEM -->
+      <!-- TAB 3: FRAMES & ADMIN -->
       <section id="panel-system" role="tabpanel" aria-labelledby="tab-system" class="hidden">
+      <!-- FRAME FLEET (Frames & Admin tab) -->
+      <section class="m3-card" id="fleet-card" aria-labelledby="sec-fleet-heading">
+        <div class="card-header">
+          <h2 id="sec-fleet-heading"><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z"/></svg><span data-i18n="sec_fleet">Connected Photo Frames (LAN Fleet)</span></h2>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" onclick="scanFleetNodes()" id="btn-scan-fleet" class="btn-sm tonal">
+              <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg><span class="btn-label" data-i18n="btn_scan_fleet">Scan LAN</span>
+            </button>
+            <button type="button" onclick="toggleAddPeerRow()" id="btn-add-peer" class="btn-sm outlined">
+              <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span class="btn-label" data-i18n="btn_add_peer">Add IP</span>
+            </button>
+          </div>
+        </div>
+        <div id="add-peer-row" class="hidden" style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+          <input type="text" id="add-peer-input" style="flex:1; min-width:200px;" data-i18n-placeholder="ph_add_peer" placeholder="192.168.86.x or photoframe-2.local:8080">
+          <button type="button" class="primary" onclick="addManualPeer()" data-i18n="btn_connect_peer">Connect Frame</button>
+        </div>
+        <div id="fleet-nodes-grid" class="fleet-grid"></div>
+      </section>
+
+        <div id="broadcast-admin-note" class="target-banner hidden" role="status" aria-live="polite" data-i18n="broadcast_admin_note">
+          Broadcast Mode: Web Viewer, app update, and Exit are per-frame controls. Pick a single frame in the header to use them.
+        </div>
+
+        <div class="m3-card" id="webframe-card">
+          <div class="card-header">
+            <h2><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M21 3H3c-1.1 0-2 .9-2 2v3h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11z"/></svg><span data-i18n="sec_webframe">Web Slideshow Viewer (/frame)</span></h2>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span id="webframe-state-badge" class="badge"><span class="status-dot" aria-hidden="true"></span><span class="badge-text">OFF</span></span>
+              <md-switch id="sw-webframe-power" role="switch" aria-checked="false" aria-label="Toggle Web Slideshow Viewer" onchange="onWebFrameSwitchChange(this)" onclick="onWebFrameSwitchFallbackClick(event, this)" onkeydown="onWebFrameSwitchFallbackKey(event, this)"></md-switch>
+            </div>
+          </div>
+          <p class="card-sub-desc" data-i18n="webframe_desc">
+            Stream your album directly in any browser on your Wi-Fi without signing in. Each browser gets an independent order (videos render as static poster frames).
+          </p>
+          <div class="form-grid" style="margin-bottom:14px;">
+            <div class="form-group">
+              <label for="cfg-webframe-profile" data-i18n="lbl_webframe_profile">Picture Quality &amp; Device Profile</label>
+              <select id="cfg-webframe-profile" onchange="updateWebFrameProfileLive(this.value)">
+                <option value="auto" data-i18n="opt_wf_auto">Auto — Smart Match (1080p HD on Modern Screens, 768p on Legacy Tablets)</option>
+                <option value="hd" data-i18n="opt_wf_hd">1080p HD — Full Resolution, Crossfade &amp; All 9 Collages</option>
+                <option value="legacy" data-i18n="opt_wf_legacy">768p Standard — Lightweight Mode for Older Tablets</option>
+              </select>
+            </div>
+            <div class="form-group" id="group-webframe-url">
+              <label data-i18n="lbl_webframe_url">Web Viewer Address</label>
+              <a id="webframe-path-link" href="/frame" target="_blank" rel="noopener" class="webframe-url-pill">http://localhost:8080/frame</a>
+            </div>
+          </div>
+          <div class="btn-grid">
+            <button type="button" id="btn-webframe-toggle" class="primary" onclick="toggleWebFramePower()">
+              <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M21 3H3c-1.1 0-2 .9-2 2v3h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11z"/></svg><span class="btn-label" data-i18n="btn_wf_turn_on">Enable Web Viewer</span>
+            </button>
+            <button type="button" id="btn-open-webframe" class="tonal" onclick="openWebFrameViewer()">
+              <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg><span class="btn-label" data-i18n="btn_open_webframe">Launch Web Viewer (/frame)</span>
+            </button>
+          </div>
+        </div>
+
         <div class="m3-card" id="card-password">
           <div class="card-header">
             <h2><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg><span data-i18n="sec_security">Security &amp; Change Password</span></h2>
@@ -1366,15 +1373,15 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       <div role="tablist" aria-label="Portal sections" style="display:contents;">
         <button type="button" role="tab" id="mob-tab-control" class="m3-nav-tab" aria-selected="true" aria-controls="panel-control" onclick="switchPortalTab('control')" onkeydown="onTabListKeyDown(event, 'control')">
           <span class="m3-nav-pill" aria-hidden="true"><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M15 7.5V2H9v5.5l3 3 3-3zM7.5 9H2v6h5.5l3-3-3-3zM9 16.5V22h6v-5.5l-3-3-3 3zM16.5 9l-3 3 3 3H22V9h-5.5z"/></svg></span>
-          <span data-i18n="nav_control">Control</span>
+          <span data-i18n="nav_control">Remote</span>
         </button>
         <button type="button" role="tab" id="mob-tab-display" class="m3-nav-tab" aria-selected="false" aria-controls="panel-display" tabindex="-1" onclick="switchPortalTab('display')" onkeydown="onTabListKeyDown(event, 'display')">
           <span class="m3-nav-pill" aria-hidden="true"><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg></span>
-          <span data-i18n="nav_display">Album &amp; Display</span>
+          <span data-i18n="nav_display">Settings</span>
         </button>
         <button type="button" role="tab" id="mob-tab-system" class="m3-nav-tab" aria-selected="false" aria-controls="panel-system" tabindex="-1" onclick="switchPortalTab('system')" onkeydown="onTabListKeyDown(event, 'system')">
           <span class="m3-nav-pill" aria-hidden="true"><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></span>
-          <span data-i18n="nav_system">System</span>
+          <span data-i18n="nav_system">Frames &amp; Admin</span>
         </button>
       </div>
     </nav>
@@ -1431,11 +1438,11 @@ const I18N = {
     btn_signin: "Sign In",
     portal_title: "Photo Frame Portal",
     btn_signout: "Sign Out",
-    default_pw_banner: "You are currently using the default password (<b>admin</b>). Open the <b>System</b> tab to set a custom password.",
+    default_pw_banner: "You are currently using the default password (<b>admin</b>). Open the <b>Frames & Admin</b> tab to set a custom password.",
     nav_sections_aria: "Portal sections",
-    nav_control: "Control",
-    nav_display: "Album & Display",
-    nav_system: "System",
+    nav_control: "Remote",
+    nav_display: "Settings",
+    nav_system: "Frames & Admin",
     sec_remote: "Quick Remote Controls",
     stat_album: "Album Media",
     stat_layout: "Layout Mode",
@@ -1574,6 +1581,9 @@ const I18N = {
     badge_saved_active: "Active",
     broadcast_settings_note: "Broadcast Mode: Showing shared slideshow, collage, video, and schedule settings. Select an individual frame to edit its Album URL, Hostname, Rotation, or APK Update.",
     broadcast_pw_note: "Broadcast Mode: Password changes are disabled when managing all frames. Select an individual frame above to update its password.",
+    lbl_frame_picker: "Frame being controlled",
+    opt_manage_frames: "Manage frames…",
+    broadcast_admin_note: "Broadcast Mode: Web Viewer, app update, and Exit are per-frame controls. Pick a single frame in the header to use them.",
     lbl_dark_theme_switch: "Dark theme",
     btn_theme_light: "Light",
     btn_theme_dark: "Dark",
@@ -1588,11 +1598,11 @@ const I18N = {
     btn_signin: "登录",
     portal_title: "数码相框控制台",
     btn_signout: "退出登录",
-    default_pw_banner: "您当前使用的是默认密码 (<b>admin</b>)。请前往 <b>系统</b> 标签页设置自定义密码。",
+    default_pw_banner: "您当前使用的是默认密码 (<b>admin</b>)。请前往 <b>相框与管理</b> 标签页设置自定义密码。",
     nav_sections_aria: "控制台分区导航",
     nav_control: "遥控",
-    nav_display: "相册与显示",
-    nav_system: "系统",
+    nav_display: "设置",
+    nav_system: "相框与管理",
     sec_remote: "快捷远程控制",
     stat_album: "相册媒体",
     stat_layout: "拼图布局",
@@ -1731,6 +1741,9 @@ const I18N = {
     badge_saved_active: "当前使用",
     broadcast_settings_note: "群控广播模式：当前仅显示可同步广播的通用设置。如需修改相册链接、主机名、屏幕旋转或 APK 更新，请选择单个相框。",
     broadcast_pw_note: "全局广播模式：群控全部相框时不支持修改密码。请在上方选择单个相框以更新其管理密码。",
+    lbl_frame_picker: "当前控制的相框",
+    opt_manage_frames: "管理相框…",
+    broadcast_admin_note: "全局广播模式：网页相框、应用更新和退出均为单个相框的功能。请在顶部选择单个相框后使用。",
     lbl_dark_theme_switch: "深色主题",
     btn_theme_light: "浅色",
     btn_theme_dark: "深色",
@@ -1745,11 +1758,11 @@ const I18N = {
     btn_signin: "ログイン",
     portal_title: "フォトフレーム管理",
     btn_signout: "ログアウト",
-    default_pw_banner: "現在初期パスワード (<b>admin</b>) を使用しています。<b>システム</b>タブから変更してください。",
+    default_pw_banner: "現在初期パスワード (<b>admin</b>) を使用しています。<b>フレームと管理</b>タブから変更してください。",
     nav_sections_aria: "セクション切り替え",
-    nav_control: "操作",
-    nav_display: "アルバム・表示",
-    nav_system: "システム",
+    nav_control: "リモコン",
+    nav_display: "設定",
+    nav_system: "フレームと管理",
     sec_remote: "クイックリモコン操作",
     stat_album: "アルバムメディア",
     stat_layout: "レイアウトモード",
@@ -1888,6 +1901,9 @@ const I18N = {
     badge_saved_active: "使用中",
     broadcast_settings_note: "一括配信モード：すべてのフレームに適用できる共通設定のみ表示しています。個別の設定変更は上でフレームを選択してください。",
     broadcast_pw_note: "一括配信モード：全フレーム一括管理中はパスワードを変更できません。上のリストから個別のフレームを選択してください。",
+    lbl_frame_picker: "操作中のフレーム",
+    opt_manage_frames: "フレームを管理…",
+    broadcast_admin_note: "一括配信モード：Web ビューア、アプリ更新、終了は個別フレーム用の操作です。上部でフレームを選択してください。",
     lbl_dark_theme_switch: "ダークテーマ",
     btn_theme_light: "ライト",
     btn_theme_dark: "ダーク",
@@ -1902,11 +1918,11 @@ const I18N = {
     btn_signin: "로그인",
     portal_title: "디지털 액자 제어 포털",
     btn_signout: "로그아웃",
-    default_pw_banner: "현재 기본 비밀번호(<b>admin</b>)를 사용 중입니다. <b>시스템</b> 탭에서 새 비밀번호를 설정하세요.",
+    default_pw_banner: "현재 기본 비밀번호(<b>admin</b>)를 사용 중입니다. <b>액자·관리</b> 탭에서 새 비밀번호를 설정하세요.",
     nav_sections_aria: "섹션 탐색",
-    nav_control: "제어",
-    nav_display: "앨범 및 화면",
-    nav_system: "시스템",
+    nav_control: "리모컨",
+    nav_display: "설정",
+    nav_system: "액자·관리",
     sec_remote: "빠른 원격 제어",
     stat_album: "앨범 미디어",
     stat_layout: "레이아웃 모드",
@@ -2045,6 +2061,9 @@ const I18N = {
     badge_saved_active: "사용 중",
     broadcast_settings_note: "전체 브로드캐스트 모드: 모든 액자에 적용 가능한 공통 설정만 표시됩니다. 개별 설정은 위에서 액자를 선택하세요.",
     broadcast_pw_note: "전체 브로드캐스트 모드: 모든 액자를 동시 제어할 때는 비밀번호를 변경할 수 없습니다. 위에서 개별 액자를 선택하세요.",
+    lbl_frame_picker: "제어 중인 액자",
+    opt_manage_frames: "액자 관리…",
+    broadcast_admin_note: "전체 브로드캐스트 모드: 웹 뷰어, 앱 업데이트, 종료는 개별 액자 기능입니다. 상단에서 액자를 선택하세요.",
     lbl_dark_theme_switch: "다크 테마",
     btn_theme_light: "라이트",
     btn_theme_dark: "다크",
@@ -2059,11 +2078,11 @@ const I18N = {
     btn_signin: "Iniciar Sesión",
     portal_title: "Portal del Marco Digital",
     btn_signout: "Cerrar Sesión",
-    default_pw_banner: "Usas la contraseña predeterminada (<b>admin</b>). Ve a la pestaña <b>Sistema</b> para cambiarla.",
+    default_pw_banner: "Usas la contraseña predeterminada (<b>admin</b>). Ve a la pestaña <b>Marcos y Admin</b> para cambiarla.",
     nav_sections_aria: "Secciones de control",
-    nav_control: "Control",
-    nav_display: "Álbum y Pantalla",
-    nav_system: "Sistema",
+    nav_control: "Mando",
+    nav_display: "Ajustes",
+    nav_system: "Marcos y Admin",
     sec_remote: "Controles Remotos Rápidos",
     stat_album: "Multimedia del Álbum",
     stat_layout: "Modo de Diseño",
@@ -2202,6 +2221,9 @@ const I18N = {
     badge_saved_active: "Activo",
     broadcast_settings_note: "Modo Difusión: Solo se muestran los ajustes compartidos. Selecciona un marco individual para cambiar su URL, Hostname, Rotación o APK.",
     broadcast_pw_note: "Modo Difusión: El cambio de contraseña está desactivado al gestionar todos los marcos. Selecciona un marco individual arriba para actualizar su contraseña.",
+    lbl_frame_picker: "Marco bajo control",
+    opt_manage_frames: "Gestionar marcos…",
+    broadcast_admin_note: "Modo Difusión: el Visor Web, la actualización y Salir son controles de cada marco. Elige un marco en la cabecera para usarlos.",
     lbl_dark_theme_switch: "Tema oscuro",
     btn_theme_light: "Claro",
     btn_theme_dark: "Oscuro",
@@ -2216,11 +2238,11 @@ const I18N = {
     btn_signin: "Anmelden",
     portal_title: "Bilderrahmen-Portal",
     btn_signout: "Abmelden",
-    default_pw_banner: "Sie verwenden das Standardpasswort (<b>admin</b>). Öffnen Sie den Tab <b>System</b>, um es zu ändern.",
+    default_pw_banner: "Sie verwenden das Standardpasswort (<b>admin</b>). Öffnen Sie den Tab <b>Rahmen & Admin</b>, um es zu ändern.",
     nav_sections_aria: "Bereiche",
-    nav_control: "Steuerung",
-    nav_display: "Album & Anzeige",
-    nav_system: "System",
+    nav_control: "Fernbedienung",
+    nav_display: "Einstellungen",
+    nav_system: "Rahmen & Admin",
     sec_remote: "Schnellsteuerung",
     stat_album: "Album-Medien",
     stat_layout: "Layout-Modus",
@@ -2359,6 +2381,9 @@ const I18N = {
     badge_saved_active: "Aktiv",
     broadcast_settings_note: "Broadcast-Modus: Nur gemeinsame Einstellungen werden angezeigt. Wählen Sie oben einen einzelnen Rahmen für Album-URL, Hostname oder Drehung.",
     broadcast_pw_note: "Broadcast-Modus: Passwortänderungen sind bei der Verwaltung aller Rahmen deaktiviert. Wählen Sie oben einen einzelnen Rahmen aus, um sein Passwort zu ändern.",
+    lbl_frame_picker: "Gesteuerter Rahmen",
+    opt_manage_frames: "Rahmen verwalten…",
+    broadcast_admin_note: "Broadcast-Modus: Web-Viewer, App-Update und Beenden gelten pro Rahmen. Wählen Sie oben einen einzelnen Rahmen aus.",
     lbl_dark_theme_switch: "Dunkles Design",
     btn_theme_light: "Hell",
     btn_theme_dark: "Dunkel",
@@ -2389,7 +2414,6 @@ let selectedTarget = (function() {
   return 'self';
 })();
 let fleetNodes = [];
-let fleetDrawerExpanded = false;
 let activeTargetEdition = 'gphotos';
 let activeTargetPlatform = 'linux';
 let savedAlbumsList = [];
@@ -2616,36 +2640,77 @@ function openPasswordTab() {
   }
   switchPortalTab('system');
   setTimeout(() => {
+    const pwCard = document.getElementById('card-password');
+    if (pwCard && typeof pwCard.scrollIntoView === 'function') pwCard.scrollIntoView({block: 'start'});
     const pwEl = document.getElementById('pw-current');
     if (pwEl && !pwEl.disabled) pwEl.focus();
   }, 60);
 }
 
 /* -------- FLEET DRAWER & PROGRESSIVE DISCLOSURE -------- */
-function toggleFleetDrawer() {
-  fleetDrawerExpanded = !fleetDrawerExpanded;
-  updateFleetCardVisibility();
+function renderHeaderPicker() {
+  const sel = document.getElementById('header-frame-select');
+  const badge = document.getElementById('header-frame-badge');
+  if (!sel) return;
+  const multi = fleetNodes.length > 1;
+  const selfNode = fleetNodes.find(n => n.is_self) || fleetNodes[0] || {};
+  const unlockedCnt = fleetNodes.filter(n => n.online !== false && (n.is_self || !n.locked)).length;
+  let peerIdx = 0;
+  const opts = [];
+  if (multi) {
+    opts.push({v: 'all', label: t('fleet_all_frames', {count: unlockedCnt}), swatch: ALL_FRAMES_ACCENT, letter: 'ALL'});
+  }
+  fleetNodes.forEach((node, i) => {
+    const swatch = node.is_self ? FRAME_ACCENTS[0] : FRAME_ACCENTS[1 + (peerIdx++ % (FRAME_ACCENTS.length - 1))];
+    const letter = String.fromCharCode(65 + (i % 26));
+    const host = node.mdns_hostname || node.ip || node.id;
+    let label = multi ? `${letter} · ${host}` : host;
+    if (node.is_self && multi) label += ` (${t('fleet_this_frame')})`;
+    if (!node.is_self && node.locked) label += ` 🔒 ${t('fleet_locked_badge')}`;
+    else if (node.online === false) label += ' (offline)';
+    opts.push({v: node.is_self ? 'self' : node.id, label, swatch, letter});
+  });
+  const cur = (selectedTarget === 'all') ? 'all'
+    : ((selectedTarget === 'self' || (selfNode && selectedTarget === selfNode.id)) ? 'self' : selectedTarget);
+  sel.innerHTML = opts.map(o => `<option value="${escapeHtml(o.v)}"${o.v === cur ? ' selected' : ''}>${escapeHtml(o.label)}</option>`).join('')
+    + `<option value="__manage__">${escapeHtml(t('opt_manage_frames'))}</option>`;
+  sel.value = cur;
+  sel.setAttribute('aria-label', t('lbl_frame_picker'));
+  const active = opts.find(o => o.v === cur) || opts[0];
+  if (badge) {
+    if (multi && active) {
+      const c = resolveAccentColors(active.swatch);
+      badge.textContent = active.letter;
+      badge.classList.remove('hidden');
+      if (badge.style && typeof badge.style.setProperty === 'function') {
+        badge.style.setProperty('--pill-border', c.border);
+        badge.style.setProperty('--pill-tint', c.tint);
+      }
+      if (sel.style && typeof sel.style.setProperty === 'function') sel.style.setProperty('border-color', c.border);
+    } else {
+      badge.classList.add('hidden');
+      if (sel.style && typeof sel.style.removeProperty === 'function') sel.style.removeProperty('border-color');
+    }
+  }
+}
+
+function onHeaderFrameChange(sel) {
+  const v = sel ? sel.value : '';
+  if (v === '__manage__') {
+    renderHeaderPicker();
+    switchPortalTab('system');
+    setTimeout(() => {
+      const card = document.getElementById('fleet-card');
+      if (card && typeof card.scrollIntoView === 'function') card.scrollIntoView({block: 'start'});
+    }, 60);
+    return;
+  }
+  selectFleetTarget(v || 'self');
+  renderHeaderPicker();
 }
 
 function updateFleetCardVisibility() {
-  const card = document.getElementById('fleet-card');
-  const chip = document.getElementById('header-fleet-chip');
-  const chipLabel = document.getElementById('header-fleet-chip-label');
-  const multiFrame = fleetNodes.length > 1;
-  const shouldShow = multiFrame || fleetDrawerExpanded;
-  if (card) card.classList.toggle('hidden', !shouldShow);
-  if (chip) chip.setAttribute('aria-expanded', String(shouldShow));
-  if (chipLabel) {
-    const selfNode = fleetNodes.find(n => n.is_self) || fleetNodes[0] || {};
-    if (multiFrame) {
-      const unlockedCnt = fleetNodes.filter(n => n.online !== false && (n.is_self || !n.locked)).length;
-      chipLabel.textContent = selectedTarget === 'all'
-        ? t('fleet_all_frames', {count: unlockedCnt})
-        : t('chip_fleet_multi', {count: fleetNodes.length});
-    } else {
-      chipLabel.textContent = selfNode.mdns_hostname || t('chip_fleet_single');
-    }
-  }
+  renderHeaderPicker();
 }
 
 function syncNightFieldsVisibility() {
@@ -2802,7 +2867,6 @@ function renderFleetBar(nodes) {
   const grid = document.getElementById('fleet-nodes-grid');
   const banner = document.getElementById('active-target-banner');
   const appView = document.getElementById('app-view');
-  const chip = document.getElementById('header-fleet-chip');
   if (!grid) return;
 
   const multiFrame = fleetNodes.length > 1;
@@ -2900,7 +2964,10 @@ function renderFleetBar(nodes) {
       ip: peer.ip ? `${peer.ip}:${peerPort}` : selectedTarget
     });
   }
-  if (banner) banner.textContent = bannerText;
+  if (banner) {
+    banner.textContent = bannerText;
+    banner.classList.toggle('hidden', !multiFrame);
+  }
 
   if (multiFrame) {
     if (appView) {
@@ -2911,7 +2978,6 @@ function renderFleetBar(nodes) {
         appView.style.setProperty('--active-frame-tint', activeColors.tint);
       }
     }
-    if (chip) chip.setAttribute('data-tied', 'true');
     if (banner) banner.setAttribute('data-tied', 'true');
   } else {
     if (appView) {
@@ -2922,7 +2988,6 @@ function renderFleetBar(nodes) {
         appView.style.removeProperty('--active-frame-tint');
       }
     }
-    if (chip) chip.removeAttribute('data-tied');
     if (banner) banner.removeAttribute('data-tied');
   }
 
@@ -2980,6 +3045,10 @@ function updateDynamicFormVisibility() {
   if (btnExit) btnExit.disabled = isAll || portalExitedOffline;
   const wfCard = document.getElementById('webframe-card');
   if (wfCard) wfCard.classList.toggle('hidden', isAll);
+  const statsGrid = document.getElementById('stats-grid');
+  if (statsGrid) statsGrid.classList.toggle('hidden', isAll);
+  const adminNote = document.getElementById('broadcast-admin-note');
+  if (adminNote) adminNote.classList.toggle('hidden', !isAll);
 
   const pwNote = document.getElementById('broadcast-pw-note');
   if (pwNote) pwNote.classList.toggle('hidden', !isAll);
