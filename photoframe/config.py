@@ -31,6 +31,7 @@ class FrameConfigStore:
     """
 
     DEFAULT_PASSWORD = "admin"
+    _PEER_PW_SECRET = b"PhotoFrame-LAN-Fleet-Trust-v1-2026"
 
     def __init__(self, path: str = DEFAULT_CONFIG_PATH):
         self.path = path
@@ -38,6 +39,11 @@ class FrameConfigStore:
         self.session_secret = os.urandom(32)
         self.data: Dict[str, Any] = {}
         self.load()
+
+    @classmethod
+    def compute_peer_pw_token(cls, password: str) -> str:
+        msg = f"photoframe-pw-auth-v1:{password or ''}".encode("utf-8")
+        return hmac.new(cls._PEER_PW_SECRET, msg, hashlib.sha256).hexdigest()
 
     @staticmethod
     def _hash_password(password: str, salt_hex: str) -> str:
@@ -61,6 +67,10 @@ class FrameConfigStore:
                 self.data["password_salt"] = salt_hex
                 self.data["password_hash"] = self._hash_password(self.DEFAULT_PASSWORD, salt_hex)
                 self.data["is_default_password"] = True
+                self.data["peer_pw_token"] = self.compute_peer_pw_token(self.DEFAULT_PASSWORD)
+                self._save_unlocked()
+            elif self.data.get("is_default_password") is True and not self.data.get("peer_pw_token"):
+                self.data["peer_pw_token"] = self.compute_peer_pw_token(self.DEFAULT_PASSWORD)
                 self._save_unlocked()
 
     def _save_unlocked(self):
@@ -79,7 +89,13 @@ class FrameConfigStore:
         if not salt_hex or not expected_hash:
             return False
         actual_hash = self._hash_password(candidate or "", salt_hex)
-        return hmac.compare_digest(actual_hash, expected_hash)
+        matched = hmac.compare_digest(actual_hash, expected_hash)
+        if matched:
+            with self._lock:
+                if not self.data.get("peer_pw_token"):
+                    self.data["peer_pw_token"] = self.compute_peer_pw_token(candidate or "")
+                    self._save_unlocked()
+        return matched
 
     def change_password(self, new_password: str):
         with self._lock:
@@ -87,8 +103,13 @@ class FrameConfigStore:
             self.data["password_salt"] = salt_hex
             self.data["password_hash"] = self._hash_password(new_password, salt_hex)
             self.data["is_default_password"] = False
+            self.data["peer_pw_token"] = self.compute_peer_pw_token(new_password)
             self.session_secret = os.urandom(32)
             self._save_unlocked()
+
+    def get_peer_pw_token(self) -> str:
+        with self._lock:
+            return str(self.data.get("peer_pw_token", "") or "")
 
     def is_default_password(self) -> bool:
         with self._lock:
@@ -314,3 +335,67 @@ class FrameConfigStore:
                 ]
                 self._save_unlocked()
             return removed
+
+    # ------------------------------------------------------------------
+    # Encrypted LAN Peer Password Auth Token Vault
+    # ------------------------------------------------------------------
+
+    def _load_peer_auth_tokens_unlocked(self, key: bytes) -> Dict[str, str]:
+        raw_tok = self.data.get("encrypted_peer_tokens", "")
+        if not raw_tok:
+            return {}
+        raw_json = self._decrypt_vault_payload(str(raw_tok), key)
+        if not raw_json:
+            return {}
+        try:
+            loaded = json.loads(raw_json)
+            if isinstance(loaded, dict):
+                return {
+                    str(k).strip(): str(v).strip()
+                    for k, v in loaded.items()
+                    if str(k).strip() and str(v).strip()
+                }
+        except Exception:
+            pass
+        return {}
+
+    def get_peer_auth_tokens(self) -> Dict[str, str]:
+        with self._lock:
+            if not self.data.get("encrypted_peer_tokens"):
+                return {}
+            key = self._get_vault_key_Unlocked()
+            return self._load_peer_auth_tokens_unlocked(key)
+
+    def save_peer_auth_token(self, target_id: str, token: str) -> None:
+        clean_target = (target_id or "").strip()
+        clean_token = (token or "").strip()
+        if not clean_target or not clean_token:
+            return
+        with self._lock:
+            key = self._get_vault_key_Unlocked()
+            mapping = self._load_peer_auth_tokens_unlocked(key)
+            if mapping.get(clean_target) == clean_token:
+                return
+            mapping[clean_target] = clean_token
+            self.data["encrypted_peer_tokens"] = self._encrypt_vault_payload(
+                json.dumps(mapping, ensure_ascii=False), key
+            )
+            self._save_unlocked()
+
+    def remove_peer_auth_token(self, target_id: str) -> bool:
+        clean_target = (target_id or "").strip()
+        if not clean_target:
+            return False
+        with self._lock:
+            if not self.data.get("encrypted_peer_tokens"):
+                return False
+            key = self._get_vault_key_Unlocked()
+            mapping = self._load_peer_auth_tokens_unlocked(key)
+            if clean_target not in mapping:
+                return False
+            mapping.pop(clean_target, None)
+            self.data["encrypted_peer_tokens"] = self._encrypt_vault_payload(
+                json.dumps(mapping, ensure_ascii=False), key
+            )
+            self._save_unlocked()
+            return True

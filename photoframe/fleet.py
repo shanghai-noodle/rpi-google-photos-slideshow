@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from .app import SlideshowApp
 
 PEER_AUTH_HEADER = "X-PhotoFrame-Peer"
+PEER_PW_HEADER = "X-PhotoFrame-Peer-Auth"
 _CLUSTER_SECRET = b"PhotoFrame-LAN-Fleet-Trust-v1-2026"
 PEER_TOKEN = hmac.new(_CLUSTER_SECRET, b"photoframe-lan-peer-v1", hashlib.sha256).hexdigest()
 CANDIDATE_WEB_PORTS = (8080, 8081, 8082, 8088)
@@ -83,6 +84,24 @@ def verify_peer_request(headers: Any, client_ip: str) -> bool:
     if not token:
         return False
     return hmac.compare_digest(token, PEER_TOKEN)
+
+
+def verify_peer_password_auth(headers: Any, client_ip: str, config_store: FrameConfigStore) -> bool:
+    if not verify_peer_request(headers, client_ip):
+        return False
+    expected = config_store.get_peer_pw_token()
+    if not expected:
+        return False
+    raw = ""
+    if hasattr(headers, "get"):
+        raw = str(headers.get(PEER_PW_HEADER) or headers.get(PEER_PW_HEADER.lower()) or "")
+    if not raw:
+        return False
+    for part in raw.split(","):
+        cand = part.strip()
+        if cand and hmac.compare_digest(cand, expected):
+            return True
+    return False
 
 
 def normalize_peer_target(raw_host: str, default_port: int = 8080) -> Optional[Tuple[str, int, str]]:
@@ -181,12 +200,12 @@ class FleetManager:
         clean = sorted(set(str(x).strip() for x in peers if str(x).strip()))
         self.config_store.save_settings({"manual_peers": clean})
 
-    def build_ping_payload(self) -> Dict[str, Any]:
+    def build_ping_payload(self, peer_authorized: Optional[bool] = None) -> Dict[str, Any]:
         my_ip = self._get_my_ip()
         st = self.app.get_status_snapshot()
         cfg = self.app.get_current_settings_dict()
         hostname = st.get("mdns_hostname") or get_active_mdns_hostname()
-        return {
+        payload = {
             "photoframe": True,
             "service": "photoframe",
             "id": f"{my_ip}:{self.port}",
@@ -219,6 +238,25 @@ class FleetManager:
             "web_frame_clients": int(st.get("web_frame_clients", 0)),
             "known_peers": self.get_known_peer_targets(),
         }
+        if peer_authorized is not None:
+            payload["peer_authorized"] = bool(peer_authorized)
+        return payload
+
+    def _build_peer_auth_header(self, target_id: str) -> str:
+        tokens: List[str] = []
+        stored = self.config_store.get_peer_auth_tokens().get(target_id, "")
+        local = self.config_store.get_peer_pw_token()
+        for tok in (stored, local):
+            clean = str(tok or "").strip()
+            if clean and clean not in tokens:
+                tokens.append(clean)
+        return ",".join(tokens)
+
+    def _mark_peer_locked(self, target_id: str) -> None:
+        with self._lock:
+            if target_id in self._peers:
+                self._peers[target_id]["locked"] = True
+        self.config_store.remove_peer_auth_token(target_id)
 
     def _http_request_peer(
         self,
@@ -229,12 +267,18 @@ class FleetManager:
         body_bytes: Optional[bytes] = None,
         content_type: str = "application/json",
         timeout: float = 2.0,
+        extra_headers: Optional[Dict[str, str]] = None,
     ) -> Tuple[int, Dict[str, Any]]:
         headers = {
             PEER_AUTH_HEADER: PEER_TOKEN,
             "Accept": "application/json",
             "Connection": "close",
         }
+        auth_val = self._build_peer_auth_header(f"{ip}:{port}")
+        if auth_val:
+            headers[PEER_PW_HEADER] = auth_val
+        if extra_headers:
+            headers.update(extra_headers)
         if body_bytes is not None:
             headers["Content-Type"] = content_type
             headers["Content-Length"] = str(len(body_bytes))
@@ -268,19 +312,26 @@ class FleetManager:
             return None
         ip, port, target_id = norm
         if self.is_self_target(target_id):
-            return self.build_ping_payload()
+            node = self.build_ping_payload()
+            node["locked"] = False
+            return node
 
         status, data = self._http_request_peer(ip, port, "GET", "/api/fleet/ping", timeout=timeout)
         if status == 200 and isinstance(data, dict) and data.get("photoframe") is True:
             node = dict(data)
+            peer_auth = data.get("peer_authorized", True)
+            locked = not bool(peer_auth)
             node["id"] = target_id
             node["ip"] = ip
             node["port"] = port
             node["is_self"] = False
             node["online"] = True
+            node["locked"] = locked
             node["last_seen"] = time.time()
             with self._lock:
                 self._peers[target_id] = node
+            if locked:
+                self.config_store.remove_peer_auth_token(target_id)
 
             if follow_gossip:
                 gossip_peers = data.get("known_peers")
@@ -403,6 +454,7 @@ class FleetManager:
         self_node = self.build_ping_payload()
         self_node["is_self"] = True
         self_node["online"] = True
+        self_node["locked"] = False
 
         manual_set = set()
         for mp in self._get_manual_peers():
@@ -423,6 +475,7 @@ class FleetManager:
                 copy_node = dict(pnode)
                 copy_node["is_self"] = False
                 copy_node["is_manual"] = pid in manual_set
+                copy_node["locked"] = bool(pnode.get("locked", False))
                 peers_list.append(copy_node)
 
         peers_list.sort(key=lambda x: (str(x.get("mdns_hostname", "")), str(x.get("ip", ""))))
@@ -434,7 +487,9 @@ class FleetManager:
             return False, "Invalid IP address or hostname", None
         ip, initial_port, target_id = norm
         if self.is_self_target(target_id):
-            return True, "This frame is already in the fleet", self.build_ping_payload()
+            node = self.build_ping_payload()
+            node["locked"] = False
+            return True, "This frame is already in the fleet", node
 
         node = self.probe_peer(target_id, timeout=1.8)
         if not node:
@@ -457,11 +512,36 @@ class FleetManager:
             self._save_manual_peers(cur_manual)
         return True, f"Added {node.get('mdns_hostname', target_id)} ({target_id})", node
 
+    def unlock_peer(self, target_input: str, password: str) -> Tuple[int, Dict[str, Any]]:
+        norm = normalize_peer_target(target_input, self.port)
+        if not norm:
+            return 400, {"ok": False, "error": "Invalid target"}
+        ip, port, target_id = norm
+        if self.is_self_target(target_id):
+            return 200, {"ok": True, "target": target_id, "fleet": self.get_fleet_nodes(trigger_scan=False)}
+
+        body = json.dumps({"password": password or ""}).encode("utf-8")
+        code, resp = self._http_request_peer(ip, port, "POST", "/api/fleet/verify_peer", body_bytes=body, timeout=3.5)
+        if code == 200 and resp.get("ok"):
+            tok = str(resp.get("peer_pw_token") or FrameConfigStore.compute_peer_pw_token(password or "")).strip()
+            self.config_store.save_peer_auth_token(target_id, tok)
+            node = self.probe_peer(target_id, timeout=1.5, follow_gossip=False)
+            return 200, {
+                "ok": True,
+                "target": target_id,
+                "node": node,
+                "fleet": self.get_fleet_nodes(trigger_scan=False),
+            }
+        if code == 401:
+            return 401, {"ok": False, "error": resp.get("error", "Invalid password")}
+        return 502, {"ok": False, "error": resp.get("error", f"Could not verify password on {target_id}")}
+
     def remove_peer(self, target_input: str) -> bool:
         norm = normalize_peer_target(target_input, self.port)
         target_id = norm[2] if norm else target_input.strip()
         cur_manual = [p for p in self._get_manual_peers() if p != target_id and p != target_input.strip()]
         self._save_manual_peers(cur_manual)
+        self.config_store.remove_peer_auth_token(target_id)
         with self._lock:
             self._peers.pop(target_id, None)
         return True
@@ -486,6 +566,9 @@ class FleetManager:
             return {"ok": False, "error": f"Invalid target: {target}"}
         ip, port, target_id = norm
         code, data = self._http_request_peer(ip, port, "GET", "/api/status", timeout=2.5)
+        if code == 403 or (isinstance(data, dict) and data.get("locked")):
+            self._mark_peer_locked(target_id)
+            return {"ok": False, "locked": True, "error": "Password required for this frame"}
         if code == 200 and isinstance(data, dict) and data.get("status"):
             st = data["status"]
             return {
@@ -515,9 +598,9 @@ class FleetManager:
 
         if target == "all":
             nodes = self.get_fleet_nodes(trigger_scan=False)
-            online_nodes = [n for n in nodes if n.get("online", True)]
-            remote_nodes = [n for n in online_nodes if not n.get("is_self")]
-            has_self = any(n.get("is_self") for n in online_nodes)
+            unlocked_nodes = [n for n in nodes if n.get("online", True) and not n.get("locked", False)]
+            remote_nodes = [n for n in unlocked_nodes if not n.get("is_self")]
+            has_self = any(n.get("is_self") for n in unlocked_nodes)
             success_count = 0
             last_msg = "Action executed"
 
@@ -555,7 +638,7 @@ class FleetManager:
 
             return 200, {
                 "ok": success_count > 0,
-                "message": f"🌐 Broadcast ({success_count}/{len(online_nodes)} frames): {last_msg}",
+                "message": f"🌐 Broadcast ({success_count}/{len(unlocked_nodes)} frames): {last_msg}",
             }
 
         norm = normalize_peer_target(target, self.port)
@@ -567,6 +650,9 @@ class FleetManager:
         code, resp = self._http_request_peer(ip, port, "POST", "/api/action", body_bytes=body, timeout=3.5)
         if code == 200 and resp.get("ok"):
             return 200, resp
+        if code == 403 or resp.get("locked"):
+            self._mark_peer_locked(target_id)
+            return 403, {"ok": False, "locked": True, "error": resp.get("error", "Password required for this frame")}
         return (code if code >= 400 else 502), {"ok": False, "error": resp.get("error", f"Failed to reach {target_id}")}
 
     @staticmethod
@@ -596,7 +682,7 @@ class FleetManager:
 
         if target == "all":
             nodes = self.get_fleet_nodes(trigger_scan=False)
-            online_nodes = [n for n in nodes if n.get("online", True)]
+            unlocked_nodes = [n for n in nodes if n.get("online", True) and not n.get("locked", False)]
             success_count = 0
             last_msg = "Settings saved and applied live!"
 
@@ -619,15 +705,15 @@ class FleetManager:
                     return True, str(resp.get("message", "OK"))
                 return False, str(resp.get("error", "Failed"))
 
-            with ThreadPoolExecutor(max_workers=min(16, max(1, len(online_nodes)))) as pool:
-                for ok, m in pool.map(_save_on_node, online_nodes):
+            with ThreadPoolExecutor(max_workers=min(16, max(1, len(unlocked_nodes)))) as pool:
+                for ok, m in pool.map(_save_on_node, unlocked_nodes):
                     if ok:
                         success_count += 1
                         last_msg = m
 
             return 200, {
                 "ok": success_count > 0,
-                "message": f"🌐 Applied settings across {success_count}/{len(online_nodes)} frames!",
+                "message": f"🌐 Applied settings across {success_count}/{len(unlocked_nodes)} frames!",
             }
 
         norm = normalize_peer_target(target, self.port)
@@ -638,6 +724,9 @@ class FleetManager:
         code, resp = self._http_request_peer(ip, port, "POST", "/api/settings", body_bytes=body, timeout=4.0)
         if code == 200 and resp.get("ok"):
             return 200, resp
+        if code == 403 or resp.get("locked"):
+            self._mark_peer_locked(target_id)
+            return 403, {"ok": False, "locked": True, "error": resp.get("error", "Password required for this frame")}
         return (code if code >= 400 else 502), {"ok": False, "error": resp.get("error", f"Failed to save settings on {target_id}")}
 
     def execute_password(
@@ -646,13 +735,13 @@ class FleetManager:
         current_pw: str,
         new_pw: str,
     ) -> Tuple[int, Dict[str, Any], Optional[str]]:
-        if not self.config_store.verify_password(current_pw):
-            return 400, {"ok": False, "error": "Current password is incorrect"}, None
         if len(new_pw) < 4:
             return 400, {"ok": False, "error": "New password must be at least 4 characters"}, None
 
         cookie = None
         if not target or target == "all" or self.is_self_target(target):
+            if not self.config_store.verify_password(current_pw):
+                return 400, {"ok": False, "error": "Current password is incorrect"}, None
             self.config_store.change_password(new_pw)
             token = self.config_store.create_session_token()
             cookie = f"frame_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000"
@@ -662,20 +751,40 @@ class FleetManager:
 
         if target == "all":
             nodes = self.get_fleet_nodes(trigger_scan=False)
-            peers = [n for n in nodes if not n.get("is_self") and n.get("online", True)]
+            peers = [n for n in nodes if not n.get("is_self") and n.get("online", True) and not n.get("locked", False)]
             body = json.dumps({"new_password": new_pw}).encode("utf-8")
+            synced = 0
             for p in peers:
-                self._http_request_peer(p["ip"], int(p.get("port", self.port)), "POST", "/api/fleet/sync_password", body_bytes=body, timeout=3.0)
-            return 200, {"ok": True, "message": f"Password updated across {len(peers) + 1} frames"}, cookie
+                pid = str(p.get("id") or f"{p['ip']}:{p.get('port', self.port)}")
+                c, r = self._http_request_peer(p["ip"], int(p.get("port", self.port)), "POST", "/api/fleet/sync_password", body_bytes=body, timeout=3.0)
+                if c == 200 and r.get("ok"):
+                    synced += 1
+                    self.config_store.remove_peer_auth_token(pid)
+            return 200, {"ok": True, "message": f"Password updated across {synced + 1} frames"}, cookie
 
         norm = normalize_peer_target(target, self.port)
         if not norm:
             return 400, {"ok": False, "error": f"Invalid target: {target}"}, None
         ip, port, target_id = norm
+        v_body = json.dumps({"password": current_pw or ""}).encode("utf-8")
+        v_code, v_resp = self._http_request_peer(ip, port, "POST", "/api/fleet/verify_peer", body_bytes=v_body, timeout=3.5)
+        if v_code != 200 or not v_resp.get("ok"):
+            if v_code == 401:
+                return 400, {"ok": False, "error": "Current password is incorrect"}, None
+            return (v_code if v_code >= 400 else 502), {"ok": False, "error": v_resp.get("error", f"Could not verify password on {target_id}")}, None
+
+        cur_tok = str(v_resp.get("peer_pw_token") or FrameConfigStore.compute_peer_pw_token(current_pw or "")).strip()
+        if cur_tok:
+            self.config_store.save_peer_auth_token(target_id, cur_tok)
         body = json.dumps({"new_password": new_pw}).encode("utf-8")
         code, resp = self._http_request_peer(ip, port, "POST", "/api/fleet/sync_password", body_bytes=body, timeout=3.0)
         if code == 200 and resp.get("ok"):
+            self.config_store.save_peer_auth_token(target_id, FrameConfigStore.compute_peer_pw_token(new_pw))
+            self.probe_peer(target_id, timeout=1.5, follow_gossip=False)
             return 200, {"ok": True}, None
+        if code == 403 or resp.get("locked"):
+            self._mark_peer_locked(target_id)
+            return 403, {"ok": False, "locked": True, "error": resp.get("error", "Password required for this frame")}, None
         return 502, {"ok": False, "error": resp.get("error", f"Failed to update password on {target_id}")}, None
 
     def proxy_apk_upload(self, target: str, apk_bytes: bytes) -> Tuple[int, Dict[str, Any]]:
@@ -683,10 +792,10 @@ class FleetManager:
             nodes = self.get_fleet_nodes(trigger_scan=False)
             tv_peers = [
                 n for n in nodes
-                if not n.get("is_self") and n.get("online", True) and n.get("platform") == "android_tv"
+                if not n.get("is_self") and n.get("online", True) and not n.get("locked", False) and n.get("platform") == "android_tv"
             ]
             if not tv_peers:
-                return 400, {"ok": False, "error": "No online Android TV frames found on LAN"}
+                return 400, {"ok": False, "error": "No unlocked online Android TV frames found on LAN"}
             ok_count = 0
             last_msg = ""
             for p in tv_peers:
@@ -719,4 +828,7 @@ class FleetManager:
         )
         if code == 200 and resp.get("ok"):
             return 200, resp
+        if code == 403 or resp.get("locked"):
+            self._mark_peer_locked(target_id)
+            return 403, {"ok": False, "locked": True, "error": resp.get("error", "Password required for this frame")}
         return (code if code >= 400 else 502), {"ok": False, "error": resp.get("error", f"APK upload to {target_id} failed")}

@@ -17,7 +17,7 @@ import urllib.parse
 from typing import TYPE_CHECKING, Any, Dict, Optional, Type
 
 from .config import FrameConfigStore
-from .fleet import FleetManager, verify_peer_request
+from .fleet import FleetManager, verify_peer_password_auth, verify_peer_request
 from .hardware import logger
 from .m3_assets import get_m3_asset
 from .mdns import MDNS_HOSTNAME, get_active_mdns_hostname, start_mdns_responder
@@ -602,11 +602,15 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     gap: 10px; margin-top: 10px;
   }
   .fleet-pill {
+    position: relative; overflow: hidden;
     background: var(--md-sys-color-surface-container-low);
     border: 1.5px solid var(--md-sys-color-subtle-border);
     border-radius: 14px; padding: 12px 14px; cursor: pointer;
     transition: border-color 0.15s ease, background-color 0.15s ease;
     display: flex; flex-direction: column; gap: 4px; text-align: left;
+  }
+  .fleet-pill[data-accented="true"] {
+    border-left: 4px solid var(--pill-border, var(--md-sys-color-subtle-border));
   }
   .fleet-pill:hover {
     border-color: var(--md-sys-color-hover-outline);
@@ -619,6 +623,24 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   .fleet-pill.selected:hover {
     border-color: var(--md-sys-color-accent-text);
     background: var(--md-sys-color-tonal-hover);
+  }
+  .fleet-pill.selected[data-accented="true"],
+  .fleet-pill.selected[data-accented="true"]:hover {
+    border-color: var(--pill-border, var(--md-sys-color-accent-text));
+    background: var(--pill-tint, var(--md-sys-color-secondary-container));
+  }
+  .fleet-pill[data-accented="true"] .fleet-pill-meta {
+    color: var(--pill-accent, var(--md-sys-color-accent-text));
+  }
+  .fleet-pill.locked {
+    border-style: dashed;
+  }
+  .fleet-lock-badge {
+    display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
+    font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+    background: var(--md-sys-color-surface-container-high);
+    color: var(--md-sys-color-on-surface-variant);
+    border: 1px solid var(--md-sys-color-subtle-border);
   }
   .fleet-pill-top {
     display: flex; align-items: center; justify-content: space-between;
@@ -642,6 +664,29 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     background: var(--md-sys-color-secondary-container);
     color: var(--md-sys-color-on-secondary-container);
     border: 1.5px solid var(--md-sys-color-tonal-border);
+  }
+  #header-fleet-chip[data-tied="true"] {
+    border-color: var(--active-frame-border);
+    background: var(--active-frame-tint);
+    color: var(--active-frame-accent);
+  }
+  #active-target-banner[data-tied="true"] {
+    background: var(--active-frame-tint);
+    color: var(--md-sys-color-on-surface);
+    border-color: var(--active-frame-border);
+    border-left-width: 4px;
+  }
+  #active-frame-tie-strip {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+    gap: 10px; padding: 8px 14px; margin-bottom: 14px; border-radius: 12px;
+    background: var(--active-frame-tint, var(--md-sys-color-secondary-container));
+    border: 1.5px solid var(--active-frame-border, var(--md-sys-color-tonal-border));
+    border-left-width: 5px;
+    font-size: 0.83rem; font-weight: 600; color: var(--md-sys-color-on-surface);
+    cursor: pointer;
+  }
+  #app-view[data-fleet-tied="true"] section[role="tabpanel"] > .m3-card {
+    border-top: 3px solid var(--active-frame-border);
   }
   .saved-albums-grid {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
@@ -921,6 +966,14 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
         <div id="fleet-nodes-grid" class="fleet-grid"></div>
         <div id="active-target-banner" class="target-banner" role="status" aria-live="polite"></div>
       </section>
+
+      <div id="active-frame-tie-strip" class="hidden" role="status" aria-live="polite" onclick="toggleFleetDrawer()">
+        <span style="display:inline-flex; align-items:center; gap:8px;">
+          <span id="active-frame-tie-dot" aria-hidden="true" style="width:10px; height:10px; border-radius:50%; background:var(--active-frame-border, currentColor); display:inline-block; flex-shrink:0;"></span>
+          <span id="active-frame-tie-label"></span>
+        </span>
+        <span id="active-frame-tie-meta" style="font-size:0.76rem; color:var(--active-frame-accent, var(--md-sys-color-accent-text));"></span>
+      </div>
 
       <!-- TAB 1: CONTROL -->
       <section id="panel-control" role="tabpanel" aria-labelledby="tab-control">
@@ -1291,6 +1344,28 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   </div>
 </div>
 
+<div id="peer-auth-modal" class="modal-backdrop hidden" onclick="if (event.target === this) closePeerAuthModal()">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="peer-auth-modal-title" aria-describedby="peer-auth-modal-msg">
+    <h3 id="peer-auth-modal-title"><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg><span class="btn-label" data-i18n="peer_auth_title">Unlock Photo Frame</span></h3>
+    <p id="peer-auth-modal-msg"></p>
+    <form id="peer-auth-form" onsubmit="submitPeerPassword(event)">
+      <div class="form-group" style="margin-bottom:14px;">
+        <label for="peer-auth-password" data-i18n="lbl_password">Password</label>
+        <input type="password" id="peer-auth-password" autocomplete="current-password" required data-i18n-placeholder="ph_password" placeholder="Enter password">
+      </div>
+      <div id="peer-auth-error" class="inline-confirm-banner error" role="alert" style="display:none; margin-bottom:12px;"></div>
+      <div class="modal-actions">
+        <button type="button" id="btn-peer-auth-cancel" class="outlined" onclick="closePeerAuthModal()">
+          <span class="btn-label" data-i18n="btn_cancel">Cancel</span>
+        </button>
+        <button type="submit" id="btn-peer-auth-submit" class="primary">
+          <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg><span class="btn-label" data-i18n="btn_unlock_peer">Unlock Frame</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -1411,8 +1486,16 @@ const I18N = {
     chip_fleet_single: "LAN Frames",
     chip_fleet_multi: "{count} Frames",
     target_controlling_self: "Controlling: {host} ({ip} — This Frame)",
-    target_controlling_peer: "Controlling Remote Frame: {host} ({ip}) — Single-Login LAN Trust",
+    target_controlling_peer: "Controlling Remote Frame: {host} ({ip})",
     target_controlling_all: "Broadcast Mode: Actions & shared settings apply to all {count} online frames simultaneously.",
+    fleet_locked_badge: "Locked",
+    fleet_locked_sub: "Different password • Tap to unlock",
+    fleet_all_sub_locked: "{unlocked} unlocked • {locked} locked (skipped)",
+    target_controlling_all_locked: "Broadcast Mode: Applies to {unlocked} unlocked frames ({locked} locked skipped).",
+    peer_auth_title: "Unlock Photo Frame",
+    peer_auth_desc: "Enter the admin password for {host} ({ip}) to manage this frame.",
+    btn_unlock_peer: "Unlock Frame",
+    msg_peer_unlocked: "Frame unlocked and connected",
     lbl_pwd: "Baidu Pan Extract Code (pwd)",
     ph_pwd: "4-char code (optional if ?pwd= is in URL)",
     sec_update: "App Auto-Update & APK Installer",
@@ -1559,8 +1642,16 @@ const I18N = {
     chip_fleet_single: "局域网设备",
     chip_fleet_multi: "{count} 台相框",
     target_controlling_self: "当前控制：{host} ({ip} — 本机相框)",
-    target_controlling_peer: "正在远程管理：{host} ({ip}) — 免重复登录",
+    target_controlling_peer: "正在远程管理：{host} ({ip})",
     target_controlling_all: "全局广播模式：远程控制与通用设置将同时应用至全部 {count} 台在线相框。",
+    fleet_locked_badge: "已锁定",
+    fleet_locked_sub: "密码不同 • 点击输入密码解锁",
+    fleet_all_sub_locked: "{unlocked} 台已解锁 • {locked} 台已锁定（跳过）",
+    target_controlling_all_locked: "全局广播模式：将同时应用至 {unlocked} 台已解锁相框（跳过 {locked} 台已锁定相框）。",
+    peer_auth_title: "解锁相框管理",
+    peer_auth_desc: "请输入相框 {host} ({ip}) 的管理密码以进行连接与控制。",
+    btn_unlock_peer: "解锁连接",
+    msg_peer_unlocked: "相框已解锁并连接",
     lbl_pwd: "百度网盘提取码 (pwd)",
     ph_pwd: "4 位提取码（若链接含 ?pwd= 可留空）",
     sec_update: "应用自动更新与 APK 安装",
@@ -1707,8 +1798,16 @@ const I18N = {
     chip_fleet_single: "LAN デバイス",
     chip_fleet_multi: "{count} 台",
     target_controlling_self: "操作中: {host} ({ip} — このフレーム)",
-    target_controlling_peer: "リモート操作中: {host} ({ip}) — 再ログイン不要",
+    target_controlling_peer: "リモート操作中: {host} ({ip})",
     target_controlling_all: "一括配信モード: 操作と共通設定が全 {count} 台に同時適用されます。",
+    fleet_locked_badge: "ロック中",
+    fleet_locked_sub: "別パスワード • タップして解除",
+    fleet_all_sub_locked: "{unlocked} 台解除済み • {locked} 台ロック中（スキップ）",
+    target_controlling_all_locked: "一括配信モード: 解除済み {unlocked} 台に適用されます（ロック中 {locked} 台をスキップ）。",
+    peer_auth_title: "フォトフレームのロック解除",
+    peer_auth_desc: "{host} ({ip}) を管理するには、このフレームの管理者パスワードを入力してください。",
+    btn_unlock_peer: "ロック解除",
+    msg_peer_unlocked: "ロックを解除して接続しました",
     lbl_pwd: "Baidu Pan 抽出コード (pwd)",
     ph_pwd: "4文字コード（URLに ?pwd= がある場合は省略可）",
     sec_update: "アプリ自動更新 & APK インストーラー",
@@ -1855,8 +1954,16 @@ const I18N = {
     chip_fleet_single: "LAN 액자",
     chip_fleet_multi: "{count}대 액자",
     target_controlling_self: "제어 중: {host} ({ip} — 현재 액자)",
-    target_controlling_peer: "원격 액자 제어 중: {host} ({ip}) — 추가 로그인 불필요",
+    target_controlling_peer: "원격 액자 제어 중: {host} ({ip})",
     target_controlling_all: "전체 브로드캐스트 모드: 원격 제어 및 공통 설정이 {count}대 액자 전체에 동시에 적용됩니다.",
+    fleet_locked_badge: "잠김",
+    fleet_locked_sub: "다른 비밀번호 • 탭하여 잠금 해제",
+    fleet_all_sub_locked: "{unlocked}대 잠금 해제 • {locked}대 잠김(건너뜀)",
+    target_controlling_all_locked: "전체 브로드캐스트 모드: 잠금 해제된 {unlocked}대 액자에 적용됩니다(잠김 {locked}대 건너뜀).",
+    peer_auth_title: "액자 잠금 해제",
+    peer_auth_desc: "{host} ({ip}) 액자를 관리하려면 해당 액자의 관리자 비밀번호를 입력하세요.",
+    btn_unlock_peer: "잠금 해제",
+    msg_peer_unlocked: "액자 잠금이 해제되어 연결되었습니다",
     lbl_pwd: "Baidu Pan 추출 코드 (pwd)",
     ph_pwd: "4자리 코드 (URL에 ?pwd= 포함 시 생략 가능)",
     sec_update: "앱 자동 업데이트 및 APK 설치",
@@ -2005,6 +2112,14 @@ const I18N = {
     target_controlling_self: "Controlando: {host} ({ip} — Este Marco)",
     target_controlling_peer: "Controlando Marco Remoto: {host} ({ip})",
     target_controlling_all: "Modo Difusión: Las acciones y ajustes se aplicarán a los {count} marcos activos.",
+    fleet_locked_badge: "Bloqueado",
+    fleet_locked_sub: "Contraseña distinta • Toca para desbloquear",
+    fleet_all_sub_locked: "{unlocked} desbloqueados • {locked} bloqueados (omitidos)",
+    target_controlling_all_locked: "Modo Difusión: Se aplica a {unlocked} marcos desbloqueados ({locked} bloqueados omitidos).",
+    peer_auth_title: "Desbloquear Marco",
+    peer_auth_desc: "Introduce la contraseña de administrador de {host} ({ip}) para gestionar este marco.",
+    btn_unlock_peer: "Desbloquear",
+    msg_peer_unlocked: "Marco desbloqueado y conectado",
     lbl_pwd: "Código de Extracción Baidu Pan (pwd)",
     ph_pwd: "Código de 4 caracteres (opcional si ?pwd= está en la URL)",
     sec_update: "Actualización Automática e Instalador APK",
@@ -2153,6 +2268,14 @@ const I18N = {
     target_controlling_self: "Steuerung: {host} ({ip} — Dieser Rahmen)",
     target_controlling_peer: "Fernsteuerung: {host} ({ip})",
     target_controlling_all: "Broadcast-Modus: Aktionen und gemeinsame Einstellungen gelten gleichzeitig für alle {count} Rahmen.",
+    fleet_locked_badge: "Gesperrt",
+    fleet_locked_sub: "Anderes Passwort • Zum Entsperren tippen",
+    fleet_all_sub_locked: "{unlocked} entsperrt • {locked} gesperrt (übersprungen)",
+    target_controlling_all_locked: "Broadcast-Modus: Gilt für {unlocked} entsperrte Rahmen ({locked} gesperrte übersprungen).",
+    peer_auth_title: "Bilderrahmen entsperren",
+    peer_auth_desc: "Geben Sie das Administrator-Passwort für {host} ({ip}) ein, um diesen Rahmen zu verwalten.",
+    btn_unlock_peer: "Entsperren",
+    msg_peer_unlocked: "Rahmen entsperrt und verbunden",
     lbl_pwd: "Baidu Pan Extraktionscode (pwd)",
     ph_pwd: "4-stelliger Code (optional wenn ?pwd= in URL)",
     sec_update: "App-Auto-Update & APK-Installation",
@@ -2209,6 +2332,30 @@ let lastActiveAlbumTitle = '';
 let portalExitedOffline = false;
 let consecutiveStatusFailures = 0;
 let lastModalTriggerEl = null;
+let pendingAuthTarget = '';
+let pendingSelectOnUnlock = true;
+let lastAuthModalTriggerEl = null;
+
+const FRAME_ACCENTS = [
+  { name: 'slate', lightText: '#1D528E', lightBorder: '#2B6CB0', lightTint: '#EDF4FC', darkText: '#94B4D4', darkBorder: '#6E8FAE', darkTint: '#1E2630' },
+  { name: 'sage',  lightText: '#1E6346', lightBorder: '#2C7A59', lightTint: '#ECF6F1', darkText: '#8EC2AA', darkBorder: '#699E86', darkTint: '#1C2924' },
+  { name: 'ochre', lightText: '#7C4D12', lightBorder: '#9C651C', lightTint: '#FAF3E8', darkText: '#CFB38A', darkBorder: '#A88C64', darkTint: '#2B251D' },
+  { name: 'iris',  lightText: '#5B3E82', lightBorder: '#72519D', lightTint: '#F3EFFA', darkText: '#B5A3CF', darkBorder: '#8E7BA8', darkTint: '#26212E' },
+  { name: 'rose',  lightText: '#8A3843', lightBorder: '#A64B57', lightTint: '#FBEFF1', darkText: '#CFA0A7', darkBorder: '#8E676E', darkTint: '#2D2123' },
+  { name: 'teal',  lightText: '#195E6A', lightBorder: '#267887', lightTint: '#EBF5F7', darkText: '#8BBEC7', darkBorder: '#679AA3', darkTint: '#1C282B' }
+];
+const ALL_FRAMES_ACCENT = {
+  name: 'broadcast', lightText: '#2A4E7C', lightBorder: '#3E689E', lightTint: '#EEF3FA', darkText: '#9EB8D6', darkBorder: '#7893B2', darkTint: '#1F2630'
+};
+
+function resolveAccentColors(swatch) {
+  const isLight = (currentTheme === 'light');
+  return {
+    text: isLight ? swatch.lightText : swatch.darkText,
+    border: isLight ? swatch.lightBorder : swatch.darkBorder,
+    tint: isLight ? swatch.lightTint : swatch.darkTint
+  };
+}
 
 function setBtnLabel(elOrId, text) {
   const el = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
@@ -2276,6 +2423,9 @@ function applyTheme(theme, persist = true) {
     try { localStorage.setItem('frame_theme', currentTheme); } catch (e) {}
   }
   updateThemeSwitches();
+  if (Array.isArray(fleetNodes) && fleetNodes.length > 0) {
+    renderFleetBar(fleetNodes);
+  }
 }
 
 function toggleTheme() {
@@ -2399,8 +2549,9 @@ function updateFleetCardVisibility() {
   if (chipLabel) {
     const selfNode = fleetNodes.find(n => n.is_self) || fleetNodes[0] || {};
     if (multiFrame) {
+      const unlockedCnt = fleetNodes.filter(n => n.online !== false && (n.is_self || !n.locked)).length;
       chipLabel.textContent = selectedTarget === 'all'
-        ? t('fleet_all_frames', {count: fleetNodes.filter(n => n.online !== false).length})
+        ? t('fleet_all_frames', {count: unlockedCnt})
         : t('chip_fleet_multi', {count: fleetNodes.length});
     } else {
       chipLabel.textContent = selfNode.mdns_hostname || t('chip_fleet_single');
@@ -2561,46 +2712,74 @@ function renderFleetBar(nodes) {
   fleetNodes = Array.isArray(nodes) ? nodes : [];
   const grid = document.getElementById('fleet-nodes-grid');
   const banner = document.getElementById('active-target-banner');
+  const appView = document.getElementById('app-view');
+  const chip = document.getElementById('header-fleet-chip');
+  const tieStrip = document.getElementById('active-frame-tie-strip');
+  const tieLabel = document.getElementById('active-frame-tie-label');
+  const tieMeta = document.getElementById('active-frame-tie-meta');
   if (!grid) return;
 
+  const multiFrame = fleetNodes.length > 1;
   const onlineNodes = fleetNodes.filter(n => n.online !== false);
+  const lockedOnlineNodes = onlineNodes.filter(n => !n.is_self && Boolean(n.locked));
+  const unlockedOnlineNodes = onlineNodes.filter(n => n.is_self || !n.locked);
   const selfNode = fleetNodes.find(n => n.is_self) || fleetNodes[0] || {};
   if (selectedTarget !== 'all' && selectedTarget !== 'self') {
-    const exists = fleetNodes.some(n => n.id === selectedTarget);
-    if (!exists) selectedTarget = 'self';
+    const curNode = fleetNodes.find(n => n.id === selectedTarget);
+    if (!curNode || (!curNode.is_self && curNode.locked)) selectedTarget = 'self';
   }
 
   const closeSvg = `<svg class="m3-icon-sm" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`;
+  const lockSvg = `<svg class="m3-icon-sm" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg>`;
+  const allColors = resolveAccentColors(ALL_FRAMES_ACCENT);
+  let activeColors = resolveAccentColors(FRAME_ACCENTS[0]);
+  if (selectedTarget === 'all') activeColors = allColors;
+
   let html = '';
-  if (fleetNodes.length > 1) {
+  if (multiFrame) {
     const isAll = (selectedTarget === 'all');
-    html += `<div class="fleet-pill ${isAll ? 'selected' : ''}" role="button" tabindex="0" onclick="selectFleetTarget('all')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectFleetTarget('all');}">
+    const allSubText = lockedOnlineNodes.length > 0
+      ? t('fleet_all_sub_locked', {unlocked: unlockedOnlineNodes.length, locked: lockedOnlineNodes.length})
+      : t('fleet_all_sub');
+    const allPillStyle = `--pill-accent:${allColors.text}; --pill-border:${allColors.border}; --pill-tint:${allColors.tint};`;
+    html += `<div class="fleet-pill ${isAll ? 'selected' : ''}" data-accented="true" style="${allPillStyle}" role="button" tabindex="0" onclick="selectFleetTarget('all')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectFleetTarget('all');}">
       <div class="fleet-pill-top">
-        <span>${escapeHtml(t('fleet_all_frames', {count: onlineNodes.length}))}</span>
+        <span>${escapeHtml(t('fleet_all_frames', {count: unlockedOnlineNodes.length}))}</span>
       </div>
       <div class="fleet-pill-meta">Broadcast Mode</div>
-      <div class="fleet-pill-sub">${escapeHtml(t('fleet_all_sub'))}</div>
+      <div class="fleet-pill-sub">${escapeHtml(allSubText)}</div>
     </div>`;
   }
 
+  let peerColorIdx = 0;
   fleetNodes.forEach(node => {
+    const swatch = node.is_self
+      ? FRAME_ACCENTS[0]
+      : FRAME_ACCENTS[1 + (peerColorIdx++ % (FRAME_ACCENTS.length - 1))];
+    const pillColors = resolveAccentColors(swatch);
     const targetKey = node.is_self ? 'self' : node.id;
     const isSelected = (selectedTarget === targetKey) || (node.is_self && selectedTarget === node.id);
-    const statusDotColor = node.online === false ? '#D9534F' : (node.is_night_mode ? '#D49B38' : (node.is_paused ? '#8E8E93' : '#30A46C'));
+    if (isSelected) activeColors = pillColors;
+    const isLocked = (!node.is_self && Boolean(node.locked));
+    const statusDotColor = node.online === false ? '#D9534F' : (isLocked ? pillColors.border : (node.is_night_mode ? '#D49B38' : (node.is_paused ? '#8E8E93' : '#30A46C')));
     const platLabel = node.platform === 'android_tv' ? 'Android TV' : 'Linux';
     const edLabel = node.edition === 'baidupan' ? 'Baidu' : 'Google';
-    const selfTag = node.is_self ? ` <span style="font-size:0.74rem; color:var(--md-sys-color-accent-text);">(${escapeHtml(t('fleet_this_frame'))})</span>` : '';
+    const selfTag = node.is_self ? ` <span style="font-size:0.74rem; color:${multiFrame ? pillColors.text : 'var(--md-sys-color-accent-text)'};">(${escapeHtml(t('fleet_this_frame'))})</span>` : '';
+    const lockBadge = isLocked ? `<span class="fleet-lock-badge">${lockSvg}<span>${escapeHtml(t('fleet_locked_badge'))}</span></span>` : '';
     const removeBtn = (!node.is_self && (node.is_manual || node.online === false))
       ? `<button type="button" class="icon-remove-btn" aria-label="Remove frame" title="Remove" onclick="removePeer(event, '${escapeHtml(node.id)}')">${closeSvg}</button>`
       : '';
     const hostTitle = escapeHtml(node.mdns_hostname || node.ip || node.id);
-    const mediaSummary = node.online === false
-      ? 'Offline'
-      : `${node.is_demo_mode ? 'Demo • ' : ''}${node.photo_count ?? 0} items • ${escapeHtml(node.landscape_mode || 'collage')}`;
-    html += `<div class="fleet-pill ${isSelected ? 'selected' : ''}" role="button" tabindex="0" onclick="selectFleetTarget('${escapeHtml(targetKey)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectFleetTarget('${escapeHtml(targetKey)}');}">
+    const mediaSummary = isLocked
+      ? escapeHtml(t('fleet_locked_sub'))
+      : (node.online === false
+          ? 'Offline'
+          : `${node.is_demo_mode ? 'Demo • ' : ''}${node.photo_count ?? 0} items • ${escapeHtml(node.landscape_mode || 'collage')}`);
+    const pillAccentAttr = multiFrame ? ` data-accented="true" style="--pill-accent:${pillColors.text}; --pill-border:${pillColors.border}; --pill-tint:${pillColors.tint};"` : '';
+    html += `<div class="fleet-pill ${isSelected ? 'selected' : ''} ${isLocked ? 'locked' : ''}"${pillAccentAttr} role="button" tabindex="0" onclick="selectFleetTarget('${escapeHtml(targetKey)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectFleetTarget('${escapeHtml(targetKey)}');}">
       <div class="fleet-pill-top">
         <span style="display:inline-flex; align-items:center; gap:7px;"><span class="status-dot" aria-hidden="true" style="color:${statusDotColor}"></span>${hostTitle}${selfTag}</span>
-        ${removeBtn}
+        <span style="display:inline-flex; align-items:center; gap:4px;">${lockBadge}${removeBtn}</span>
       </div>
       <div class="fleet-pill-meta">${escapeHtml(node.ip)}:${node.port || 8080} • ${platLabel} (${edLabel}) • v${escapeHtml(node.app_version || '1.0')}</div>
       <div class="fleet-pill-sub">${mediaSummary}</div>
@@ -2608,25 +2787,57 @@ function renderFleetBar(nodes) {
   });
   grid.innerHTML = html;
 
-  if (banner) {
-    if (selectedTarget === 'all') {
-      banner.textContent = t('target_controlling_all', {count: onlineNodes.length});
-    } else if (selectedTarget === 'self' || selectedTarget === selfNode.id) {
-      const selfPort = selfNode.port || 8080;
-      const selfPortSuffix = selfPort !== 8080 ? `:${selfPort}` : '';
-      banner.textContent = t('target_controlling_self', {
-        host: (selfNode.mdns_hostname || 'photoframe.local') + selfPortSuffix,
-        ip: (selfNode.ip || '127.0.0.1') + `:${selfPort}`
-      });
-    } else {
-      const peer = fleetNodes.find(n => n.id === selectedTarget) || {};
-      const peerPort = peer.port || 8080;
-      const peerPortSuffix = peerPort !== 8080 ? `:${peerPort}` : '';
-      banner.textContent = t('target_controlling_peer', {
-        host: (peer.mdns_hostname || selectedTarget) + peerPortSuffix,
-        ip: peer.ip ? `${peer.ip}:${peerPort}` : selectedTarget
-      });
+  let bannerText = '';
+  if (selectedTarget === 'all') {
+    bannerText = lockedOnlineNodes.length > 0
+      ? t('target_controlling_all_locked', {unlocked: unlockedOnlineNodes.length, locked: lockedOnlineNodes.length})
+      : t('target_controlling_all', {count: onlineNodes.length});
+  } else if (selectedTarget === 'self' || selectedTarget === selfNode.id) {
+    const selfPort = selfNode.port || 8080;
+    const selfPortSuffix = selfPort !== 8080 ? `:${selfPort}` : '';
+    bannerText = t('target_controlling_self', {
+      host: (selfNode.mdns_hostname || 'photoframe.local') + selfPortSuffix,
+      ip: (selfNode.ip || '127.0.0.1') + `:${selfPort}`
+    });
+  } else {
+    const peer = fleetNodes.find(n => n.id === selectedTarget) || {};
+    const peerPort = peer.port || 8080;
+    const peerPortSuffix = peerPort !== 8080 ? `:${peerPort}` : '';
+    bannerText = t('target_controlling_peer', {
+      host: (peer.mdns_hostname || selectedTarget) + peerPortSuffix,
+      ip: peer.ip ? `${peer.ip}:${peerPort}` : selectedTarget
+    });
+  }
+  if (banner) banner.textContent = bannerText;
+
+  if (multiFrame) {
+    if (appView) {
+      appView.setAttribute('data-fleet-tied', 'true');
+      if (appView.style && typeof appView.style.setProperty === 'function') {
+        appView.style.setProperty('--active-frame-accent', activeColors.text);
+        appView.style.setProperty('--active-frame-border', activeColors.border);
+        appView.style.setProperty('--active-frame-tint', activeColors.tint);
+      }
     }
+    if (chip) chip.setAttribute('data-tied', 'true');
+    if (banner) banner.setAttribute('data-tied', 'true');
+    if (tieStrip) {
+      tieStrip.classList.remove('hidden');
+      if (tieLabel) tieLabel.textContent = bannerText;
+      if (tieMeta) tieMeta.textContent = t('chip_fleet_multi', {count: fleetNodes.length});
+    }
+  } else {
+    if (appView) {
+      appView.removeAttribute('data-fleet-tied');
+      if (appView.style && typeof appView.style.removeProperty === 'function') {
+        appView.style.removeProperty('--active-frame-accent');
+        appView.style.removeProperty('--active-frame-border');
+        appView.style.removeProperty('--active-frame-tint');
+      }
+    }
+    if (chip) chip.removeAttribute('data-tied');
+    if (banner) banner.removeAttribute('data-tied');
+    if (tieStrip) tieStrip.classList.add('hidden');
   }
 
   updateFleetCardVisibility();
@@ -2679,6 +2890,11 @@ function updateDynamicFormVisibility() {
 }
 
 function selectFleetTarget(target) {
+  const node = fleetNodes.find(n => (n.is_self ? 'self' : n.id) === target || n.id === target);
+  if (node && !node.is_self && node.locked) {
+    openPeerAuthModal(node.id, true);
+    return;
+  }
   selectedTarget = target;
   formPopulated = false;
   renderFleetBar(fleetNodes);
@@ -2719,7 +2935,16 @@ async function addManualPeer() {
     if (inp) inp.value = '';
     document.getElementById('add-peer-row')?.classList.add('hidden');
     if (data.fleet) renderFleetBar(data.fleet);
-    showToast(data.message || 'Frame connected');
+    if (data.requires_password || (data.node && data.node.locked)) {
+      if (data.node && data.node.id) {
+        openPeerAuthModal(data.node.id, true);
+      }
+    } else {
+      if (data.node && data.node.id && !data.node.is_self) {
+        selectFleetTarget(data.node.id);
+      }
+      showToast(data.message || 'Frame connected');
+    }
   } else {
     showToast(data.error || 'Could not reach frame', true);
   }
@@ -2939,7 +3164,11 @@ async function fetchStatus(populateForm = false, triggerScan = false) {
     document.getElementById('default-pw-banner').classList.toggle('hidden', !data.is_default_password);
     switchPortalTab(activeTab);
 
-    if (selectedTarget && selectedTarget !== 'self' && selectedTarget !== 'all' && data.target === 'self') {
+    const pendingLockedTarget = (data.target_locked && data.locked_target) ? data.locked_target : '';
+    if (pendingLockedTarget) {
+      selectedTarget = 'self';
+      formPopulated = false;
+    } else if (selectedTarget && selectedTarget !== 'self' && selectedTarget !== 'all' && data.target === 'self') {
       selectedTarget = 'self';
     }
     activeTargetEdition = data.target_edition || data.status?.edition || 'gphotos';
@@ -2948,6 +3177,9 @@ async function fetchStatus(populateForm = false, triggerScan = false) {
       renderFleetBar(data.fleet);
     } else {
       updateFleetCardVisibility();
+    }
+    if (pendingLockedTarget) {
+      openPeerAuthModal(pendingLockedTarget, true);
     }
     renderStatusSnapshot(data.status);
     document.getElementById('log-box').textContent = data.log_tail || '(No log entries)';
@@ -3068,6 +3300,12 @@ async function sendAction(action) {
         showToast(data.message || 'Action executed');
         setTimeout(() => fetchStatus(false), 600);
       }
+    } else if (res.status === 403 && data.locked) {
+      const lockedTarget = data.target || selectedTarget;
+      fetchStatus(false, false);
+      if (lockedTarget && lockedTarget !== 'self' && lockedTarget !== 'all') {
+        openPeerAuthModal(lockedTarget, true);
+      }
     } else {
       const errMsg = data.error || 'Action failed';
       showToast(errMsg, true);
@@ -3096,6 +3334,90 @@ function playDemoShowcase() {
   if (albumEl) albumEl.value = '';
   if (pwdEl) pwdEl.value = '';
   sendAction('demo');
+}
+
+function openPeerAuthModal(targetId, selectOnUnlock = true) {
+  lastAuthModalTriggerEl = document.activeElement;
+  pendingAuthTarget = targetId || '';
+  pendingSelectOnUnlock = (selectOnUnlock !== false);
+  const modal = document.getElementById('peer-auth-modal');
+  const msgEl = document.getElementById('peer-auth-modal-msg');
+  const pwEl = document.getElementById('peer-auth-password');
+  const errEl = document.getElementById('peer-auth-error');
+  const submitBtn = document.getElementById('btn-peer-auth-submit');
+  const peer = fleetNodes.find(n => n.id === pendingAuthTarget) || {};
+  const peerPort = peer.port || 8080;
+  const host = peer.mdns_hostname || pendingAuthTarget || 'photoframe';
+  const ip = peer.ip ? `${peer.ip}:${peerPort}` : pendingAuthTarget;
+  if (msgEl) msgEl.textContent = t('peer_auth_desc', {host, ip});
+  if (pwEl) pwEl.value = '';
+  if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+  if (submitBtn) submitBtn.disabled = false;
+  if (modal) {
+    modal.classList.remove('hidden');
+    if (pwEl && typeof pwEl.focus === 'function') pwEl.focus();
+  }
+}
+
+function closePeerAuthModal() {
+  const modal = document.getElementById('peer-auth-modal');
+  if (modal) modal.classList.add('hidden');
+  pendingAuthTarget = '';
+  const errEl = document.getElementById('peer-auth-error');
+  if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+  if (lastAuthModalTriggerEl && typeof lastAuthModalTriggerEl.focus === 'function') {
+    try { lastAuthModalTriggerEl.focus(); } catch (e) {}
+  }
+}
+
+async function submitPeerPassword(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  const target = pendingAuthTarget;
+  if (!target) {
+    closePeerAuthModal();
+    return;
+  }
+  const pwEl = document.getElementById('peer-auth-password');
+  const errEl = document.getElementById('peer-auth-error');
+  const submitBtn = document.getElementById('btn-peer-auth-submit');
+  const password = pwEl ? pwEl.value : '';
+  if (!password) {
+    if (pwEl && typeof pwEl.focus === 'function') pwEl.focus();
+    return;
+  }
+  if (submitBtn) submitBtn.disabled = true;
+  if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+  try {
+    const res = await fetch('/api/fleet/unlock_peer', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({target, password})
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      const shouldSelect = pendingSelectOnUnlock;
+      const unlockedTarget = data.target || target;
+      closePeerAuthModal();
+      showToast(t('msg_peer_unlocked'));
+      if (data.fleet) renderFleetBar(data.fleet);
+      if (shouldSelect && unlockedTarget) {
+        selectFleetTarget(unlockedTarget);
+      } else {
+        fetchStatus(false, false);
+      }
+    } else {
+      const errMsg = data.error || t('msg_invalid_pw');
+      if (errEl) { errEl.textContent = errMsg; errEl.style.display = 'block'; }
+      if (pwEl && typeof pwEl.focus === 'function') {
+        pwEl.focus();
+        if (typeof pwEl.select === 'function') pwEl.select();
+      }
+    }
+  } catch (err) {
+    if (errEl) { errEl.textContent = t('msg_invalid_pw'); errEl.style.display = 'block'; }
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+  }
 }
 
 function confirmExitFrame() {
@@ -3137,6 +3459,31 @@ async function executeConfirmedExit() {
 }
 
 document.addEventListener('keydown', function(ev) {
+  const authModal = document.getElementById('peer-auth-modal');
+  if (authModal && !authModal.classList.contains('hidden')) {
+    if (ev.key === 'Escape') {
+      closePeerAuthModal();
+      return;
+    }
+    if (ev.key === 'Tab') {
+      const pwEl = document.getElementById('peer-auth-password');
+      const cancelBtn = document.getElementById('btn-peer-auth-cancel');
+      const submitBtn = document.getElementById('btn-peer-auth-submit');
+      const focusables = [pwEl, cancelBtn, submitBtn].filter(el => el && !el.disabled);
+      if (focusables.length >= 2) {
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (ev.shiftKey && document.activeElement === first) {
+          ev.preventDefault();
+          last.focus();
+        } else if (!ev.shiftKey && document.activeElement === last) {
+          ev.preventDefault();
+          first.focus();
+        }
+      }
+    }
+    return;
+  }
   const modal = document.getElementById('exit-confirm-modal');
   if (!modal || modal.classList.contains('hidden')) return;
   if (ev.key === 'Escape') {
@@ -3231,6 +3578,13 @@ async function saveSettings(e) {
         setTimeout(() => { setBtnLabel(btn, t('btn_save_settings')); btn.disabled = false; }, 2500);
       }
       setTimeout(() => fetchStatus(true), 600);
+    } else if (res.status === 403 && data.locked) {
+      if (btn) { setBtnLabel(btn, t('btn_save_settings')); btn.disabled = false; }
+      const lockedTarget = data.target || selectedTarget;
+      fetchStatus(false, false);
+      if (lockedTarget && lockedTarget !== 'self' && lockedTarget !== 'all') {
+        openPeerAuthModal(lockedTarget, true);
+      }
     } else {
       const errMsg = data.error || 'Failed to save settings';
       showToast(errMsg, true);
@@ -3265,6 +3619,12 @@ async function changePassword(e) {
     showToast(data.message || t('msg_pw_updated'));
     showInlineBanner('pw-confirm-banner', data.message || t('msg_pw_updated'), false);
     fetchStatus(false);
+  } else if (res.status === 403 && data.locked) {
+    const lockedTarget = data.target || selectedTarget;
+    fetchStatus(false, false);
+    if (lockedTarget && lockedTarget !== 'self' && lockedTarget !== 'all') {
+      openPeerAuthModal(lockedTarget, true);
+    }
   } else {
     const errMsg = data.error || 'Password update failed';
     showToast(errMsg, true);
@@ -3324,6 +3684,12 @@ function uploadAndInstallApk() {
         showInlineBanner('update-confirm-banner', data.message || 'APK uploaded & installing', false);
         fileInput.value = '';
         setTimeout(() => fetchStatus(false), 1000);
+      } else if (xhr.status === 403 && data.locked) {
+        const lockedTarget = data.target || selectedTarget;
+        fetchStatus(false, false);
+        if (lockedTarget && lockedTarget !== 'self' && lockedTarget !== 'all') {
+          openPeerAuthModal(lockedTarget, true);
+        }
       } else {
         const err = data.error || ('Upload failed (HTTP ' + xhr.status + ')');
         showToast(err, true);
@@ -3492,9 +3858,13 @@ def create_portal_handler(
                 pass
             return ""
 
-        def _is_peer_authed(self) -> bool:
+        def _is_peer_cluster_request(self) -> bool:
             client_ip = self.client_address[0] if self.client_address else ""
             return verify_peer_request(self.headers, client_ip)
+
+        def _is_peer_authed(self) -> bool:
+            client_ip = self.client_address[0] if self.client_address else ""
+            return verify_peer_password_auth(self.headers, client_ip, config_store)
 
         def _is_authenticated(self) -> bool:
             return config_store.verify_session_token(self._get_session_token()) or self._is_peer_authed()
@@ -3563,18 +3933,29 @@ def create_portal_handler(
                 return
 
             if parsed.path == "/api/fleet/ping":
-                self._send_json(200, fleet_manager.build_ping_payload())
+                if self._is_peer_cluster_request():
+                    self._send_json(200, fleet_manager.build_ping_payload(peer_authorized=self._is_peer_authed()))
+                else:
+                    self._send_json(200, fleet_manager.build_ping_payload())
                 return
 
             if parsed.path == "/api/status":
                 authed = self._is_authenticated()
                 cur_settings = app.get_current_settings_dict()
                 if not authed:
-                    self._send_json(200, {
-                        "authenticated": False,
-                        "is_default_password": config_store.is_default_password(),
-                        "language": cur_settings.get("language", "en"),
-                    })
+                    if self._is_peer_cluster_request():
+                        self._send_json(403, {
+                            "ok": False,
+                            "authenticated": False,
+                            "locked": True,
+                            "error": "Password required for this frame",
+                        })
+                    else:
+                        self._send_json(200, {
+                            "authenticated": False,
+                            "is_default_password": config_store.is_default_password(),
+                            "language": cur_settings.get("language", "en"),
+                        })
                     return
 
                 qs = urllib.parse.parse_qs(parsed.query)
@@ -3585,6 +3966,8 @@ def create_portal_handler(
                 is_peer_call = self._is_peer_authed()
                 fleet_nodes = [] if is_peer_call else fleet_manager.get_fleet_nodes(trigger_scan=trigger_scan)
 
+                target_locked = False
+                locked_target = ""
                 if target and not fleet_manager.is_self_target(target) and target != "all":
                     remote = fleet_manager.get_target_status(target)
                     if remote.get("ok"):
@@ -3601,9 +3984,12 @@ def create_portal_handler(
                             "fleet": fleet_nodes,
                         })
                         return
+                    if remote.get("locked"):
+                        target_locked = True
+                        locked_target = target
 
                 st = app.get_status_snapshot()
-                self._send_json(200, {
+                fallback_payload = {
                     "authenticated": True,
                     "is_default_password": config_store.is_default_password(),
                     "language": cur_settings.get("language", "en"),
@@ -3614,7 +4000,11 @@ def create_portal_handler(
                     "settings": cur_settings,
                     "log_tail": app.get_ram_log_tail(35),
                     "fleet": fleet_nodes,
-                })
+                }
+                if target_locked:
+                    fallback_payload["target_locked"] = True
+                    fallback_payload["locked_target"] = locked_target
+                self._send_json(200, fallback_payload)
                 return
 
             self._send_json(404, {"error": "Not found"})
@@ -3625,7 +4015,10 @@ def create_portal_handler(
 
             if parsed.path == "/api/update_upload":
                 if not self._is_authenticated():
-                    self._send_json(401, {"ok": False, "error": "Authentication required"})
+                    if self._is_peer_cluster_request():
+                        self._send_json(403, {"ok": False, "locked": True, "error": "Password required for this frame"})
+                    else:
+                        self._send_json(401, {"ok": False, "error": "Authentication required"})
                     return
                 qs = urllib.parse.parse_qs(parsed.query)
                 target = (qs.get("target", ["self"])[0] or "self").strip()
@@ -3657,17 +4050,46 @@ def create_portal_handler(
                 self._send_json(200, {"ok": True}, cookie_header=cookie)
                 return
 
+            if parsed.path == "/api/fleet/verify_peer":
+                if not self._is_peer_cluster_request():
+                    self._send_json(403, {"ok": False, "error": "Peer cluster trust required"})
+                    return
+                pw = str(data.get("password", ""))
+                if config_store.verify_password(pw):
+                    self._send_json(200, {"ok": True, "peer_pw_token": config_store.get_peer_pw_token()})
+                else:
+                    if login_fail_delay > 0:
+                        time.sleep(login_fail_delay)
+                    self._send_json(401, {"ok": False, "error": "Invalid password"})
+                return
+
             if not self._is_authenticated():
-                self._send_json(401, {"ok": False, "error": "Authentication required"})
+                if self._is_peer_cluster_request():
+                    self._send_json(403, {"ok": False, "locked": True, "error": "Password required for this frame"})
+                else:
+                    self._send_json(401, {"ok": False, "error": "Authentication required"})
                 return
 
             if parsed.path == "/api/fleet/add_peer":
                 host = str(data.get("host", "")).strip()
                 ok, msg, node = fleet_manager.add_manual_peer(host)
                 if ok:
-                    self._send_json(200, {"ok": True, "message": msg, "node": node, "fleet": fleet_manager.get_fleet_nodes()})
+                    self._send_json(200, {
+                        "ok": True,
+                        "message": msg,
+                        "node": node,
+                        "requires_password": bool(node and node.get("locked", False)),
+                        "fleet": fleet_manager.get_fleet_nodes(),
+                    })
                 else:
                     self._send_json(400, {"ok": False, "error": msg})
+                return
+
+            if parsed.path == "/api/fleet/unlock_peer":
+                target = str(data.get("target", "")).strip()
+                pw = str(data.get("password", ""))
+                code, resp = fleet_manager.unlock_peer(target, pw)
+                self._send_json(code, resp)
                 return
 
             if parsed.path == "/api/fleet/remove_peer":

@@ -374,8 +374,11 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
             if cookie:
                 headers["Cookie"] = cookie
             req = urllib.request.Request(f"{base_a}{path}", data=data, headers=headers, method=method)
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                return resp.status, json.loads(resp.read().decode("utf-8")), resp.headers.get("Set-Cookie", "")
+            try:
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    return resp.status, json.loads(resp.read().decode("utf-8")), resp.headers.get("Set-Cookie", "")
+            except urllib.error.HTTPError as e:
+                return e.code, json.loads(e.read().decode("utf-8")), ""
 
         # 1. Verify /api/fleet/ping works without auth
         code, ping_a, _ = req_a("/api/fleet/ping")
@@ -389,7 +392,7 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
         self.assertEqual(code, 200)
         cookie_a = set_cookie.split(";", 1)[0]
 
-        # 3. Add Frame B as a peer on Frame A (even though Frame B has a different password)
+        # 3. Add Frame B as a peer on Frame A -> Frame B has different password so it starts Locked
         code, add_res, _ = req_a(
             "/api/fleet/add_peer",
             method="POST",
@@ -399,8 +402,63 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertTrue(add_res["ok"])
         self.assertEqual(add_res["node"]["device_name"], "bedroom-frame")
+        self.assertTrue(add_res["requires_password"])
+        self.assertTrue(add_res["node"]["locked"])
 
-        # 4. Inspect Frame B's status & settings via Frame A (/api/status?target=127.0.0.1:<port_b>)
+        # 3b. While Frame B is locked: inspecting /api/status flags target_locked, direct actions return 403,
+        #     and broadcast ("all") skips locked Frame B.
+        code, st_locked, _ = req_a(f"/api/status?target={peer_b_id}", cookie=cookie_a)
+        self.assertEqual(code, 200)
+        self.assertTrue(st_locked.get("target_locked"))
+        self.assertEqual(st_locked.get("locked_target"), peer_b_id)
+        self.assertEqual(st_locked.get("target"), "self")
+
+        code, act_locked, _ = req_a(
+            "/api/action",
+            method="POST",
+            cookie=cookie_a,
+            payload={"target": peer_b_id, "action": "next"},
+        )
+        self.assertEqual(code, 403)
+        self.assertTrue(act_locked.get("locked"))
+
+        code, bcast_skip, _ = req_a(
+            "/api/settings",
+            method="POST",
+            cookie=cookie_a,
+            payload={"target": "all", "duration": 29},
+        )
+        self.assertEqual(code, 200)
+        app_a._process_web_actions()
+        app_b._process_web_actions()
+        self.assertEqual(app_a.slide_duration, 29.0)
+        self.assertEqual(store_b.get_settings()["duration"], 10)
+
+        # 3c. Unlock Frame B: wrong password -> 401; correct password -> 200 + encrypted persistence
+        code, bad_unlock, _ = req_a(
+            "/api/fleet/unlock_peer",
+            method="POST",
+            cookie=cookie_a,
+            payload={"target": peer_b_id, "password": "wrong-password"},
+        )
+        self.assertEqual(code, 401)
+        self.assertFalse(bad_unlock["ok"])
+
+        code, unlock_res, _ = req_a(
+            "/api/fleet/unlock_peer",
+            method="POST",
+            cookie=cookie_a,
+            payload={"target": peer_b_id, "password": "DifferentSecretOnFrameB!"},
+        )
+        self.assertEqual(code, 200)
+        self.assertTrue(unlock_res["ok"])
+        self.assertFalse(unlock_res["node"]["locked"])
+        with open(self.cfg_path, "r", encoding="utf-8") as cf:
+            raw_cfg = cf.read()
+        self.assertIn("encrypted_peer_tokens", raw_cfg)
+        self.assertNotIn("DifferentSecretOnFrameB!", raw_cfg)
+
+        # 4. Inspect Frame B's status & settings via Frame A now that it is unlocked
         code, st_b, _ = req_a(f"/api/status?target={peer_b_id}", cookie=cookie_a)
         self.assertEqual(code, 200)
         self.assertEqual(st_b["settings"]["device_name"], "bedroom-frame")
@@ -435,6 +493,28 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
         self.assertEqual(store_b.get_settings()["rotate"], 0)
         self.assertEqual(self.store.get_settings()["device_name"], "living-room")
         self.assertEqual(store_b.get_settings()["device_name"], "bedroom-frame")
+
+        # 6. Rotating Frame B's password re-locks the peer; matching Frame A's password auto-unlocks
+        store_b.change_password("RotatedSecretB2!")
+        code, relock_act, _ = req_a(
+            "/api/action",
+            method="POST",
+            cookie=cookie_a,
+            payload={"target": peer_b_id, "action": "next"},
+        )
+        self.assertEqual(code, 403)
+        self.assertTrue(relock_act.get("locked"))
+
+        store_b.change_password("admin")
+        code, match_add, _ = req_a(
+            "/api/fleet/add_peer",
+            method="POST",
+            cookie=cookie_a,
+            payload={"host": peer_b_id},
+        )
+        self.assertEqual(code, 200)
+        self.assertFalse(match_add["requires_password"])
+        self.assertFalse(match_add["node"]["locked"])
 
     def test_touchscreen_and_mouse_pause_toggle_with_debounce(self):
         """
