@@ -51,116 +51,158 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
 <style>
   :root, :root[data-theme="dark"] {
     color-scheme: dark;
-    --md-sys-color-surface: #0F141C;
-    --md-sys-color-surface-container-low: #141B25;
-    --md-sys-color-surface-container: #18202C;
-    --md-sys-color-surface-container-high: #212B3A;
-    --md-sys-color-surface-container-highest: #2A3649;
-    --md-sys-color-on-surface: #E2E8F0;
-    --md-sys-color-on-surface-variant: #B6C2D2;
-    --md-sys-color-primary: #89CEFF;
-    --md-sys-color-on-primary: #003352;
-    --md-sys-color-primary-container: #004A73;
-    --md-sys-color-on-primary-container: #CBE6FF;
-    --md-sys-color-secondary-container: #2B4052;
-    --md-sys-color-on-secondary-container: #D3E5F6;
-    --md-sys-color-outline: #8693A2;
-    --md-sys-color-outline-variant: #2D3A4B;
-    --md-sys-color-error: #FFB4AB;
-    --md-sys-color-on-error: #690005;
-    --md-sys-color-error-container: #5C1919;
-    --md-sys-color-on-error-container: #FFDAD6;
-    --md-sys-color-success: #6EE7B7;
-    --md-sys-color-success-container: #0F3D2E;
-    --md-sys-color-on-success-container: #A7F3D0;
-    --md-sys-color-warn-container: #4A3208;
-    --md-sys-color-on-warn-container: #FDE68A;
-    --md-sys-color-secondary: #B7C8D9;
+    --md-sys-color-surface: #121214;
+    --md-sys-color-surface-container-low: #242428;
+    --md-sys-color-surface-container: #1C1C1E;
+    --md-sys-color-surface-container-high: #2A2A2F;
+    --md-sys-color-surface-container-highest: #323238;
+    --md-sys-color-on-surface: #F2F2F7;
+    --md-sys-color-on-surface-variant: #AEAEB6;
+    --md-sys-color-primary: #1B65C6;
+    --md-sys-color-on-primary: #FFFFFF;
+    --md-sys-color-primary-container: #1E3452;
+    --md-sys-color-on-primary-container: #D6E6FF;
+    --md-sys-color-accent-text: #7AB0F5;
+    --md-sys-color-secondary: #B0B5BD;
+    --md-sys-color-secondary-container: #2E3136;
+    --md-sys-color-on-secondary-container: #E5E7EB;
+    --md-sys-color-outline: #6E6E78;
+    --md-sys-color-outline-variant: #38383F;
+    --md-sys-color-card-border: #38383F;
+    --md-sys-color-subtle-border: #414149;
+    --md-sys-color-control-border: #54545E;
+    --md-sys-color-hover-outline: #70707C;
+    --md-sys-color-outlined-border: #526070;
+    --md-sys-color-tonal-border: #4B5058;
+    --md-sys-color-error: #E07A76;
+    --md-sys-color-on-error: #FFFFFF;
+    --md-sys-color-error-container: #2E1E20;
+    --md-sys-color-on-error-container: #E2A3A0;
+    --md-sys-color-danger-border: #63393C;
+    --md-sys-color-success: #52B788;
+    --md-sys-color-success-container: #1D2B22;
+    --md-sys-color-on-success-container: #9BD0AF;
+    --md-sys-color-success-border: #3B5C47;
+    --md-sys-color-warn-container: #2B251C;
+    --md-sys-color-on-warn-container: #D8BF92;
+    --md-sys-color-warn-border: #5C4B32;
     --md-sys-color-shadow: #000000;
-    --md-sys-color-neutral-btn-bg: #212B3A;
-    --md-sys-color-neutral-btn-hover: #2C384B;
-    --md-sys-color-neutral-btn-active: #334157;
-    --md-sys-color-primary-hover: #9AD6FF;
-    --md-sys-color-primary-active: #AEDDFF;
-    --md-sys-color-tonal-hover: #354C60;
-    --md-sys-color-tonal-active: #3E576D;
-    --md-sys-color-outlined-hover: rgba(137, 206, 255, 0.10);
-    --md-sys-color-outlined-active: rgba(137, 206, 255, 0.16);
-    --md-sys-color-success-hover: #164B39;
-    --md-sys-color-warn-hover: #573C0D;
-    --md-sys-color-danger-hover: #6B2222;
-    --md-sys-color-subtle-hover: rgba(226, 232, 240, 0.06);
-    --md-sys-color-hover-outline: #435368;
-    --md-switch-icon-color: #0F141C;
-    --md-switch-hover-icon-color: #0F141C;
-    --md-switch-selected-icon-color: #CBE6FF;
-    --md-switch-selected-hover-icon-color: #CBE6FF;
+    --md-sys-color-neutral-btn-bg: #2A2A2E;
+    --md-sys-color-neutral-btn-hover: #343439;
+    --md-sys-color-neutral-btn-active: #3D3D44;
+    --md-sys-color-primary-hover: #2270D6;
+    --md-sys-color-primary-active: #1656AA;
+    --md-sys-color-tonal-hover: #383C42;
+    --md-sys-color-tonal-active: #41464E;
+    --md-sys-color-outlined-hover: rgba(122, 176, 245, 0.10);
+    --md-sys-color-outlined-active: rgba(122, 176, 245, 0.16);
+    --md-sys-color-success-hover: #25372C;
+    --md-sys-color-warn-hover: #362E23;
+    --md-sys-color-danger-hover: #3A2528;
+    --md-sys-color-subtle-hover: rgba(242, 242, 247, 0.05);
+    --md-switch-track-color: #2C2C32;
+    --md-switch-hover-track-color: #34343B;
+    --md-switch-handle-color: #B8B8C2;
+    --md-switch-hover-handle-color: #D1D1DA;
+    --md-switch-icon-color: #1C1C1E;
+    --md-switch-hover-icon-color: #1C1C1E;
+    --md-switch-selected-handle-color: #FFFFFF;
+    --md-switch-selected-hover-handle-color: #F2F2F7;
+    --md-switch-selected-focus-handle-color: #FFFFFF;
+    --md-switch-selected-pressed-handle-color: #E5E7EB;
+    --md-switch-selected-icon-color: #1B65C6;
+    --md-switch-selected-hover-icon-color: #1B65C6;
+    --md-switch-selected-focus-icon-color: #1B65C6;
+    --md-switch-selected-pressed-icon-color: #1B65C6;
     --md-switch-hover-state-layer-opacity: 0.06;
     --md-switch-selected-hover-state-layer-opacity: 0.06;
+    --card-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+    --focus-ring-halo: rgba(122, 176, 245, 0.22);
     --bg: var(--md-sys-color-surface);
     --card: var(--md-sys-color-surface-container);
-    --card-border: var(--md-sys-color-outline-variant);
+    --card-border: var(--md-sys-color-card-border);
     --text: var(--md-sys-color-on-surface);
     --muted: var(--md-sys-color-on-surface-variant);
-    --accent: var(--md-sys-color-primary);
+    --accent: var(--md-sys-color-accent-text);
     --input-bg: var(--md-sys-color-surface-container-low);
-    --nav-bg: rgba(20, 27, 37, 0.94);
-    --backdrop-bg: rgba(6, 10, 16, 0.76);
+    --nav-bg: rgba(28, 28, 30, 0.94);
+    --backdrop-bg: rgba(0, 0, 0, 0.68);
   }
   :root[data-theme="light"] {
     color-scheme: light;
-    --md-sys-color-surface: #F7F9FC;
-    --md-sys-color-surface-container-low: #F1F5F9;
+    --md-sys-color-surface: #F2F2F7;
+    --md-sys-color-surface-container-low: #F6F6FA;
     --md-sys-color-surface-container: #FFFFFF;
-    --md-sys-color-surface-container-high: #E8EEF5;
-    --md-sys-color-surface-container-highest: #DCE4EE;
-    --md-sys-color-on-surface: #171C22;
-    --md-sys-color-on-surface-variant: #414852;
-    --md-sys-color-primary: #006495;
+    --md-sys-color-surface-container-high: #EAEAEF;
+    --md-sys-color-surface-container-highest: #DEDEE6;
+    --md-sys-color-on-surface: #1D1D1F;
+    --md-sys-color-on-surface-variant: #515158;
+    --md-sys-color-primary: #0066CC;
     --md-sys-color-on-primary: #FFFFFF;
-    --md-sys-color-primary-container: #CBE6FF;
-    --md-sys-color-on-primary-container: #001E30;
-    --md-sys-color-secondary-container: #D3E5F6;
-    --md-sys-color-on-secondary-container: #0C1D2B;
-    --md-sys-color-outline: #6B7480;
-    --md-sys-color-outline-variant: #CBD5E1;
-    --md-sys-color-error: #B3261E;
-    --md-sys-color-on-error: #FFFFFF;
-    --md-sys-color-error-container: #F9DEDC;
-    --md-sys-color-on-error-container: #8C1D18;
-    --md-sys-color-success: #047857;
-    --md-sys-color-success-container: #D1FAE5;
-    --md-sys-color-on-success-container: #065F46;
-    --md-sys-color-warn-container: #FEF3C7;
-    --md-sys-color-on-warn-container: #78350F;
+    --md-sys-color-primary-container: #D9EAFF;
+    --md-sys-color-on-primary-container: #002B5C;
+    --md-sys-color-accent-text: #0066CC;
     --md-sys-color-secondary: #4F606F;
+    --md-sys-color-secondary-container: #E8ECF2;
+    --md-sys-color-on-secondary-container: #1D242B;
+    --md-sys-color-outline: #74747E;
+    --md-sys-color-outline-variant: #BDBDC7;
+    --md-sys-color-card-border: #BDBDC7;
+    --md-sys-color-subtle-border: #AEAEB8;
+    --md-sys-color-control-border: #8A8A94;
+    --md-sys-color-hover-outline: #5E5E68;
+    --md-sys-color-outlined-border: #6E8299;
+    --md-sys-color-tonal-border: #A0AAB8;
+    --md-sys-color-error: #C62828;
+    --md-sys-color-on-error: #FFFFFF;
+    --md-sys-color-error-container: #FDF0EF;
+    --md-sys-color-on-error-container: #A61E18;
+    --md-sys-color-danger-border: #D98782;
+    --md-sys-color-success: #18794E;
+    --md-sys-color-success-container: #EAF5EE;
+    --md-sys-color-on-success-container: #155E34;
+    --md-sys-color-success-border: #76B58E;
+    --md-sys-color-warn-container: #FCF4E4;
+    --md-sys-color-on-warn-container: #7A4806;
+    --md-sys-color-warn-border: #C99B49;
     --md-sys-color-shadow: #000000;
-    --md-sys-color-neutral-btn-bg: #EEF2F7;
-    --md-sys-color-neutral-btn-hover: #E2E8F0;
-    --md-sys-color-neutral-btn-active: #D8E0EB;
-    --md-sys-color-primary-hover: #005682;
-    --md-sys-color-primary-active: #00496E;
-    --md-sys-color-tonal-hover: #C4D9EE;
-    --md-sys-color-tonal-active: #B5CEE8;
-    --md-sys-color-outlined-hover: rgba(0, 100, 149, 0.08);
-    --md-sys-color-outlined-active: rgba(0, 100, 149, 0.14);
-    --md-sys-color-success-hover: #BCEFD6;
-    --md-sys-color-warn-hover: #FDE68A;
-    --md-sys-color-danger-hover: #F4CECB;
+    --md-sys-color-neutral-btn-bg: #F2F2F7;
+    --md-sys-color-neutral-btn-hover: #E5E5EC;
+    --md-sys-color-neutral-btn-active: #D8D8E2;
+    --md-sys-color-primary-hover: #0055B3;
+    --md-sys-color-primary-active: #004799;
+    --md-sys-color-tonal-hover: #DCE2EC;
+    --md-sys-color-tonal-active: #CFD7E4;
+    --md-sys-color-outlined-hover: rgba(0, 102, 204, 0.07);
+    --md-sys-color-outlined-active: rgba(0, 102, 204, 0.13);
+    --md-sys-color-success-hover: #DCEEE2;
+    --md-sys-color-warn-hover: #F6E8CC;
+    --md-sys-color-danger-hover: #F9DFDD;
     --md-sys-color-subtle-hover: rgba(23, 28, 34, 0.05);
-    --md-sys-color-hover-outline: #94A3B8;
+    --md-switch-track-color: #E2E2E8;
+    --md-switch-hover-track-color: #D6D6DE;
+    --md-switch-handle-color: #63636B;
+    --md-switch-hover-handle-color: #48484F;
     --md-switch-icon-color: #FFFFFF;
     --md-switch-hover-icon-color: #FFFFFF;
-    --md-switch-selected-icon-color: #001E30;
-    --md-switch-selected-hover-icon-color: #001E30;
+    --md-switch-selected-handle-color: #FFFFFF;
+    --md-switch-selected-hover-handle-color: #F2F2F7;
+    --md-switch-selected-focus-handle-color: #FFFFFF;
+    --md-switch-selected-pressed-handle-color: #E5E7EB;
+    --md-switch-selected-icon-color: #0055B3;
+    --md-switch-selected-hover-icon-color: #0055B3;
+    --md-switch-selected-focus-icon-color: #0055B3;
+    --md-switch-selected-pressed-icon-color: #0055B3;
     --md-switch-hover-state-layer-opacity: 0.06;
     --md-switch-selected-hover-state-layer-opacity: 0.06;
+    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.03);
+    --focus-ring-halo: rgba(0, 102, 204, 0.18);
     --bg: var(--md-sys-color-surface);
     --card: var(--md-sys-color-surface-container);
-    --card-border: var(--md-sys-color-outline-variant);
+    --card-border: var(--md-sys-color-card-border);
     --text: var(--md-sys-color-on-surface);
     --muted: var(--md-sys-color-on-surface-variant);
-    --accent: var(--md-sys-color-primary);
+    --accent: var(--md-sys-color-accent-text);
     --input-bg: var(--md-sys-color-surface-container-low);
     --nav-bg: rgba(255, 255, 255, 0.95);
     --backdrop-bg: rgba(15, 23, 42, 0.45);
@@ -184,18 +226,18 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   }
   .skip-link:focus { left: 16px; outline: 3px solid var(--md-sys-color-on-surface); outline-offset: 2px; }
   :focus-visible {
-    outline: 2.5px solid var(--md-sys-color-primary);
+    outline: 2.5px solid var(--md-sys-color-accent-text);
     outline-offset: 2px;
   }
   .m3-icon { width: 19px; height: 19px; flex-shrink: 0; display: inline-block; }
-  .m3-icon-brand { width: 24px; height: 24px; color: var(--md-sys-color-primary); }
+  .m3-icon-brand { width: 24px; height: 24px; color: var(--md-sys-color-accent-text); }
   .m3-icon-sm { width: 15px; height: 15px; flex-shrink: 0; color: var(--md-sys-color-on-surface-variant); }
   .container { max-width: 820px; margin: 0 auto; }
   .top-app-bar {
     display: flex; align-items: center; justify-content: space-between;
     flex-wrap: wrap; gap: 12px; margin-bottom: 16px;
     padding: 8px 4px 14px;
-    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    border-bottom: 1.5px solid var(--md-sys-color-card-border);
   }
   .brand-cluster { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
   .brand-cluster h1 {
@@ -217,13 +259,13 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   md-switch:not(:defined) {
     position: relative; display: inline-flex; align-items: center;
     width: 52px; height: 32px; border-radius: 999px; flex-shrink: 0;
-    background: var(--md-sys-color-surface-container-highest);
+    background: var(--md-switch-track-color);
     border: 2px solid var(--md-sys-color-outline);
     cursor: pointer; transition: background-color 0.16s ease, border-color 0.16s ease;
   }
   md-switch:not(:defined)::after {
     content: ""; position: absolute; left: 5px; width: 18px; height: 18px;
-    border-radius: 50%; background: var(--md-sys-color-outline);
+    border-radius: 50%; background: var(--md-switch-handle-color);
     transition: transform 0.16s ease, background-color 0.16s ease;
   }
   md-switch:not(:defined)[aria-checked="true"],
@@ -234,7 +276,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   md-switch:not(:defined)[aria-checked="true"]::after,
   md-switch:not(:defined)[selected]::after {
     transform: translateX(20px); width: 22px; height: 22px; left: 3px;
-    background: var(--md-sys-color-on-primary);
+    background: #FFFFFF;
   }
   md-switch [slot="on-icon"], md-switch [slot="off-icon"] { width: 16px; height: 16px; }
   md-switch:not(:defined) [slot] { display: none; }
@@ -242,21 +284,21 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   /* Desktop Material 3 Top Tabs */
   .desktop-tabs-wrap {
     margin-bottom: 18px;
-    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    border-bottom: 1.5px solid var(--md-sys-color-card-border);
   }
   md-tabs {
     --md-primary-tab-container-color: transparent;
-    --md-primary-tab-active-indicator-color: var(--md-sys-color-primary);
-    --md-primary-tab-active-label-text-color: var(--md-sys-color-primary);
-    --md-primary-tab-active-hover-label-text-color: var(--md-sys-color-primary);
-    --md-primary-tab-active-focus-label-text-color: var(--md-sys-color-primary);
+    --md-primary-tab-active-indicator-color: var(--md-sys-color-accent-text);
+    --md-primary-tab-active-label-text-color: var(--md-sys-color-accent-text);
+    --md-primary-tab-active-hover-label-text-color: var(--md-sys-color-accent-text);
+    --md-primary-tab-active-focus-label-text-color: var(--md-sys-color-accent-text);
     --md-primary-tab-inactive-label-text-color: var(--md-sys-color-on-surface-variant);
     --md-primary-tab-inactive-hover-label-text-color: var(--md-sys-color-on-surface);
-    --md-primary-tab-active-icon-color: var(--md-sys-color-primary);
+    --md-primary-tab-active-icon-color: var(--md-sys-color-accent-text);
     --md-primary-tab-inactive-icon-color: var(--md-sys-color-on-surface-variant);
     --md-primary-tab-hover-state-layer-color: var(--md-sys-color-on-surface);
     --md-primary-tab-hover-state-layer-opacity: 0.06;
-    --md-primary-tab-active-hover-state-layer-color: var(--md-sys-color-primary);
+    --md-primary-tab-active-hover-state-layer-color: var(--md-sys-color-accent-text);
     --md-primary-tab-active-hover-state-layer-opacity: 0.06;
     width: 100%;
   }
@@ -270,8 +312,8 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     border-bottom: 3px solid transparent; user-select: none;
   }
   md-primary-tab:not(:defined)[active] {
-    color: var(--md-sys-color-primary);
-    border-bottom-color: var(--md-sys-color-primary);
+    color: var(--md-sys-color-accent-text);
+    border-bottom-color: var(--md-sys-color-accent-text);
   }
   .tab-inline-icon { width: 18px; height: 18px; display: inline-flex; align-items: center; }
 
@@ -281,7 +323,8 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   /* Cards & Surfaces */
   .m3-card {
     background: var(--md-sys-color-surface-container);
-    border: 1px solid var(--md-sys-color-outline-variant);
+    border: 1.5px solid var(--md-sys-color-card-border);
+    box-shadow: var(--card-shadow);
     border-radius: 20px; padding: 20px; margin-bottom: 16px;
   }
   .card-header {
@@ -303,7 +346,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     padding: 5px 12px; border-radius: 999px; font-size: 0.78rem; font-weight: 600;
     background: var(--md-sys-color-surface-container-high);
     color: var(--md-sys-color-on-surface-variant);
-    border: 1px solid var(--md-sys-color-outline-variant);
+    border: 1.5px solid var(--md-sys-color-subtle-border);
   }
   .status-dot {
     width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0;
@@ -311,22 +354,22 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   .badge.active {
     background: var(--md-sys-color-success-container);
     color: var(--md-sys-color-on-success-container);
-    border-color: transparent;
+    border-color: var(--md-sys-color-success-border);
   }
   .badge.night {
     background: var(--md-sys-color-warn-container);
     color: var(--md-sys-color-on-warn-container);
-    border-color: transparent;
+    border-color: var(--md-sys-color-warn-border);
   }
   .badge.offline {
     background: var(--md-sys-color-error-container);
     color: var(--md-sys-color-on-error-container);
-    border-color: transparent;
+    border-color: var(--md-sys-color-danger-border);
   }
   .badge.host-badge {
     background: var(--md-sys-color-secondary-container);
     color: var(--md-sys-color-on-secondary-container);
-    border-color: transparent;
+    border-color: var(--md-sys-color-tonal-border);
   }
   .badge.ver-badge {
     background: var(--md-sys-color-surface-container-high);
@@ -337,13 +380,13 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   button, .m3-btn {
     --btn-bg: var(--md-sys-color-neutral-btn-bg);
     --btn-fg: var(--md-sys-color-on-surface);
-    --btn-border: var(--md-sys-color-outline-variant);
+    --btn-border: var(--md-sys-color-control-border);
     --btn-hover-bg: var(--md-sys-color-neutral-btn-hover);
     --btn-hover-fg: var(--btn-fg);
     --btn-hover-border: var(--md-sys-color-hover-outline);
     --btn-active-bg: var(--md-sys-color-neutral-btn-active);
     appearance: none; font-family: inherit;
-    border: 1px solid var(--btn-border);
+    border: 1.5px solid var(--btn-border);
     background: var(--btn-bg);
     color: var(--btn-fg);
     font-weight: 600; font-size: 0.88rem;
@@ -365,62 +408,62 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   button.primary, .m3-btn.primary {
     --btn-bg: var(--md-sys-color-primary);
     --btn-fg: var(--md-sys-color-on-primary);
-    --btn-border: transparent;
+    --btn-border: var(--md-sys-color-primary);
     --btn-hover-bg: var(--md-sys-color-primary-hover);
     --btn-hover-fg: var(--md-sys-color-on-primary);
-    --btn-hover-border: transparent;
+    --btn-hover-border: var(--md-sys-color-primary-hover);
     --btn-active-bg: var(--md-sys-color-primary-active);
   }
   button.tonal, .m3-btn.tonal {
     --btn-bg: var(--md-sys-color-secondary-container);
     --btn-fg: var(--md-sys-color-on-secondary-container);
-    --btn-border: transparent;
+    --btn-border: var(--md-sys-color-tonal-border);
     --btn-hover-bg: var(--md-sys-color-tonal-hover);
     --btn-hover-fg: var(--md-sys-color-on-secondary-container);
-    --btn-hover-border: transparent;
+    --btn-hover-border: var(--md-sys-color-hover-outline);
     --btn-active-bg: var(--md-sys-color-tonal-active);
   }
   button.outlined, .m3-btn.outlined {
     --btn-bg: transparent;
-    --btn-fg: var(--md-sys-color-primary);
-    --btn-border: var(--md-sys-color-outline-variant);
+    --btn-fg: var(--md-sys-color-accent-text);
+    --btn-border: var(--md-sys-color-outlined-border);
     --btn-hover-bg: var(--md-sys-color-outlined-hover);
-    --btn-hover-fg: var(--md-sys-color-primary);
-    --btn-hover-border: var(--md-sys-color-primary);
+    --btn-hover-fg: var(--md-sys-color-accent-text);
+    --btn-hover-border: var(--md-sys-color-accent-text);
     --btn-active-bg: var(--md-sys-color-outlined-active);
   }
   button.success {
     --btn-bg: var(--md-sys-color-success-container);
     --btn-fg: var(--md-sys-color-on-success-container);
-    --btn-border: transparent;
+    --btn-border: var(--md-sys-color-success-border);
     --btn-hover-bg: var(--md-sys-color-success-hover);
     --btn-hover-fg: var(--md-sys-color-on-success-container);
-    --btn-hover-border: transparent;
+    --btn-hover-border: var(--md-sys-color-success-border);
     --btn-active-bg: var(--md-sys-color-success-hover);
   }
   button.warn {
     --btn-bg: var(--md-sys-color-warn-container);
     --btn-fg: var(--md-sys-color-on-warn-container);
-    --btn-border: transparent;
+    --btn-border: var(--md-sys-color-warn-border);
     --btn-hover-bg: var(--md-sys-color-warn-hover);
     --btn-hover-fg: var(--md-sys-color-on-warn-container);
-    --btn-hover-border: transparent;
+    --btn-hover-border: var(--md-sys-color-warn-border);
     --btn-active-bg: var(--md-sys-color-warn-hover);
   }
   button.danger {
     --btn-bg: var(--md-sys-color-error-container);
     --btn-fg: var(--md-sys-color-on-error-container);
-    --btn-border: transparent;
+    --btn-border: var(--md-sys-color-danger-border);
     --btn-hover-bg: var(--md-sys-color-danger-hover);
     --btn-hover-fg: var(--md-sys-color-on-error-container);
-    --btn-hover-border: transparent;
+    --btn-hover-border: var(--md-sys-color-danger-border);
     --btn-active-bg: var(--md-sys-color-danger-hover);
   }
   button.btn-sm { min-height: 40px; padding: 6px 14px; font-size: 0.82rem; }
   button.m3-chip, .m3-chip {
     --btn-bg: var(--md-sys-color-surface-container-low);
     --btn-fg: var(--md-sys-color-on-surface);
-    --btn-border: var(--md-sys-color-outline-variant);
+    --btn-border: var(--md-sys-color-control-border);
     --btn-hover-bg: var(--md-sys-color-neutral-btn-bg);
     --btn-hover-fg: var(--md-sys-color-on-surface);
     --btn-hover-border: var(--md-sys-color-hover-outline);
@@ -431,10 +474,10 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   button.m3-chip[aria-expanded="true"], .m3-chip[aria-expanded="true"] {
     --btn-bg: var(--md-sys-color-secondary-container);
     --btn-fg: var(--md-sys-color-on-secondary-container);
-    --btn-border: transparent;
+    --btn-border: var(--md-sys-color-tonal-border);
     --btn-hover-bg: var(--md-sys-color-tonal-hover);
     --btn-hover-fg: var(--md-sys-color-on-secondary-container);
-    --btn-hover-border: transparent;
+    --btn-hover-border: var(--md-sys-color-hover-outline);
     --btn-active-bg: var(--md-sys-color-tonal-active);
   }
 
@@ -446,7 +489,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   .stat-box {
     background: var(--md-sys-color-surface-container-low);
     border-radius: 14px; padding: 12px 14px;
-    border: 1px solid var(--md-sys-color-outline-variant);
+    border: 1.5px solid var(--md-sys-color-subtle-border);
     min-width: 0;
   }
   .stat-label {
@@ -479,22 +522,25 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   }
   input[type="text"], input[type="password"], input[type="number"], input[type="time"], select {
     width: 100%; min-height: 46px; padding: 10px 14px; border-radius: 12px;
-    border: 1px solid var(--md-sys-color-outline-variant);
+    border: 1.5px solid var(--md-sys-color-control-border);
     background: var(--md-sys-color-surface-container-low);
     color: var(--md-sys-color-on-surface);
     font-size: 0.94rem; font-family: inherit;
-    transition: border-color 0.15s ease, background-color 0.15s ease;
+    transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  input:hover:not(:focus):not(:disabled), select:hover:not(:focus):not(:disabled) {
+    border-color: var(--md-sys-color-hover-outline);
   }
   input:focus, select:focus {
-    outline: 2px solid var(--md-sys-color-primary);
-    outline-offset: -1px;
-    border-color: var(--md-sys-color-primary);
+    outline: none;
+    border-color: var(--md-sys-color-accent-text);
+    box-shadow: 0 0 0 3px var(--focus-ring-halo);
   }
   .switch-field-row {
     display: flex; align-items: center; justify-content: space-between; gap: 14px;
     min-height: 52px; padding: 10px 14px; border-radius: 14px;
     background: var(--md-sys-color-surface-container-low);
-    border: 1px solid var(--md-sys-color-outline-variant);
+    border: 1.5px solid var(--md-sys-color-subtle-border);
   }
   .switch-field-row label {
     color: var(--md-sys-color-on-surface); font-size: 0.9rem; font-weight: 600;
@@ -503,14 +549,14 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   .m3-toggle {
     appearance: none; -webkit-appearance: none; position: relative;
     width: 52px; height: 32px; border-radius: 999px; flex-shrink: 0;
-    background: var(--md-sys-color-surface-container-highest);
+    background: var(--md-switch-track-color);
     border: 2px solid var(--md-sys-color-outline);
     cursor: pointer; transition: background-color 0.16s ease, border-color 0.16s ease;
   }
   .m3-toggle::after {
     content: ""; position: absolute; top: 5px; left: 5px;
     width: 18px; height: 18px; border-radius: 50%;
-    background: var(--md-sys-color-outline);
+    background: var(--md-switch-handle-color);
     transition: transform 0.16s ease, background-color 0.16s ease, width 0.16s ease, height 0.16s ease;
   }
   .m3-toggle:checked {
@@ -520,13 +566,13 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   .m3-toggle:checked::after {
     top: 3px; left: 3px; width: 22px; height: 22px;
     transform: translateX(20px);
-    background: var(--md-sys-color-on-primary);
+    background: #FFFFFF;
   }
 
   /* Collapsible M3 Disclosure */
   details.m3-disclosure {
     margin-top: 16px;
-    border: 1px solid var(--md-sys-color-outline-variant);
+    border: 1.5px solid var(--md-sys-color-subtle-border);
     border-radius: 16px;
     background: var(--md-sys-color-surface-container-low);
     overflow: hidden;
@@ -539,7 +585,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   }
   details.m3-disclosure > summary::-webkit-details-marker { display: none; }
   details.m3-disclosure[open] > summary {
-    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    border-bottom: 1.5px solid var(--md-sys-color-subtle-border);
   }
   details.m3-disclosure > summary:hover {
     background: var(--md-sys-color-subtle-hover);
@@ -557,7 +603,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   }
   .fleet-pill {
     background: var(--md-sys-color-surface-container-low);
-    border: 1.5px solid var(--md-sys-color-outline-variant);
+    border: 1.5px solid var(--md-sys-color-subtle-border);
     border-radius: 14px; padding: 12px 14px; cursor: pointer;
     transition: border-color 0.15s ease, background-color 0.15s ease;
     display: flex; flex-direction: column; gap: 4px; text-align: left;
@@ -567,18 +613,18 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     background: var(--md-sys-color-subtle-hover);
   }
   .fleet-pill.selected {
-    border-color: var(--md-sys-color-primary);
+    border-color: var(--md-sys-color-accent-text);
     background: var(--md-sys-color-secondary-container);
   }
   .fleet-pill.selected:hover {
-    border-color: var(--md-sys-color-primary);
+    border-color: var(--md-sys-color-accent-text);
     background: var(--md-sys-color-tonal-hover);
   }
   .fleet-pill-top {
     display: flex; align-items: center; justify-content: space-between;
     font-weight: 700; font-size: 0.9rem; color: var(--md-sys-color-on-surface); gap: 6px;
   }
-  .fleet-pill-meta { font-size: 0.76rem; color: var(--md-sys-color-primary); font-weight: 600; }
+  .fleet-pill-meta { font-size: 0.76rem; color: var(--md-sys-color-accent-text); font-weight: 600; }
   .fleet-pill-sub { font-size: 0.76rem; color: var(--md-sys-color-on-surface-variant); }
   button.icon-remove-btn, .icon-remove-btn {
     --btn-bg: transparent;
@@ -586,7 +632,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     --btn-border: transparent;
     --btn-hover-bg: var(--md-sys-color-error-container);
     --btn-hover-fg: var(--md-sys-color-on-error-container);
-    --btn-hover-border: transparent;
+    --btn-hover-border: var(--md-sys-color-danger-border);
     --btn-active-bg: var(--md-sys-color-danger-hover);
     min-width: 40px; min-height: 40px; padding: 8px;
   }
@@ -595,6 +641,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     font-size: 0.84rem; font-weight: 600;
     background: var(--md-sys-color-secondary-container);
     color: var(--md-sys-color-on-secondary-container);
+    border: 1.5px solid var(--md-sys-color-tonal-border);
   }
   .saved-albums-grid {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
@@ -603,7 +650,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   .saved-album-pill {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     background: var(--md-sys-color-surface-container-low);
-    border: 1px solid var(--md-sys-color-outline-variant);
+    border: 1.5px solid var(--md-sys-color-subtle-border);
     border-radius: 14px; padding: 10px 12px; cursor: pointer;
     transition: border-color 0.15s ease, background-color 0.15s ease;
   }
@@ -632,6 +679,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   .warn-banner {
     background: var(--md-sys-color-warn-container);
     color: var(--md-sys-color-on-warn-container);
+    border: 1.5px solid var(--md-sys-color-warn-border);
     padding: 12px 16px; border-radius: 14px; font-size: 0.86rem;
     margin-bottom: 16px; cursor: pointer;
   }
@@ -640,10 +688,12 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     font-size: 0.88rem; font-weight: 600; display: none;
     background: var(--md-sys-color-success-container);
     color: var(--md-sys-color-on-success-container);
+    border: 1.5px solid var(--md-sys-color-success-border);
   }
   .confirm-banner.error {
     background: var(--md-sys-color-error-container);
     color: var(--md-sys-color-on-error-container);
+    border-color: var(--md-sys-color-danger-border);
   }
   .toast {
     position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 9999;
@@ -656,17 +706,17 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   }
   pre.log-box {
     background: var(--md-sys-color-surface-container-low);
-    border: 1px solid var(--md-sys-color-outline-variant);
+    border: 1.5px solid var(--md-sys-color-subtle-border);
     border-radius: 14px; padding: 14px; font-size: 0.78rem;
     color: var(--md-sys-color-on-surface-variant);
     overflow-x: auto; max-height: 260px; white-space: pre-wrap;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
   .webframe-url-pill {
-    color: var(--md-sys-color-primary); font-size: 0.86rem; font-weight: 600;
+    color: var(--md-sys-color-accent-text); font-size: 0.86rem; font-weight: 600;
     text-decoration: none; background: var(--md-sys-color-surface-container-low);
     padding: 10px 14px; border-radius: 12px;
-    border: 1px solid var(--md-sys-color-outline-variant);
+    border: 1.5px solid var(--md-sys-color-control-border);
     display: inline-block; word-break: break-all;
     transition: border-color 0.15s ease, background-color 0.15s ease;
   }
@@ -682,7 +732,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   .modal-card {
     width: 100%; max-width: 440px;
     background: var(--md-sys-color-surface-container);
-    border: 1px solid var(--md-sys-color-outline-variant);
+    border: 1.5px solid var(--md-sys-color-card-border);
     border-radius: 24px; padding: 24px;
     box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
   }
@@ -713,7 +763,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       height: calc(74px + env(safe-area-inset-bottom, 0px));
       padding: 6px 8px env(safe-area-inset-bottom, 0px);
       background: var(--nav-bg); backdrop-filter: blur(12px);
-      border-top: 1px solid var(--md-sys-color-outline-variant);
+      border-top: 1.5px solid var(--md-sys-color-card-border);
     }
     button.m3-nav-tab, .m3-nav-tab {
       --btn-bg: transparent;
@@ -2536,10 +2586,10 @@ function renderFleetBar(nodes) {
   fleetNodes.forEach(node => {
     const targetKey = node.is_self ? 'self' : node.id;
     const isSelected = (selectedTarget === targetKey) || (node.is_self && selectedTarget === node.id);
-    const statusDotColor = node.online === false ? '#EF4444' : (node.is_night_mode ? '#F59E0B' : (node.is_paused ? '#94A3B8' : '#10B981'));
+    const statusDotColor = node.online === false ? '#D9534F' : (node.is_night_mode ? '#D49B38' : (node.is_paused ? '#8E8E93' : '#30A46C'));
     const platLabel = node.platform === 'android_tv' ? 'Android TV' : 'Linux';
     const edLabel = node.edition === 'baidupan' ? 'Baidu' : 'Google';
-    const selfTag = node.is_self ? ` <span style="font-size:0.74rem; color:var(--md-sys-color-primary);">(${escapeHtml(t('fleet_this_frame'))})</span>` : '';
+    const selfTag = node.is_self ? ` <span style="font-size:0.74rem; color:var(--md-sys-color-accent-text);">(${escapeHtml(t('fleet_this_frame'))})</span>` : '';
     const removeBtn = (!node.is_self && (node.is_manual || node.online === false))
       ? `<button type="button" class="icon-remove-btn" aria-label="Remove frame" title="Remove" onclick="removePeer(event, '${escapeHtml(node.id)}')">${closeSvg}</button>`
       : '';

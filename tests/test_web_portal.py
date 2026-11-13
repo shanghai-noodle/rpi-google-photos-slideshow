@@ -124,6 +124,8 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
         self.assertIn("sec_advanced_options", WEB_PORTAL_HTML)
         self.assertIn("--btn-hover-bg", WEB_PORTAL_HTML)
         self.assertIn("--md-sys-color-primary-hover", WEB_PORTAL_HTML)
+        self.assertIn("--md-sys-color-control-border", WEB_PORTAL_HTML)
+        self.assertIn("--md-sys-color-accent-text", WEB_PORTAL_HTML)
         self.assertNotIn("filter: brightness", WEB_PORTAL_HTML)
 
     def test_web_portal_http_api_endpoints(self):
