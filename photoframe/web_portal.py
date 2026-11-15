@@ -4494,7 +4494,12 @@ def create_portal_handler(
 
             if parsed.path == "/api/settings":
                 target = str(data.get("target", "self")).strip()
-                code, resp = fleet_manager.execute_settings(target, data)
+                try:
+                    code, resp = fleet_manager.execute_settings(target, data)
+                except Exception as e:
+                    # Never drop the connection: the browser would only show a generic "Network error".
+                    logger.exception("Web Portal /api/settings failed")
+                    code, resp = 500, {"ok": False, "error": f"Internal error while saving settings: {type(e).__name__}: {e}"}
                 self._send_json(code, resp)
                 return
 
@@ -4503,7 +4508,11 @@ def create_portal_handler(
                 action = str(data.get("action", ""))
                 album_arg = str(data.get("album", "")).strip()
                 pwd_arg = str(data.get("pwd", "")).strip()
-                code, resp = fleet_manager.execute_action(target, action, album_arg=album_arg, pwd_arg=pwd_arg)
+                try:
+                    code, resp = fleet_manager.execute_action(target, action, album_arg=album_arg, pwd_arg=pwd_arg)
+                except Exception as e:
+                    logger.exception("Web Portal /api/action failed")
+                    code, resp = 500, {"ok": False, "error": f"Internal error while running action: {type(e).__name__}: {e}"}
                 self._send_json(code, resp)
                 return
 

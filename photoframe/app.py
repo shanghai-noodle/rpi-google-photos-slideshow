@@ -10,6 +10,7 @@ import fcntl
 import os
 import platform
 import random
+import re
 import shutil
 import signal
 import socket
