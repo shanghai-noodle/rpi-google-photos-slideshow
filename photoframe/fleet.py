@@ -9,7 +9,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import hmac
 import http.client
+import ipaddress
 import json
+import re
 import socket
 import ssl
 import threading
@@ -80,8 +82,71 @@ def is_private_lan_ip(ip_str: str) -> bool:
     return False
 
 
+# Source networks allowed to use the peer-to-peer fleet channel. Besides RFC1918/loopback/
+# link-local this includes Tailscale's own ranges, so frames reached over a tailnet
+# (100.64.0.0/10, fd7a:115c:a1e0::/48) can authenticate and be managed like LAN frames.
+_TRUSTED_PEER_NETWORKS = tuple(
+    ipaddress.ip_network(n)
+    for n in (
+        "127.0.0.0/8",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "169.254.0.0/16",
+        "100.64.0.0/10",
+        "::1/128",
+        "fe80::/10",
+        "fd7a:115c:a1e0::/48",
+    )
+)
+
+
+def is_trusted_peer_ip(ip_str: str) -> bool:
+    """True when `ip_str` may speak the peer-to-peer fleet protocol (LAN, loopback or Tailscale)."""
+    s = (ip_str or "").strip().lower()
+    if not s:
+        return False
+    if s == "localhost":
+        return True
+    s = s.split("%", 1)[0]
+    if s.startswith("::ffff:"):
+        s = s[7:]
+    try:
+        addr = ipaddress.ip_address(s)
+    except ValueError:
+        return False
+    return any(addr in net for net in _TRUSTED_PEER_NETWORKS if net.version == addr.version)
+
+
+_TAILSCALE_V4 = ipaddress.ip_network("100.64.0.0/10")
+
+
+def _address_rank(ip_str: str, my_ip: str) -> int:
+    """Lower is better. Picks the preferred alias when one frame is reachable via several addresses."""
+    try:
+        addr = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return 4
+    try:
+        mine = ipaddress.ip_address(my_ip)
+    except ValueError:
+        mine = None
+    if (
+        addr.version == 4
+        and mine is not None
+        and mine.version == 4
+        and addr in ipaddress.ip_network(f"{mine}/24", strict=False)
+    ):
+        return 0  # same LAN subnet as this frame
+    if addr.version == 4 and addr in _TAILSCALE_V4:
+        return 2  # reachable only over the tailnet
+    if addr.is_private or addr.is_link_local:
+        return 1
+    return 3
+
+
 def verify_peer_request(headers: Any, client_ip: str) -> bool:
-    if not is_private_lan_ip(client_ip):
+    if not is_trusted_peer_ip(client_ip):
         return False
     token = ""
     if hasattr(headers, "get"):
@@ -165,6 +230,7 @@ class FleetManager:
         self._last_peer_refresh_ts = 0.0
         self._dead_mdns_ips: Dict[str, float] = {}
         self._enable_background_scan = enable_background_scan
+        self._local_ips_cache: Tuple[float, frozenset] = (0.0, frozenset())
 
         if enable_background_scan:
             t = threading.Thread(target=self._background_discovery_loop, name="FleetDiscoveryThread", daemon=True)
@@ -182,6 +248,35 @@ class FleetManager:
     def get_self_target(self) -> str:
         return f"{self._get_my_ip()}:{self.port}"
 
+    def _local_ipv4s(self) -> frozenset:
+        """All IPv4 addresses assigned to this machine (LAN, Tailscale, WireGuard, EasyTier...)."""
+        now = time.time()
+        ts, cached = self._local_ips_cache
+        if cached and (now - ts) < 30.0:
+            return cached
+        found = set()
+        try:
+            with open("/proc/net/fib_trie", "r", encoding="utf-8") as f:
+                last_ip = ""
+                for line in f:
+                    m = re.search(r"\|--\s+(\d+\.\d+\.\d+\.\d+)\s*$", line)
+                    if m:
+                        last_ip = m.group(1)
+                    elif "/32 host LOCAL" in line and last_ip:
+                        found.add(last_ip)
+        except Exception:
+            pass
+        if not found:  # non-Linux or unreadable: fall back to the hostname's addresses
+            try:
+                for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+                    found.add(info[4][0])
+            except Exception:
+                pass
+        found.discard("0.0.0.0")
+        result = frozenset(found)
+        self._local_ips_cache = (now, result)
+        return result
+
     def is_self_target(self, target: str) -> bool:
         if not target or target in ("self", "local"):
             return True
@@ -190,7 +285,9 @@ class FleetManager:
         if not norm:
             return False
         ip, port, _ = norm
-        return port == self.port and ip in (my_ip, "127.0.0.1", "localhost")
+        if port != self.port:
+            return False
+        return ip in (my_ip, "127.0.0.1", "localhost") or ip in self._local_ipv4s()
 
     def get_known_peer_targets(self) -> List[str]:
         with self._lock:
@@ -207,6 +304,21 @@ class FleetManager:
         clean = sorted(set(str(x).strip() for x in peers if str(x).strip()))
         self.config_store.save_settings({"manual_peers": clean})
 
+    def _get_removed_peers(self) -> set:
+        raw = self.config_store.get_settings().get("removed_peers", [])
+        if isinstance(raw, list):
+            return {str(x).strip() for x in raw if str(x).strip()}
+        return set()
+
+    def _save_removed_peers(self, removed: set) -> None:
+        self.config_store.save_settings({"removed_peers": sorted(str(x) for x in removed if str(x).strip())})
+
+    def _unremove(self, *ids: Optional[str]) -> None:
+        removed = self._get_removed_peers()
+        clean = {str(i).strip() for i in ids if i and str(i).strip()}
+        if removed & clean:
+            self._save_removed_peers(removed - clean)
+
     def build_ping_payload(self, peer_authorized: Optional[bool] = None) -> Dict[str, Any]:
         my_ip = self._get_my_ip()
         st = self.app.get_status_snapshot()
@@ -216,6 +328,7 @@ class FleetManager:
             "photoframe": True,
             "service": "photoframe",
             "id": f"{my_ip}:{self.port}",
+            "device_id": self.config_store.get_device_id(),
             "ip": my_ip,
             "port": self.port,
             "mdns_hostname": hostname,
@@ -313,7 +426,13 @@ class FleetManager:
                         pass
         return 0, {}
 
-    def probe_peer(self, raw_target: str, timeout: float = 0.85, follow_gossip: bool = True) -> Optional[Dict[str, Any]]:
+    def probe_peer(
+        self,
+        raw_target: str,
+        timeout: float = 0.85,
+        follow_gossip: bool = True,
+        ignore_removed: bool = False,
+    ) -> Optional[Dict[str, Any]]:
         norm = normalize_peer_target(raw_target, self.port)
         if not norm:
             return None
@@ -325,6 +444,20 @@ class FleetManager:
 
         status, data = self._http_request_peer(ip, port, "GET", "/api/fleet/ping", timeout=timeout)
         if status == 200 and isinstance(data, dict) and data.get("photoframe") is True:
+            dev_id = str(data.get("device_id") or "").strip()
+            if dev_id and dev_id == self.config_store.get_device_id():
+                # We reached ourselves through another of our own addresses (Tailscale, WireGuard...).
+                with self._lock:
+                    self._peers.pop(target_id, None)
+                me = self.build_ping_payload()
+                me["locked"] = False
+                me["is_self"] = True
+                return me
+            removed = set() if ignore_removed else self._get_removed_peers()
+            if target_id in removed or (dev_id and dev_id in removed):
+                with self._lock:
+                    self._peers.pop(target_id, None)
+                return None
             node = dict(data)
             peer_auth = data.get("peer_authorized", True)
             locked = not bool(peer_auth)
@@ -345,6 +478,8 @@ class FleetManager:
                 if isinstance(gossip_peers, list):
                     for gp in gossip_peers[:16]:
                         gp_norm = normalize_peer_target(str(gp), self.port)
+                        if gp_norm and gp_norm[2] in self._get_removed_peers():
+                            continue
                         if gp_norm and not self.is_self_target(gp_norm[2]):
                             with self._lock:
                                 already = gp_norm[2] in self._peers
@@ -387,6 +522,7 @@ class FleetManager:
                 else:
                     candidates.add(f"{mdns_ip}:{self.port}")
 
+        candidates -= self._get_removed_peers()
         my_target = self.get_self_target()
         my_ip = self._get_my_ip()
         for p in scan_ports:
@@ -512,8 +648,40 @@ class FleetManager:
                 copy_node["locked"] = bool(pnode.get("locked", False))
                 peers_list.append(copy_node)
 
+        peers_list = self._collapse_aliases(peers_list)
         peers_list.sort(key=lambda x: (str(x.get("mdns_hostname", "")), str(x.get("ip", ""))))
         return [self_node] + peers_list
+
+    def _collapse_aliases(self, peers_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """One entry per physical frame: merge peers that share a device_id (several addresses)."""
+        my_dev = self.config_store.get_device_id()
+        my_ip = self._get_my_ip()
+        groups: Dict[str, List[Dict[str, Any]]] = {}
+        singles: List[Dict[str, Any]] = []
+        for node in peers_list:
+            dev = str(node.get("device_id") or "").strip()
+            if dev and dev == my_dev:
+                continue  # that is us, reached via another of our addresses
+            if dev:
+                groups.setdefault(dev, []).append(node)
+            else:
+                singles.append(node)
+
+        merged: List[Dict[str, Any]] = list(singles)
+        for dev, nodes in groups.items():
+            nodes.sort(
+                key=lambda n: (
+                    not n.get("online", True),
+                    _address_rank(str(n.get("ip", "")), my_ip),
+                    not n.get("is_manual", False),
+                    str(n.get("id", "")),
+                )
+            )
+            best = dict(nodes[0])
+            best["aliases"] = [str(n.get("id")) for n in nodes[1:]]
+            best["is_manual"] = any(n.get("is_manual", False) for n in nodes)
+            merged.append(best)
+        return merged
 
     def add_manual_peer(self, host_input: str) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         norm = normalize_peer_target(host_input, self.port)
@@ -525,7 +693,10 @@ class FleetManager:
             node["locked"] = False
             return True, "This frame is already in the fleet", node
 
-        node = self.probe_peer(target_id, timeout=1.8)
+        self._unremove(target_id)
+        node = self.probe_peer(target_id, timeout=1.8, ignore_removed=True)
+        if node and node.get("is_self"):
+            return True, "This frame is already in the fleet", node
         if not node:
             for alt_port in CANDIDATE_WEB_PORTS:
                 if alt_port == initial_port:
@@ -533,13 +704,16 @@ class FleetManager:
                 alt_target = f"{ip}:{alt_port}"
                 if self.is_self_target(alt_target):
                     continue
-                node = self.probe_peer(alt_target, timeout=1.2)
+                node = self.probe_peer(alt_target, timeout=1.2, ignore_removed=True)
                 if node:
                     target_id = alt_target
                     break
         if not node:
             return False, f"Could not reach a Photo Frame portal at {target_id}", None
+        if node.get("is_self"):
+            return True, "This frame is already in the fleet", node
 
+        self._unremove(target_id, node.get("device_id"))
         cur_manual = self._get_manual_peers()
         if target_id not in cur_manual:
             cur_manual.append(target_id)
@@ -573,11 +747,29 @@ class FleetManager:
     def remove_peer(self, target_input: str) -> bool:
         norm = normalize_peer_target(target_input, self.port)
         target_id = norm[2] if norm else target_input.strip()
-        cur_manual = [p for p in self._get_manual_peers() if p != target_id and p != target_input.strip()]
-        self._save_manual_peers(cur_manual)
-        self.config_store.remove_peer_auth_token(target_id)
         with self._lock:
-            self._peers.pop(target_id, None)
+            dev_id = str((self._peers.get(target_id) or {}).get("device_id") or "").strip()
+            aliases = {target_id}
+            if dev_id:
+                aliases |= {pid for pid, n in self._peers.items() if str(n.get("device_id") or "").strip() == dev_id}
+
+        # Remember the removal so discovery (mDNS, subnet sweep, gossip) does not re-add it.
+        removed = self._get_removed_peers() | aliases | ({dev_id} if dev_id else set())
+        self._save_removed_peers(removed)
+
+        cur_manual = []
+        for p in self._get_manual_peers():
+            mp_norm = normalize_peer_target(p, self.port)
+            mp_id = mp_norm[2] if mp_norm else p
+            if mp_id in aliases or p == target_input.strip():
+                continue
+            cur_manual.append(p)
+        self._save_manual_peers(cur_manual)
+        for alias in aliases:
+            self.config_store.remove_peer_auth_token(alias)
+        with self._lock:
+            for alias in aliases:
+                self._peers.pop(alias, None)
         return True
 
     def get_target_status(self, target: str) -> Dict[str, Any]:

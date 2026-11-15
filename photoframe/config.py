@@ -15,6 +15,7 @@ import json
 import os
 import threading
 import time
+import uuid
 from typing import Any, Dict, List, Optional
 
 from .hardware import logger
@@ -110,6 +111,21 @@ class FrameConfigStore:
     def get_peer_pw_token(self) -> str:
         with self._lock:
             return str(self.data.get("peer_pw_token", "") or "")
+
+    def get_device_id(self) -> str:
+        """Stable random identity of this frame.
+
+        Fleet discovery keys peers by ip:port, so one frame reachable via several addresses
+        (LAN, Tailscale, WireGuard...) used to show up several times. The device id lets peers
+        collapse those aliases and lets a frame recognise itself under any of its own addresses.
+        """
+        with self._lock:
+            did = str(self.data.get("device_id", "") or "").strip()
+            if not did:
+                did = uuid.uuid4().hex
+                self.data["device_id"] = did
+                self._save_unlocked()
+            return did
 
     def is_default_password(self) -> bool:
         with self._lock:

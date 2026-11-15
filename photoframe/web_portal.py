@@ -2978,7 +2978,7 @@ function renderFleetBar(nodes) {
     } else if (!isOffline) {
       primary = `<button type="button" class="tonal btn-sm" onclick="controlFrame('${keyAttr}')"><span class="btn-label">${escapeHtml(t('btn_control_frame'))}</span></button>`;
     }
-    const removeBtn = (!node.is_self && (node.is_manual || isOffline))
+    const removeBtn = (!node.is_self)
       ? `<button type="button" class="outlined btn-sm" aria-label="${escapeHtml(t('btn_remove_frame'))} ${hostTitle}" onclick="removePeer(event, '${idAttr}')">${closeSvg}<span class="btn-label">${escapeHtml(t('btn_remove_frame'))}</span></button>`
       : '';
     const pillAccentAttr = multiFrame ? ` data-accented="true" style="--pill-accent:${pillColors.text}; --pill-border:${pillColors.border}; --pill-tint:${pillColors.tint};"` : '';
