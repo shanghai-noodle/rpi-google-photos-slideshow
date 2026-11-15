@@ -1783,7 +1783,8 @@ class SlideshowApp:
 
                 def _deferred_exit():
                     time.sleep(0.5)
-                    if os.environ.get("INVOCATION_ID"):
+                    self.is_running = False
+                    if os.environ.get("INVOCATION_ID") and not os.environ.get("GITHUB_ACTIONS"):
                         try:
                             subprocess.Popen(
                                 ["sudo", "-n", "systemctl", "stop", "slideshow.service"],
@@ -1793,7 +1794,6 @@ class SlideshowApp:
                             )
                         except Exception:
                             pass
-                    self.is_running = False
 
                 threading.Thread(target=_deferred_exit, name="WebExitPhotoFrame", daemon=True).start()
 

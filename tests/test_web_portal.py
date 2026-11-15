@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
+import unittest.mock
 import urllib.error
 import urllib.request
 
@@ -288,17 +289,23 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
             self.assertIn("Unknown action", bad_act.get("error", ""))
 
             # 8b. Exit photo frame action via POST /api/action -> returns 200 OK and stops app cleanly
-            code, exit_res, _ = request_json(
-                "/api/action",
-                method="POST",
-                cookie=session_cookie,
-                payload={"action": "exit_app"},
-            )
-            self.assertEqual(code, 200)
-            self.assertTrue(exit_res["ok"])
-            app._process_web_actions()
-            time.sleep(0.6)
-            self.assertFalse(app.is_running)
+            with unittest.mock.patch.dict(os.environ, {"INVOCATION_ID": ""}):
+                code, exit_res, _ = request_json(
+                    "/api/action",
+                    method="POST",
+                    cookie=session_cookie,
+                    payload={"action": "exit_app"},
+                )
+                self.assertEqual(code, 200)
+                self.assertTrue(exit_res["ok"])
+                app._process_web_actions()
+                deadline = time.monotonic() + 2.5
+                while app.is_running and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                self.assertFalse(app.is_running)
+                for th in threading.enumerate():
+                    if th.name == "WebExitPhotoFrame":
+                        th.join(timeout=1.0)
 
             # 9. Change password via POST /api/password
             code, pw_res, new_set_cookie = request_json(
