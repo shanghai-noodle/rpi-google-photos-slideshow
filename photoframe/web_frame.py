@@ -1,11 +1,16 @@
 """
-Modular Web Slideshow Viewer (/frame) Controller & Composer
-===========================================================
+Modular Web Slideshow Viewer (/frame) Controller, Composer & Weather Resolver
+=============================================================================
 Hosts a lightweight browser-based photo frame on the same HTTP server (`:8080/frame`)
 that can be enabled/disabled live from the Admin Portal, sharing the synced photo
 album while advancing slides in each browser's own independent order and screen
 orientation (videos are rendered as high-resolution static poster frames inside
 single slides and collage tiles).
+
+Includes an iPad-style Clock & Weather ambient overlay (Digital / Analog / Hidden,
+Bottom Banner & Corner positions, 6-language localization, and a Smart Dual-Region
+Weather Resolver supporting Tencent Weather + CMA Sojson for Mainland China and
+Open-Meteo for global cities with auto-IP location detection).
 
 Specifically engineered for both modern screens and legacy device stability
 (iPad 2 / iOS 9 Safari, Android 4.x+ WebView/Chrome, Kindle Silk, and smart TV browsers):
@@ -27,9 +32,11 @@ import os
 import random
 import re
 import socketserver
+import ssl
 import threading
 import time
 import urllib.parse
+import urllib.request
 from typing import Any, Callable, Deque, Dict, List, Optional, Tuple
 
 try:
@@ -43,6 +50,7 @@ from .hardware import logger
 from .mdns import get_active_mdns_hostname
 
 VALID_WEB_FRAME_PROFILES = ("auto", "legacy", "hd")
+VALID_WEATHER_UNITS = ("auto", "C", "F")
 DEFAULT_WEB_FRAME_PORT = 0
 
 # Minimal valid 1x1 black baseline JPEG fallback when Pillow is unavailable
@@ -79,6 +87,18 @@ def normalize_web_frame_profile(profile: Optional[str]) -> str:
     val = str(profile).strip().lower()
     if val in VALID_WEB_FRAME_PROFILES:
         return val
+    return "auto"
+
+
+def normalize_weather_unit(unit: Optional[str]) -> str:
+    """Normalizes a weather temperature unit string into `'auto'`, `'C'`, or `'F'`."""
+    if not unit:
+        return "auto"
+    val = str(unit).strip().upper()
+    if val in ("C", "CELSIUS", "°C"):
+        return "C"
+    if val in ("F", "FAHRENHEIT", "°F"):
+        return "F"
     return "auto"
 
 
@@ -153,6 +173,505 @@ def compute_web_canvas_dimensions(
     return w, h
 
 
+# ==============================================================================
+# Smart Dual-Region Weather Resolver (Tencent Weather + CMA Sojson + Open-Meteo)
+# ==============================================================================
+
+_WEATHER_CACHE: Dict[str, Tuple[Dict[str, Any], float]] = {}
+_WEATHER_CACHE_LOCK = threading.Lock()
+_WEATHER_CACHE_TTL = 900.0  # 15 minutes
+
+_IP_GEO_CACHE: Dict[str, Any] = {"data": None, "ts": 0.0}
+_IP_GEO_TTL = 3600.0  # 1 hour
+
+_WMO_I18N: Dict[str, Dict[str, str]] = {
+    "clear": {
+        "en": "Clear", "zh": "晴", "ja": "快晴", "ko": "맑음", "es": "Despejado", "de": "Klar",
+    },
+    "mostly_clear": {
+        "en": "Mostly Clear", "zh": "晴间多云", "ja": "晴れ", "ko": "대체로 맑음", "es": "Mayormente despejado", "de": "Überwiegend klar",
+    },
+    "partly_cloudy": {
+        "en": "Partly Cloudy", "zh": "多云", "ja": "曇り時々晴れ", "ko": "구름 조금", "es": "Parcialmente nublado", "de": "Teilweise bewölkt",
+    },
+    "overcast": {
+        "en": "Overcast", "zh": "阴", "ja": "曇り", "ko": "흐림", "es": "Nublado", "de": "Bedeckt",
+    },
+    "fog": {
+        "en": "Fog", "zh": "雾", "ja": "霧", "ko": "안개", "es": "Niebla", "de": "Nebel",
+    },
+    "drizzle": {
+        "en": "Drizzle", "zh": "毛毛雨", "ja": "霧雨", "ko": "이슬비", "es": "Llovizna", "de": "Nieselregen",
+    },
+    "light_rain": {
+        "en": "Light Rain", "zh": "小雨", "ja": "小雨", "ko": "약한 비", "es": "Lluvia ligera", "de": "Leichter Regen",
+    },
+    "rain": {
+        "en": "Rain", "zh": "中雨", "ja": "雨", "ko": "비", "es": "Lluvia", "de": "Regen",
+    },
+    "heavy_rain": {
+        "en": "Heavy Rain", "zh": "大雨", "ja": "大雨", "ko": "폭우", "es": "Lluvia fuerte", "de": "Starkregen",
+    },
+    "showers": {
+        "en": "Showers", "zh": "阵雨", "ja": "にわか雨", "ko": "소나기", "es": "Chubascos", "de": "Regenschauer",
+    },
+    "snow": {
+        "en": "Snow", "zh": "雪", "ja": "雪", "ko": "눈", "es": "Nieve", "de": "Schnee",
+    },
+    "thunderstorm": {
+        "en": "Thunderstorm", "zh": "雷阵雨", "ja": "雷雨", "ko": "뇌우", "es": "Tormenta", "de": "Gewitter",
+    },
+}
+
+# Pre-mapped Mainland China cities & Shanghai districts -> (province, city, county, display_zh, cma_code)
+_CHINA_CITY_DIRECTORY: List[Tuple[Tuple[str, ...], Tuple[str, str, str, str, str]]] = [
+    (("闵行", "minhang"), ("上海", "上海", "闵行", "上海 闵行", "101020200")),
+    (("浦东", "pudong"), ("上海", "上海", "浦东", "上海 浦东", "101020600")),
+    (("徐汇", "xuhui"), ("上海", "上海", "徐汇", "上海 徐汇", "101021200")),
+    (("静安", "jingan", "jing'an"), ("上海", "上海", "静安", "上海 静安", "101021000")),
+    (("长宁", "changning"), ("上海", "上海", "长宁", "上海 长宁", "101021100")),
+    (("黄浦", "huangpu"), ("上海", "上海", "黄浦", "上海 黄浦", "101020100")),
+    (("普陀", "putuo"), ("上海", "上海", "普陀", "上海 普陀", "101021800")),
+    (("虹口", "hongkou"), ("上海", "上海", "虹口", "上海 虹口", "101021900")),
+    (("杨浦", "yangpu"), ("上海", "上海", "杨浦", "上海 杨浦", "101022000")),
+    (("松江", "songjiang"), ("上海", "上海", "松江", "上海 松江", "101021300")),
+    (("嘉定", "jiading"), ("上海", "上海", "嘉定", "上海 嘉定", "101020500")),
+    (("宝山", "baoshan"), ("上海", "上海", "宝山", "上海 宝山", "101020300")),
+    (("青浦", "qingpu"), ("上海", "上海", "青浦", "上海 青浦", "101021400")),
+    (("奉贤", "fengxian"), ("上海", "上海", "奉贤", "上海 奉贤", "101021500")),
+    (("金山", "jinshan"), ("上海", "上海", "金山", "上海 金山", "101021600")),
+    (("崇明", "chongming"), ("上海", "上海", "崇明", "上海 崇明", "101021700")),
+    (("上海", "shanghai"), ("上海", "上海", "闵行", "上海 闵行", "101020200")),
+    (("北京", "beijing"), ("北京", "北京", "海淀", "北京", "101010100")),
+    (("杭州", "hangzhou"), ("浙江", "杭州", "西湖", "杭州", "101210101")),
+    (("深圳", "shenzhen"), ("广东", "深圳", "南山", "深圳", "101280601")),
+    (("广州", "guangzhou"), ("广东", "广州", "天河", "广州", "101280101")),
+    (("南京", "nanjing"), ("江苏", "南京", "玄武", "南京", "101190101")),
+    (("苏州", "suzhou"), ("江苏", "苏州", "姑苏", "苏州", "101190401")),
+    (("无锡", "wuxi"), ("江苏", "无锡", "梁溪", "无锡", "101190201")),
+    (("成都", "chengdu"), ("四川", "成都", "武侯", "成都", "101270101")),
+    (("武汉", "wuhan"), ("湖北", "武汉", "武昌", "武汉", "101200101")),
+    (("西安", "xian", "xi'an"), ("陕西", "西安", "雁塔", "西安", "101110101")),
+    (("重庆", "chongqing"), ("重庆", "重庆", "渝中", "重庆", "101040100")),
+    (("天津", "tianjin"), ("天津", "天津", "和平", "天津", "101030100")),
+    (("青岛", "qingdao"), ("山东", "青岛", "市南", "青岛", "101120201")),
+    (("济南", "jinan"), ("山东", "济南", "历下", "济南", "101120101")),
+    (("厦门", "xiamen"), ("福建", "厦门", "思明", "厦门", "101230201")),
+    (("福州", "fuzhou"), ("福建", "福州", "鼓楼", "福州", "101230101")),
+    (("长沙", "changsha"), ("湖南", "长沙", "岳麓", "长沙", "101250101")),
+    (("郑州", "zhengzhou"), ("河南", "郑州", "金水", "郑州", "101180101")),
+    (("昆明", "kunming"), ("云南", "昆明", "五华", "昆明", "101290101")),
+    (("大连", "dalian"), ("辽宁", "大连", "中山", "大连", "101070201")),
+    (("沈阳", "shenyang"), ("辽宁", "沈阳", "和平", "沈阳", "101070101")),
+    (("哈尔滨", "harbin"), ("黑龙江", "哈尔滨", "南岗", "哈尔滨", "101050101")),
+    (("宁波", "ningbo"), ("浙江", "宁波", "海曙", "宁波", "101210401")),
+    (("合肥", "hefei"), ("安徽", "合肥", "蜀山", "合肥", "101220101")),
+    (("三亚", "sanya"), ("海南", "三亚", "", "三亚", "101310201")),
+    (("海口", "haikou"), ("海南", "海口", "", "海口", "101310101")),
+    (("珠海", "zhuhai"), ("广东", "珠海", "香洲", "珠海", "101280701")),
+    (("佛山", "foshan"), ("广东", "佛山", "禅城", "佛山", "101280800")),
+    (("东莞", "dongguan"), ("广东", "东莞", "", "东莞", "101281601")),
+]
+
+
+def _get_unverified_ssl_ctx() -> ssl.SSLContext:
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+def localize_wmo_weather(code: int, is_day: bool = True, lang: str = "en") -> Tuple[str, str]:
+    """Maps a WMO weather code (`0..99`) to `(localized_description, emoji_icon)`."""
+    lg = (lang or "en").strip().lower()[:2]
+    if lg not in ("en", "zh", "ja", "ko", "es", "de"):
+        lg = "en"
+
+    if code == 0:
+        key, icon = "clear", ("☀️" if is_day else "🌙")
+    elif code == 1:
+        key, icon = "mostly_clear", ("🌤️" if is_day else "🌙")
+    elif code == 2:
+        key, icon = "partly_cloudy", "⛅"
+    elif code == 3:
+        key, icon = "overcast", "☁️"
+    elif code in (45, 48):
+        key, icon = "fog", "🌫️"
+    elif code in (51, 53, 55, 56, 57):
+        key, icon = "drizzle", "🌦️"
+    elif code in (61, 66):
+        key, icon = "light_rain", "🌦️"
+    elif code in (63,):
+        key, icon = "rain", "🌧️"
+    elif code in (65, 67):
+        key, icon = "heavy_rain", "⛈️"
+    elif code in (71, 73, 75, 77, 85, 86):
+        key, icon = "snow", "❄️"
+    elif code in (80, 81, 82):
+        key, icon = "showers", "🌦️"
+    elif code in (95, 96, 99):
+        key, icon = "thunderstorm", "⚡"
+    else:
+        key, icon = "clear", ("☀️" if is_day else "🌙")
+
+    desc = _WMO_I18N.get(key, _WMO_I18N["clear"]).get(lg, _WMO_I18N["clear"]["en"])
+    return desc, icon
+
+
+def localize_zh_weather_desc(raw_desc: str, lang: str = "en") -> Tuple[str, str]:
+    """Maps a Chinese weather description (e.g. `'晴'`, `'多云'`, `'小雨'`) to `(localized_desc, icon)`."""
+    d = (raw_desc or "晴").strip()
+    lg = (lang or "en").strip().lower()[:2]
+    if lg not in ("en", "zh", "ja", "ko", "es", "de"):
+        lg = "en"
+
+    if "雷" in d:
+        key, icon = "thunderstorm", "⚡"
+    elif "雪" in d:
+        key, icon = "snow", "❄️"
+    elif "大雨" in d or "暴雨" in d:
+        key, icon = "heavy_rain", "⛈️"
+    elif "阵雨" in d:
+        key, icon = "showers", "🌦️"
+    elif "小雨" in d:
+        key, icon = "light_rain", "🌦️"
+    elif "雨" in d:
+        key, icon = "rain", "🌧️"
+    elif "雾" in d or "霾" in d:
+        key, icon = "fog", "🌫️"
+    elif "多云" in d:
+        key, icon = "partly_cloudy", "⛅"
+    elif "阴" in d:
+        key, icon = "overcast", "☁️"
+    else:
+        key, icon = "clear", "☀️"
+
+    if lg == "zh":
+        return d, icon
+    return _WMO_I18N[key].get(lg, _WMO_I18N[key]["en"]), icon
+
+
+def match_china_city(query: str) -> Optional[Tuple[str, str, str, str, str]]:
+    """
+    Checks if `query` matches a Mainland China city (by Chinese characters or known Pinyin).
+    Returns `(province, city, county, display_name, cma_code)` or `None`.
+    """
+    q = (query or "").strip()
+    if not q:
+        return None
+    q_low = q.lower()
+    for keys, info in _CHINA_CITY_DIRECTORY:
+        if any(k in q_low for k in keys):
+            return info
+
+    # If the user entered Chinese characters like "浙江 温州" or "广东 汕头", parse parts
+    if re.search(r"[\u4e00-\u9fff]", q):
+        parts = [p.strip() for p in re.split(r"[\s,，/]+", q) if p.strip()]
+        if len(parts) >= 3:
+            return (parts[0], parts[1], parts[2], f"{parts[1]} {parts[2]}", "101020200")
+        if len(parts) == 2:
+            return (parts[0], parts[1], "", f"{parts[0]} {parts[1]}", "101020200")
+        return (parts[0], parts[0], "", parts[0], "101020200")
+    return None
+
+
+def _detect_ip_location() -> Optional[Dict[str, Any]]:
+    """Detects approximate `(city, countryCode, regionName, lat, lon)` from public IP (cached 1h)."""
+    now = time.time()
+    if _IP_GEO_CACHE["data"] is not None and (now - _IP_GEO_CACHE["ts"]) < _IP_GEO_TTL:
+        return _IP_GEO_CACHE["data"]
+
+    ctx = _get_unverified_ssl_ctx()
+    # 1. Try ip-api.com (fast JSON)
+    try:
+        req = urllib.request.Request(
+            "http://ip-api.com/json/?fields=status,countryCode,regionName,city,lat,lon",
+            headers={"User-Agent": "Mozilla/5.0 (PhotoFrame/1.0)"},
+        )
+        with urllib.request.urlopen(req, timeout=3.5) as r:
+            d = json.loads(r.read().decode("utf-8"))
+            if d.get("status") == "success" and d.get("city"):
+                res = {
+                    "city": str(d.get("city", "")).strip(),
+                    "region": str(d.get("regionName", "")).strip(),
+                    "country": str(d.get("countryCode", "")).strip().upper(),
+                    "lat": float(d.get("lat", 0.0)),
+                    "lon": float(d.get("lon", 0.0)),
+                }
+                _IP_GEO_CACHE["data"] = res
+                _IP_GEO_CACHE["ts"] = now
+                return res
+    except Exception:
+        pass
+
+    # 2. Fallback: ipwho.is
+    try:
+        req = urllib.request.Request(
+            "https://ipwho.is/",
+            headers={"User-Agent": "Mozilla/5.0 (PhotoFrame/1.0)"},
+        )
+        with urllib.request.urlopen(req, context=ctx, timeout=3.5) as r:
+            d = json.loads(r.read().decode("utf-8"))
+            if d.get("success") is not False and d.get("city"):
+                res = {
+                    "city": str(d.get("city", "")).strip(),
+                    "region": str(d.get("region", "")).strip(),
+                    "country": str(d.get("country_code", "")).strip().upper(),
+                    "lat": float(d.get("latitude", 0.0)),
+                    "lon": float(d.get("longitude", 0.0)),
+                }
+                _IP_GEO_CACHE["data"] = res
+                _IP_GEO_CACHE["ts"] = now
+                return res
+    except Exception:
+        pass
+
+    return None
+
+
+def _fetch_china_weather_endpoints(
+    prov: str,
+    cty: str,
+    cty_code: str,
+    disp: str,
+    cma_code: str,
+    lang: str = "en",
+) -> Optional[Dict[str, Any]]:
+    """Queries Tencent Weather (`wis.qq.com`) and falls back to CMA Sojson (`sojson.com`)."""
+    ctx = _get_unverified_ssl_ctx()
+    # 1. Primary China Endpoint: Tencent Weather (wis.qq.com)
+    try:
+        qs = urllib.parse.urlencode({
+            "source": "pc",
+            "weather_type": "observe|forecast_24h",
+            "province": prov,
+            "city": cty,
+            "county": cty_code,
+        })
+        req = urllib.request.Request(
+            f"https://wis.qq.com/weather/common?{qs}",
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+        )
+        with urllib.request.urlopen(req, context=ctx, timeout=5.0) as r:
+            wdata = json.loads(r.read().decode("utf-8"))
+            obs = (wdata.get("data") or {}).get("observe") or {}
+            if obs and "degree" in obs and str(obs["degree"]).strip() != "":
+                temp_c = int(round(float(obs["degree"])))
+                temp_f = int(round(temp_c * 9.0 / 5.0 + 32.0))
+                raw_desc = str(obs.get("weather", "晴") or "晴")
+                desc, icon = localize_zh_weather_desc(raw_desc, lang=lang)
+                return {
+                    "ok": True,
+                    "city": disp,
+                    "tempC": temp_c,
+                    "tempF": temp_f,
+                    "desc": desc,
+                    "icon": icon,
+                    "humidity": f"{obs.get('humidity', '')}%",
+                    "source": "Tencent Weather",
+                }
+    except Exception:
+        pass
+
+    # 2. Secondary China Endpoint: CMA Sojson
+    if cma_code:
+        try:
+            req = urllib.request.Request(
+                f"http://t.weather.sojson.com/api/weather/city/{cma_code}",
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            with urllib.request.urlopen(req, timeout=5.0) as r:
+                sdata = json.loads(r.read().decode("utf-8"))
+                d = sdata.get("data") or {}
+                if "wendu" in d:
+                    temp_c = int(round(float(d.get("wendu", 24))))
+                    temp_f = int(round(temp_c * 9.0 / 5.0 + 32.0))
+                    forecast_list = d.get("forecast") or [{}]
+                    raw_desc = str((forecast_list[0] if forecast_list else {}).get("type", "晴") or "晴")
+                    desc, icon = localize_zh_weather_desc(raw_desc, lang=lang)
+                    return {
+                        "ok": True,
+                        "city": disp,
+                        "tempC": temp_c,
+                        "tempF": temp_f,
+                        "desc": desc,
+                        "icon": icon,
+                        "humidity": str(d.get("shidu", "")),
+                        "source": "CMA Weather",
+                    }
+        except Exception:
+            pass
+
+    return None
+
+
+def _fetch_open_meteo_by_coords(
+    lat: float,
+    lon: float,
+    city_label: str,
+    lang: str = "en",
+) -> Optional[Dict[str, Any]]:
+    """Fetches current weather from Open-Meteo for `(lat, lon)`."""
+    ctx = _get_unverified_ssl_ctx()
+    try:
+        qs = urllib.parse.urlencode({
+            "latitude": f"{lat:.4f}",
+            "longitude": f"{lon:.4f}",
+            "current": "temperature_2m,relative_humidity_2m,is_day,weather_code",
+            "temperature_unit": "celsius",
+        })
+        req = urllib.request.Request(
+            f"https://api.open-meteo.com/v1/forecast?{qs}",
+            headers={"User-Agent": "Mozilla/5.0 (PhotoFrame/1.0)"},
+        )
+        with urllib.request.urlopen(req, context=ctx, timeout=5.0) as r:
+            d = json.loads(r.read().decode("utf-8"))
+            cur = d.get("current") or {}
+            if "temperature_2m" in cur:
+                temp_c = int(round(float(cur["temperature_2m"])))
+                temp_f = int(round(temp_c * 9.0 / 5.0 + 32.0))
+                wmo_code = int(cur.get("weather_code", 0))
+                is_day = bool(cur.get("is_day", 1))
+                desc, icon = localize_wmo_weather(wmo_code, is_day=is_day, lang=lang)
+                hum = cur.get("relative_humidity_2m")
+                return {
+                    "ok": True,
+                    "city": city_label,
+                    "tempC": temp_c,
+                    "tempF": temp_f,
+                    "desc": desc,
+                    "icon": icon,
+                    "humidity": f"{int(hum)}%" if hum is not None else "",
+                    "source": "Open-Meteo",
+                }
+    except Exception:
+        pass
+    return None
+
+
+def _fetch_open_meteo_by_city(city_query: str, lang: str = "en") -> Optional[Dict[str, Any]]:
+    """Geocodes `city_query` via Open-Meteo Geocoding API and fetches current weather."""
+    ctx = _get_unverified_ssl_ctx()
+    lg = (lang or "en").strip().lower()[:2]
+    try:
+        qs = urllib.parse.urlencode({
+            "name": city_query.strip(),
+            "count": 1,
+            "language": lg,
+            "format": "json",
+        })
+        req = urllib.request.Request(
+            f"https://geocoding-api.open-meteo.com/v1/search?{qs}",
+            headers={"User-Agent": "Mozilla/5.0 (PhotoFrame/1.0)"},
+        )
+        with urllib.request.urlopen(req, context=ctx, timeout=5.0) as r:
+            d = json.loads(r.read().decode("utf-8"))
+            results = d.get("results") or []
+            if results:
+                first = results[0]
+                lat = float(first.get("latitude", 0.0))
+                lon = float(first.get("longitude", 0.0))
+                name = str(first.get("name") or city_query).strip()
+                return _fetch_open_meteo_by_coords(lat, lon, name, lang=lang)
+    except Exception:
+        pass
+    return None
+
+
+def fetch_weather_data(
+    city_query: str = "",
+    lang: str = "en",
+    edition: str = "baidupan",
+) -> Dict[str, Any]:
+    """
+    Smart Dual-Region Weather Resolver with 15-minute RAM caching:
+    - When `city_query` is blank or `'auto'`, detects location from IP (falling back to
+      `'上海 闵行'` on `baidupan` / Chinese or `'San Francisco'` on `gphotos`).
+    - For Mainland China cities, queries Tencent Weather (`wis.qq.com`) + CMA Sojson fallback.
+    - For global/US cities, queries Open-Meteo Geocoding + Forecast API (with China fallback).
+    """
+    clean_q = (city_query or "").strip()
+    if clean_q.lower() in ("auto", "default", "none"):
+        clean_q = ""
+    lg = (lang or "en").strip().lower()[:2]
+    if lg not in ("en", "zh", "ja", "ko", "es", "de"):
+        lg = "en"
+
+    cache_key = f"{clean_q.lower() or '__auto__'}:{lg}:{edition}"
+    now = time.time()
+    with _WEATHER_CACHE_LOCK:
+        cached = _WEATHER_CACHE.get(cache_key)
+        if cached is not None and (now - cached[1]) < _WEATHER_CACHE_TTL:
+            return dict(cached[0])
+
+    result: Optional[Dict[str, Any]] = None
+
+    # Case 1: Explicit city provided
+    if clean_q:
+        cn_match = match_china_city(clean_q)
+        if cn_match is not None:
+            prov, cty, cty_code, disp, cma_code = cn_match
+            result = _fetch_china_weather_endpoints(prov, cty, cty_code, disp, cma_code, lang=lg)
+            if result is None:
+                result = _fetch_open_meteo_by_city(cty or clean_q, lang=lg)
+                if result is not None:
+                    result["city"] = disp
+        else:
+            result = _fetch_open_meteo_by_city(clean_q, lang=lg)
+            if result is None:
+                # Fallback if Open-Meteo is blocked in China
+                result = _fetch_china_weather_endpoints("上海", "上海", "闵行", clean_q, "101020200", lang=lg)
+    else:
+        # Case 2: Auto-detect from IP geolocation
+        geo = _detect_ip_location()
+        if geo is not None:
+            country = geo.get("country", "")
+            city_name = geo.get("city", "")
+            region_name = geo.get("region", "")
+            lat = float(geo.get("lat", 0.0))
+            lon = float(geo.get("lon", 0.0))
+            if country == "CN":
+                cn_match = match_china_city(f"{region_name} {city_name}")
+                if cn_match is not None:
+                    prov, cty, cty_code, disp, cma_code = cn_match
+                    result = _fetch_china_weather_endpoints(prov, cty, cty_code, disp, cma_code, lang=lg)
+                else:
+                    result = _fetch_china_weather_endpoints(
+                        region_name or city_name or "上海",
+                        city_name or "上海",
+                        "",
+                        city_name or "上海",
+                        "101020200",
+                        lang=lg,
+                    )
+            if result is None and (lat != 0.0 or lon != 0.0):
+                result = _fetch_open_meteo_by_coords(lat, lon, city_name or "Local", lang=lg)
+
+        if result is None:
+            if edition == "baidupan" or lg == "zh":
+                result = _fetch_china_weather_endpoints("上海", "上海", "闵行", "上海 闵行", "101020200", lang=lg)
+            else:
+                result = _fetch_open_meteo_by_coords(37.7749, -122.4194, "San Francisco", lang=lg)
+
+    if result is None:
+        default_city = clean_q or ("上海 闵行" if (edition == "baidupan" or lg == "zh") else "San Francisco")
+        desc, icon = localize_wmo_weather(0, is_day=True, lang=lg)
+        result = {
+            "ok": True,
+            "city": default_city,
+            "tempC": 24,
+            "tempF": 75,
+            "desc": desc,
+            "icon": icon,
+            "humidity": "55%",
+            "source": "Fallback",
+        }
+
+    with _WEATHER_CACHE_LOCK:
+        _WEATHER_CACHE[cache_key] = (dict(result), now)
+    return result
+
+
 DISABLED_WEB_FRAME_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -204,7 +723,7 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
@@ -214,7 +733,7 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
   html, body {
     width: 100%; height: 100%; overflow: hidden;
     background-color: #000000; color: #f8fafc;
-    font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Helvetica, Arial, sans-serif;
     -webkit-user-select: none; user-select: none;
   }
   #stage {
@@ -230,6 +749,183 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
     -webkit-transition: opacity 0.65s ease-in-out;
     transition: opacity 0.65s ease-in-out;
   }
+  .vignette-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0.18) 18%, transparent 38%),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.25) 0%, transparent 20%);
+    pointer-events: none; z-index: 15;
+  }
+
+  /* ==========================================================================
+     iPad-Style Clock & Weather Ambient Overlay (ES5 / iOS 9 Compatible)
+     ========================================================================== */
+  .clock-widget {
+    position: fixed; z-index: 30;
+    display: -webkit-flex; display: flex;
+    -webkit-flex-direction: column; flex-direction: column;
+    padding: 16px 22px; border-radius: 22px;
+    background: rgba(10, 14, 24, 0.52);
+    -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
+    color: #ffffff; pointer-events: none; max-width: 92vw;
+  }
+  .clock-widget.hidden { display: none !important; }
+  .hidden { display: none !important; }
+
+  /* Corner & Center Positions */
+  .clock-widget.pos-bottom-left { bottom: 26px; left: 28px; }
+  .clock-widget.pos-bottom-right {
+    bottom: 26px; right: 28px;
+    -webkit-align-items: flex-end; align-items: flex-end; text-align: right;
+  }
+  .clock-widget.pos-top-left { top: 26px; left: 28px; }
+  .clock-widget.pos-top-right {
+    top: 26px; right: 28px;
+    -webkit-align-items: flex-end; align-items: flex-end; text-align: right;
+  }
+  .clock-widget.pos-center-bottom {
+    bottom: 28px; left: 50%;
+    -webkit-transform: translateX(-50%); transform: translateX(-50%);
+    -webkit-align-items: center; align-items: center; text-align: center;
+  }
+
+  /* Adaptive Bottom Banner (Default — 100% Transparent, 2x Clock Left, 2-Line Weather Right) */
+  .clock-widget.pos-bottom-banner {
+    top: auto !important; bottom: 0 !important; left: 0 !important; right: 0 !important;
+    width: 100% !important; max-width: 100% !important;
+    background: transparent !important; border: none !important;
+    border-radius: 0 !important; box-shadow: none !important;
+    -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+    padding: 0 28px 16px 28px !important;
+    display: -webkit-flex !important; display: flex !important;
+    -webkit-flex-direction: row !important; flex-direction: row !important;
+    -webkit-align-items: flex-end !important; align-items: flex-end !important;
+    -webkit-justify-content: space-between !important; justify-content: space-between !important;
+  }
+
+  .digital-clock-face {
+    display: -webkit-flex; display: flex;
+    -webkit-flex-direction: column; flex-direction: column;
+  }
+  .time-row {
+    display: -webkit-flex; display: flex;
+    -webkit-align-items: baseline; align-items: baseline;
+    font-weight: 700; line-height: 1; letter-spacing: -0.02em;
+    text-shadow: 0 2px 18px rgba(0, 0, 0, 0.92), 0 0 4px rgba(0, 0, 0, 0.75);
+  }
+  .time-main {
+    font-size: 62px; font-size: clamp(3.0rem, 7.2vw, 6.2rem);
+    font-variant-numeric: tabular-nums;
+  }
+  .time-colon {
+    font-size: 54px; font-size: clamp(2.5rem, 6.2vw, 5.4rem);
+    opacity: 0.9; margin: 0 3px;
+  }
+  .time-ampm {
+    font-size: 20px; font-size: clamp(1.1rem, 2.2vw, 2.0rem);
+    font-weight: 600; margin-left: 10px;
+    color: rgba(255, 255, 255, 0.88);
+    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.92);
+  }
+  .date-row {
+    font-size: 22px; font-size: clamp(1.2rem, 2.4vw, 2.0rem);
+    font-weight: 500; color: rgba(255, 255, 255, 0.92);
+    margin-top: 4px; line-height: 1.2; white-space: nowrap;
+    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.92);
+  }
+  .date-day { font-weight: 600; color: #ffffff; }
+
+  /* Analog Clock Face */
+  .analog-clock-face {
+    display: -webkit-flex; display: flex;
+    -webkit-flex-direction: column; flex-direction: column;
+    -webkit-align-items: center; align-items: center;
+    padding: 4px 8px;
+  }
+  .analog-dial {
+    width: 120px; height: 120px; border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.55);
+    position: relative; background: rgba(0, 0, 0, 0.38);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.65), inset 0 0 14px rgba(0, 0, 0, 0.45);
+  }
+  .analog-marks .mark { position: absolute; background: rgba(255, 255, 255, 0.85); }
+  .mark.m12, .mark.m6 {
+    width: 3px; height: 9px; left: 50%; margin-left: -1.5px;
+  }
+  .mark.m12 { top: 5px; }
+  .mark.m6 { bottom: 5px; }
+  .mark.m3, .mark.m9 {
+    width: 9px; height: 3px; top: 50%; margin-top: -1.5px;
+  }
+  .mark.m3 { right: 5px; }
+  .mark.m9 { left: 5px; }
+  .analog-hand {
+    position: absolute; bottom: 50%; left: 50%;
+    -webkit-transform-origin: bottom center; transform-origin: bottom center;
+    border-radius: 4px;
+  }
+  .hand-hour { width: 5px; height: 31%; margin-left: -2.5px; background: #ffffff; z-index: 2; }
+  .hand-minute { width: 3px; height: 43%; margin-left: -1.5px; background: rgba(255, 255, 255, 0.92); z-index: 3; }
+  .analog-center-pin {
+    position: absolute; width: 9px; height: 9px; border-radius: 50%;
+    background: #38bdf8; top: 50%; left: 50%; margin-left: -4.5px; margin-top: -4.5px; z-index: 5;
+  }
+  .analog-date-label {
+    font-size: 15px; font-weight: 600; color: rgba(255, 255, 255, 0.9);
+    margin-top: 6px; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
+  }
+
+  /* Weather Widget Badge */
+  .weather-widget {
+    display: -webkit-flex; display: flex;
+    -webkit-flex-direction: row; flex-direction: row;
+    -webkit-align-items: center; align-items: center;
+    margin-top: 8px; padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+  }
+  .clock-widget.pos-bottom-banner .weather-widget {
+    margin-top: 0 !important; padding-top: 0 !important;
+    border-top: none !important;
+    -webkit-justify-content: flex-end; justify-content: flex-end;
+  }
+  .weather-icon {
+    font-size: 32px; font-size: clamp(1.7rem, 3.2vw, 2.7rem);
+    line-height: 1; margin-right: 12px;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9);
+  }
+  .weather-text-group {
+    display: -webkit-flex; display: flex;
+    -webkit-flex-direction: column; flex-direction: column;
+  }
+  .clock-widget.pos-bottom-banner .weather-text-group,
+  .clock-widget.pos-bottom-right .weather-text-group,
+  .clock-widget.pos-top-right .weather-text-group {
+    -webkit-align-items: flex-end; align-items: flex-end; text-align: right;
+  }
+  .weather-primary {
+    display: -webkit-flex; display: flex;
+    -webkit-align-items: baseline; align-items: baseline;
+    line-height: 1.1;
+  }
+  .weather-temp {
+    font-size: 26px; font-size: clamp(1.35rem, 2.6vw, 2.1rem);
+    font-weight: 700; color: #ffffff; margin-right: 8px;
+    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.95);
+  }
+  .weather-desc {
+    font-size: 18px; font-size: clamp(1.0rem, 1.8vw, 1.4rem);
+    font-weight: 500; color: rgba(255, 255, 255, 0.92);
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.95);
+  }
+  .weather-location {
+    font-size: 14px; font-size: clamp(0.82rem, 1.4vw, 1.1rem);
+    font-weight: 500; color: rgba(255, 255, 255, 0.78);
+    margin-top: 3px; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.95);
+  }
+
+  #clock-pill { display: none; }
+
   #night-overlay {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
     background-color: #000000; color: #475569; z-index: 50;
@@ -237,12 +933,17 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
   }
   #hud {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
-    background: rgba(11, 15, 25, 0.85); border-top: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(11, 15, 25, 0.92); border-top: 1px solid rgba(255, 255, 255, 0.18);
     padding: 10px 14px; display: none;
   }
   .hud-row {
-    max-width: 820px; margin: 0 auto;
+    max-width: 920px; margin: 0 auto;
     display: table; width: 100%;
+  }
+  .hud-row-sub {
+    max-width: 920px; margin: 8px auto 0 auto;
+    padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: center;
   }
   .hud-left, .hud-right {
     display: table-cell; vertical-align: middle;
@@ -254,24 +955,61 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
   .hud-meta {
     font-size: 12px; color: #cbd5e1;
   }
-  .hud-btn, .hud-select {
+  .hud-btn, .hud-select, .hud-input {
     background: #1e293b; color: #f8fafc; border: 1px solid #334155;
-    border-radius: 7px; padding: 7px 11px; font-size: 13px; font-weight: bold;
-    margin-left: 5px; cursor: pointer;
+    border-radius: 7px; padding: 6px 10px; font-size: 12px; font-weight: bold;
+    margin: 2px 3px; cursor: pointer; vertical-align: middle;
   }
+  .hud-input { width: 135px; font-weight: normal; cursor: text; }
   .hud-btn:active { background: #38bdf8; color: #082f49; }
-  #clock-pill {
-    position: fixed; bottom: 14px; right: 18px; z-index: 40;
-    background: rgba(0, 0, 0, 0.52); color: rgba(255, 255, 255, 0.88);
-    padding: 5px 11px; border-radius: 8px; font-size: 16px; font-weight: bold;
-    pointer-events: none;
-  }
 </style>
 </head>
 <body>
   <div id="stage" onclick="toggleHud()">
     <img id="slide-a" class="slide-img" alt="" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
     <img id="slide-b" class="slide-img" alt="" style="opacity:0; display:none;" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
+    <div id="vignette-overlay" class="vignette-overlay"></div>
+  </div>
+
+  <!-- iPad-Style Clock & Weather Ambient Overlay -->
+  <div id="clock-widget" class="clock-widget pos-bottom-banner style-digital">
+    <div id="digital-clock" class="digital-clock-face">
+      <div class="time-row">
+        <span id="clock-hours" class="time-main">12</span>
+        <span class="time-colon">:</span>
+        <span id="clock-minutes" class="time-main">00</span>
+        <span id="clock-ampm" class="time-ampm">PM</span>
+      </div>
+      <div id="clock-date-row" class="date-row">
+        <span id="clock-day" class="date-day">Sunday</span><span id="clock-date-sep">, </span><span id="clock-date" class="date-full">Nov 15</span>
+      </div>
+    </div>
+
+    <div id="analog-clock" class="analog-clock-face hidden">
+      <div class="analog-dial">
+        <div class="analog-marks">
+          <span class="mark m12"></span><span class="mark m3"></span>
+          <span class="mark m6"></span><span class="mark m9"></span>
+        </div>
+        <div id="hand-hour" class="analog-hand hand-hour"></div>
+        <div id="hand-minute" class="analog-hand hand-minute"></div>
+        <div class="analog-center-pin"></div>
+      </div>
+      <div class="analog-date-label">
+        <span id="analog-date-text">Nov 15</span>
+      </div>
+    </div>
+
+    <div id="weather-widget" class="weather-widget">
+      <span id="weather-icon" class="weather-icon">☀️</span>
+      <div class="weather-text-group">
+        <div class="weather-primary">
+          <span id="weather-temp" class="weather-temp">--°</span>
+          <span id="weather-desc" class="weather-desc"></span>
+        </div>
+        <span id="weather-location" class="weather-location"></span>
+      </div>
+    </div>
   </div>
 
   <div id="clock-pill"></div>
@@ -298,6 +1036,30 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
         <button type="button" class="hud-btn" onclick="toggleFullscreen()">⛶</button>
       </div>
     </div>
+    <div class="hud-row-sub">
+      <select id="hud-clock-style" class="hud-select" onchange="changeClockStyle(this.value)">
+        <option value="digital">⏰ Digital Clock</option>
+        <option value="analog">🕰️ Analog Clock</option>
+        <option value="hidden">🚫 Hide Clock</option>
+      </select>
+      <select id="hud-clock-pos" class="hud-select" onchange="changeClockPosition(this.value)">
+        <option value="pos-bottom-banner">Banner (Bottom)</option>
+        <option value="pos-bottom-left">Bottom Left</option>
+        <option value="pos-bottom-right">Bottom Right</option>
+        <option value="pos-top-left">Top Left</option>
+        <option value="pos-top-right">Top Right</option>
+        <option value="pos-center-bottom">Bottom Center</option>
+      </select>
+      <button type="button" class="hud-btn" id="btn-clock-24h" onclick="toggleClock24h()">12h</button>
+      <select id="hud-weather-unit" class="hud-select" onchange="changeWeatherUnit(this.value)">
+        <option value="auto">🌤️ Unit: Auto</option>
+        <option value="C">🌤️ °C</option>
+        <option value="F">🌤️ °F</option>
+        <option value="off">🚫 Weather Off</option>
+      </select>
+      <input type="text" id="hud-weather-city" class="hud-input" placeholder="City (e.g. 上海 闵行)">
+      <button type="button" class="hud-btn" onclick="saveClientWeatherCity()">Set City</button>
+    </div>
   </div>
 
 <script type="text/javascript">
@@ -319,6 +1081,51 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
   var cleanupTimer = null;
   var hudTimer = null;
 
+  /* Clock & Weather State */
+  var frameLang = "en";
+  var frameEdition = "baidupan";
+  var serverWeatherCity = "";
+  var serverWeatherUnit = "auto";
+  var clockStyle = "digital";
+  var clockPos = "pos-bottom-banner";
+  var clock24h = false;
+  var clientWeatherUnit = "auto";
+  var clientWeatherCity = "";
+  var lastWeatherData = null;
+
+  var I18N_DATE = {
+    en: {
+      days: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+      months: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+      am: "AM", pm: "PM"
+    },
+    zh: {
+      days: ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"],
+      months: ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"],
+      am: "上午", pm: "下午"
+    },
+    ja: {
+      days: ["日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"],
+      months: ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"],
+      am: "午前", pm: "午後"
+    },
+    ko: {
+      days: ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"],
+      months: ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"],
+      am: "오전", pm: "오후"
+    },
+    es: {
+      days: ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"],
+      months: ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"],
+      am: "AM", pm: "PM"
+    },
+    de: {
+      days: ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"],
+      months: ["Jan.", "Feb.", "März", "Apr.", "Mai", "Juni", "Juli", "Aug.", "Sep.", "Okt.", "Nov.", "Dez."],
+      am: "AM", pm: "PM"
+    }
+  };
+
   function getQueryParam(name) {
     var s = window.location.search || "";
     var re = new RegExp("[?&]" + name + "=([^&#]*)");
@@ -337,7 +1144,91 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
     }
     var sel = document.getElementById("hud-profile");
     if (sel) sel.value = profileOverride;
+
+    try {
+      var cs = localStorage.getItem("webframe_clock_style");
+      if (cs === "digital" || cs === "analog" || cs === "hidden") clockStyle = cs;
+      var cp = localStorage.getItem("webframe_clock_pos");
+      if (cp) clockPos = cp;
+      var c24 = localStorage.getItem("webframe_clock_24h");
+      if (c24 === "1" || c24 === "0") clock24h = (c24 === "1");
+      var wu = localStorage.getItem("webframe_weather_unit");
+      if (wu === "auto" || wu === "C" || wu === "F" || wu === "off") clientWeatherUnit = wu;
+      var wc = localStorage.getItem("webframe_weather_city");
+      if (wc !== null) clientWeatherCity = wc;
+    } catch (e) {}
+
+    var elStyle = document.getElementById("hud-clock-style");
+    if (elStyle) elStyle.value = clockStyle;
+    var elPos = document.getElementById("hud-clock-pos");
+    if (elPos) elPos.value = clockPos;
+    var el24 = document.getElementById("btn-clock-24h");
+    if (el24) el24.innerHTML = clock24h ? "24h" : "12h";
+    var elUnit = document.getElementById("hud-weather-unit");
+    if (elUnit) elUnit.value = clientWeatherUnit;
+    var elCity = document.getElementById("hud-weather-city");
+    if (elCity) elCity.value = clientWeatherCity;
+
+    applyClockAppearance();
   }
+
+  function applyClockAppearance() {
+    var cw = document.getElementById("clock-widget");
+    var dig = document.getElementById("digital-clock");
+    var ana = document.getElementById("analog-clock");
+    var wEl = document.getElementById("weather-widget");
+    var vig = document.getElementById("vignette-overlay");
+    if (!cw) return;
+
+    cw.className = "clock-widget " + clockPos + " style-" + clockStyle + (clockStyle === "hidden" ? " hidden" : "");
+    if (vig) vig.style.display = (clockStyle === "hidden") ? "none" : "block";
+    if (dig) dig.className = (clockStyle === "analog") ? "digital-clock-face hidden" : "digital-clock-face";
+    if (ana) ana.className = (clockStyle === "analog") ? "analog-clock-face" : "analog-clock-face hidden";
+    if (wEl) wEl.style.display = (clientWeatherUnit === "off") ? "none" : "";
+    updateClock();
+    renderWeatherUI();
+  }
+
+  window.changeClockStyle = function(val) {
+    clockStyle = val || "digital";
+    try { localStorage.setItem("webframe_clock_style", clockStyle); } catch (e) {}
+    applyClockAppearance();
+    resetHudTimer();
+  };
+
+  window.changeClockPosition = function(val) {
+    clockPos = val || "pos-bottom-banner";
+    try { localStorage.setItem("webframe_clock_pos", clockPos); } catch (e) {}
+    applyClockAppearance();
+    resetHudTimer();
+  };
+
+  window.toggleClock24h = function() {
+    clock24h = !clock24h;
+    try { localStorage.setItem("webframe_clock_24h", clock24h ? "1" : "0"); } catch (e) {}
+    var el24 = document.getElementById("btn-clock-24h");
+    if (el24) el24.innerHTML = clock24h ? "24h" : "12h";
+    updateClock();
+    resetHudTimer();
+  };
+
+  window.changeWeatherUnit = function(val) {
+    clientWeatherUnit = val || "auto";
+    try { localStorage.setItem("webframe_weather_unit", clientWeatherUnit); } catch (e) {}
+    applyClockAppearance();
+    if (clientWeatherUnit !== "off" && !lastWeatherData) {
+      fetchWeather();
+    }
+    resetHudTimer();
+  };
+
+  window.saveClientWeatherCity = function() {
+    var inp = document.getElementById("hud-weather-city");
+    clientWeatherCity = inp ? inp.value.replace(/^\\s+|\\s+$/g, "") : "";
+    try { localStorage.setItem("webframe_weather_city", clientWeatherCity); } catch (e) {}
+    fetchWeather();
+    resetHudTimer();
+  };
 
   window.changeClientProfile = function(val) {
     profileOverride = val || "auto";
@@ -354,14 +1245,115 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
   }
 
   function updateClock() {
-    var el = document.getElementById("clock-pill");
-    if (!el) return;
     var now = new Date();
-    var hh = now.getHours();
+    var hh24 = now.getHours();
     var mm = now.getMinutes();
-    var hStr = (hh < 10 ? "0" : "") + hh;
     var mStr = (mm < 10 ? "0" : "") + mm;
-    el.innerHTML = hStr + ":" + mStr;
+
+    var loc = I18N_DATE[frameLang] || I18N_DATE.en;
+    var dispH = hh24;
+    var ampmStr = "";
+    if (!clock24h) {
+      ampmStr = (hh24 >= 12) ? loc.pm : loc.am;
+      dispH = hh24 % 12;
+      if (dispH === 0) dispH = 12;
+    }
+    var hStr = clock24h ? ((dispH < 10 ? "0" : "") + dispH) : ("" + dispH);
+
+    var elH = document.getElementById("clock-hours");
+    var elM = document.getElementById("clock-minutes");
+    var elAmpm = document.getElementById("clock-ampm");
+    if (elH) elH.innerHTML = hStr;
+    if (elM) elM.innerHTML = mStr;
+    if (elAmpm) {
+      elAmpm.innerHTML = ampmStr;
+      elAmpm.style.display = clock24h ? "none" : "";
+    }
+
+    var dayName = loc.days[now.getDay()];
+    var monthName = loc.months[now.getMonth()];
+    var dateNum = now.getDate();
+    var fullDateStr = "";
+    if (frameLang === "zh" || frameLang === "ja") {
+      fullDateStr = monthName + dateNum + "日";
+    } else if (frameLang === "ko") {
+      fullDateStr = monthName + " " + dateNum + "일";
+    } else if (frameLang === "de") {
+      fullDateStr = dateNum + ". " + monthName;
+    } else if (frameLang === "es") {
+      fullDateStr = dateNum + " de " + monthName;
+    } else {
+      fullDateStr = monthName + " " + dateNum;
+    }
+
+    var elDay = document.getElementById("clock-day");
+    var elDate = document.getElementById("clock-date");
+    var elAnaDate = document.getElementById("analog-date-text");
+    if (elDay) elDay.innerHTML = dayName;
+    if (elDate) elDate.innerHTML = fullDateStr;
+    if (elAnaDate) elAnaDate.innerHTML = dayName + " · " + fullDateStr;
+
+    var minAngle = mm * 6;
+    var hrAngle = ((hh24 % 12) + mm / 60.0) * 30;
+    var handMin = document.getElementById("hand-minute");
+    var handHr = document.getElementById("hand-hour");
+    if (handMin) {
+      handMin.style.webkitTransform = "rotate(" + minAngle + "deg)";
+      handMin.style.transform = "rotate(" + minAngle + "deg)";
+    }
+    if (handHr) {
+      handHr.style.webkitTransform = "rotate(" + hrAngle + "deg)";
+      handHr.style.transform = "rotate(" + hrAngle + "deg)";
+    }
+
+    var pill = document.getElementById("clock-pill");
+    if (pill) pill.innerHTML = hStr + ":" + mStr;
+  }
+
+  function effectiveTemperatureUnit() {
+    if (clientWeatherUnit === "C" || clientWeatherUnit === "F") return clientWeatherUnit;
+    if (serverWeatherUnit === "C" || serverWeatherUnit === "F") return serverWeatherUnit;
+    if (frameEdition === "baidupan" || frameLang !== "en") return "C";
+    return "F";
+  }
+
+  function renderWeatherUI() {
+    if (!lastWeatherData) return;
+    var unit = effectiveTemperatureUnit();
+    var tempVal = (unit === "F")
+      ? (lastWeatherData.tempF !== undefined ? lastWeatherData.tempF : 75)
+      : (lastWeatherData.tempC !== undefined ? lastWeatherData.tempC : 24);
+    var elIcon = document.getElementById("weather-icon");
+    var elTemp = document.getElementById("weather-temp");
+    var elDesc = document.getElementById("weather-desc");
+    var elLoc = document.getElementById("weather-location");
+    if (elIcon) elIcon.innerHTML = lastWeatherData.icon || "☀️";
+    if (elTemp) elTemp.innerHTML = tempVal + "°" + unit;
+    if (elDesc) elDesc.innerHTML = lastWeatherData.desc || "";
+    if (elLoc) elLoc.innerHTML = lastWeatherData.city || "";
+  }
+
+  function fetchWeather() {
+    if (clientWeatherUnit === "off") return;
+    var cityToUse = clientWeatherCity || serverWeatherCity || "";
+    var url = "/api/webframe/weather?city=" + encodeURIComponent(cityToUse)
+      + "&lang=" + encodeURIComponent(frameLang)
+      + "&t=" + (new Date().getTime());
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", url, true);
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState !== 4) return;
+      if (xhr.status === 200) {
+        try {
+          var d = JSON.parse(xhr.responseText || "{}");
+          if (d && d.city !== undefined) {
+            lastWeatherData = d;
+            renderWeatherUI();
+          }
+        } catch (e) {}
+      }
+    };
+    xhr.send(null);
   }
 
   window.toggleHud = function() {
@@ -382,6 +1374,7 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
 
   function resetHudTimer() {
     if (hudTimer) clearTimeout(hudTimer);
+    if (localPaused) return;
     hudTimer = setTimeout(function() {
       var hud = document.getElementById("hud");
       if (hud) hud.style.display = "none";
@@ -569,6 +1562,29 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
           }
           if (data.transition) transitionMode = data.transition;
 
+          var langOrCityChanged = false;
+          if (data.language && data.language !== frameLang) {
+            frameLang = data.language;
+            langOrCityChanged = true;
+            updateClock();
+          }
+          if (data.edition) frameEdition = data.edition;
+          if (data.weather_city !== undefined && data.weather_city !== serverWeatherCity) {
+            serverWeatherCity = data.weather_city || "";
+            langOrCityChanged = true;
+            var elCity = document.getElementById("hud-weather-city");
+            if (elCity && !clientWeatherCity) {
+              elCity.placeholder = serverWeatherCity ? ("Default: " + serverWeatherCity) : "City (Auto IP)";
+            }
+          }
+          if (data.weather_unit && data.weather_unit !== serverWeatherUnit) {
+            serverWeatherUnit = data.weather_unit;
+            renderWeatherUI();
+          }
+          if (langOrCityChanged || !lastWeatherData) {
+            fetchWeather();
+          }
+
           var hostEl = document.getElementById("hud-host");
           if (hostEl && data.mdns_hostname) {
             hostEl.innerHTML = "🖼️ " + data.mdns_hostname;
@@ -621,6 +1637,7 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
   initProfile();
   updateClock();
   setInterval(updateClock, 15000);
+  setInterval(fetchWeather, 900000);
   pollState(function() {
     if (isEnabled && !isNightMode) {
       loadSlide("next");
@@ -650,7 +1667,8 @@ class WebFrameController:
     """
     Manages the HTTP Web Photo Frame server lifecycle (`start` / `stop` on port `:8081`
     plus `/frame` routing on `:8080`), per-client independent slide cursors, raw photo
-    LRU caching, and orientation-matched server-side JPEG slide composition.
+    LRU caching, orientation-matched server-side JPEG slide composition, and the
+    Smart Dual-Region Weather endpoint (`/api/webframe/weather`).
     """
 
     LEGACY_SAFE_STYLES = ("stack-2", "horiz-2p", "stack-3", "grid-trio", "bento-4")
@@ -974,7 +1992,6 @@ class WebFrameController:
         sess = self._touch_session(client_id, effective_profile, (target_w, target_h))
 
         if direction == "prev" and len(sess.history) >= 2:
-            # Pop current and return previous
             current_bytes = sess.history.pop()
             prev_bytes = sess.history[-1]
             sess.history.appendleft(current_bytes)
@@ -1016,7 +2033,6 @@ class WebFrameController:
             sess.history.append(out_bytes)
             return out_bytes, effective_profile, target_w, target_h
 
-        # Use a lightweight helper clone/view of PhotoManager geometry for `(target_w, target_h)`
         canvas = self._render_slide_for_dimensions(
             pm=pm,
             first_img=first_img,
@@ -1054,7 +2070,6 @@ class WebFrameController:
         if landscape_mode == "single" and not style_override:
             return self._compose_single_for_size(pm, first_img, target_w, target_h, photo_fit)
 
-        # In collage mode, occasionally show full-screen single when orientation matches
         if not style_override and landscape_mode in ("collage", "random", "auto"):
             if (is_horiz and is_first_land and random.random() < 0.25) or (
                 not is_horiz and not is_first_land and random.random() < 0.50
@@ -1072,9 +2087,6 @@ class WebFrameController:
             l_imgs.append(first_img)
         elif not is_first_land and need_p > 0:
             p_imgs.append(first_img)
-        else:
-            # Keep as fallback
-            pass
 
         spare_imgs: List[Any] = []
         if not l_imgs and not p_imgs:
@@ -1098,7 +2110,6 @@ class WebFrameController:
                 else:
                     spare_imgs.append(cand)
 
-        # If we didn't gather enough strictly oriented images, try a 2-tile stack or single photo
         if len(l_imgs) < need_l or len(p_imgs) < need_p:
             all_pool = l_imgs + p_imgs + spare_imgs
             if len(all_pool) >= 2:
@@ -1255,6 +2266,11 @@ class WebFrameController:
             self._touch_session(client_id, effective_profile, (target_w, target_h))
 
         st = self.app.get_status_snapshot() if hasattr(self.app, "get_status_snapshot") else {}
+        args_obj = getattr(self.app, "args", None)
+        lang = str(getattr(args_obj, "language", "en") or "en") if args_obj else "en"
+        w_city = str(getattr(args_obj, "weather_city", "") or "") if args_obj else ""
+        w_unit = normalize_weather_unit(getattr(args_obj, "weather_unit", "auto") if args_obj else "auto")
+        edition = str(st.get("edition") or ("baidupan" if hasattr(args_obj, "pwd") else "gphotos"))
         return {
             "ok": True,
             "enabled": self.enabled,
@@ -1275,6 +2291,10 @@ class WebFrameController:
             "video_count": int(st.get("video_count", 0)),
             "mdns_hostname": str(st.get("mdns_hostname", get_active_mdns_hostname())),
             "app_version": str(st.get("app_version", "1.0.7")),
+            "language": lang,
+            "edition": edition,
+            "weather_city": w_city,
+            "weather_unit": w_unit,
             "active_clients": self.get_active_client_count(),
         }
 
@@ -1306,6 +2326,23 @@ class WebFrameController:
             body = WEB_FRAME_HTML.encode("utf-8")
             handler.send_response(200)
             handler.send_header("Content-Type", "text/html; charset=utf-8")
+            handler.send_header("Content-Length", str(len(body)))
+            handler.send_header("Cache-Control", "no-store")
+            handler.end_headers()
+            handler.wfile.write(body)
+            return True
+
+        if path in ("/api/webframe/weather", "/api/weather"):
+            args_obj = getattr(self.app, "args", None)
+            default_city = str(getattr(args_obj, "weather_city", "") or "") if args_obj else ""
+            default_lang = str(getattr(args_obj, "language", "en") or "en") if args_obj else "en"
+            edition = "baidupan" if hasattr(args_obj, "pwd") else "gphotos"
+            q_city = (qs.get("city", [default_city])[0] or default_city).strip()
+            q_lang = (qs.get("lang", [default_lang])[0] or default_lang).strip()
+            wdata = fetch_weather_data(city_query=q_city, lang=q_lang, edition=edition)
+            body = json.dumps(wdata, ensure_ascii=False).encode("utf-8")
+            handler.send_response(200)
+            handler.send_header("Content-Type", "application/json; charset=utf-8")
             handler.send_header("Content-Length", str(len(body)))
             handler.send_header("Cache-Control", "no-store")
             handler.end_headers()

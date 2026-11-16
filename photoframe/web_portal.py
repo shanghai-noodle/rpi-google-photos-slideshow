@@ -1293,6 +1293,21 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
               <label data-i18n="lbl_webframe_url">Web Viewer Address</label>
               <a id="webframe-path-link" href="/frame" target="_blank" rel="noopener" class="webframe-url-pill">http://localhost:8080/frame</a>
             </div>
+            <div class="form-group">
+              <label for="cfg-weather-city" data-i18n="lbl_weather_city">Weather Overlay City (/frame)</label>
+              <div style="display:flex; gap:8px;">
+                <input type="text" id="cfg-weather-city" style="flex:1;" data-i18n-placeholder="ph_weather_city" placeholder="Auto (IP Location) or e.g. San Francisco / 上海 闵行">
+                <button type="button" class="btn-sm tonal" onclick="updateWebFrameWeatherLive()" data-i18n="btn_save_weather">Save City</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="cfg-weather-unit" data-i18n="lbl_weather_unit">Temperature Unit (/frame)</label>
+              <select id="cfg-weather-unit" onchange="updateWebFrameWeatherLive()">
+                <option value="auto" data-i18n="opt_wu_auto">Auto (°C for China/Intl, °F for US)</option>
+                <option value="C" data-i18n="opt_wu_c">°C (Celsius)</option>
+                <option value="F" data-i18n="opt_wu_f">°F (Fahrenheit)</option>
+              </select>
+            </div>
           </div>
           <div class="btn-grid">
             <button type="button" id="btn-webframe-toggle" class="primary" onclick="toggleWebFramePower()">
@@ -1593,6 +1608,13 @@ const I18N = {
     btn_wf_turn_off: "Disable Web Viewer",
     btn_wf_open: "Launch /frame",
     btn_open_webframe: "Launch Web Viewer (/frame)",
+    lbl_weather_city: "Weather Overlay City (/frame)",
+    ph_weather_city: "Auto (IP Location) or e.g. San Francisco / 上海 闵行",
+    lbl_weather_unit: "Temperature Unit (/frame)",
+    opt_wu_auto: "Auto (°C for China/Intl, °F for US)",
+    opt_wu_c: "°C (Celsius)",
+    opt_wu_f: "°F (Fahrenheit)",
+    btn_save_weather: "Save City",
     lbl_saved_albums: "Saved Connected Albums & Folders (Encrypted Locally)",
     saved_albums_empty: "No connected links saved yet. Successfully connected albums and folders are automatically encrypted and stored here.",
     btn_use_saved_album: "Switch",
@@ -1757,6 +1779,13 @@ const I18N = {
     btn_wf_turn_off: "关闭网页相框",
     btn_wf_open: "打开 /frame",
     btn_open_webframe: "打开网页相框 (/frame)",
+    lbl_weather_city: "天气浮层城市 (/frame)",
+    ph_weather_city: "自动定位 或输入如 上海 闵行 / 北京",
+    lbl_weather_unit: "温度单位 (/frame)",
+    opt_wu_auto: "自动 (中国/国际 °C，美国 °F)",
+    opt_wu_c: "°C (摄氏度)",
+    opt_wu_f: "°F (华氏度)",
+    btn_save_weather: "保存城市",
     lbl_saved_albums: "已保存的历史连接相册与网盘目录（本地加密存储）",
     saved_albums_empty: "暂无已保存的历史链接。成功连接的相册或网盘分享将自动加密保存在此处。",
     btn_use_saved_album: "切换",
@@ -1921,6 +1950,13 @@ const I18N = {
     btn_wf_turn_off: "Web ビューアを無効化",
     btn_wf_open: "/frame を開く",
     btn_open_webframe: "Web ビューアを開く (/frame)",
+    lbl_weather_city: "天気オーバーレイの都市 (/frame)",
+    ph_weather_city: "自動（IP位置情報）または都市名（例：東京 / 上海 闵行）",
+    lbl_weather_unit: "温度単位 (/frame)",
+    opt_wu_auto: "自動（°C / °F）",
+    opt_wu_c: "°C（摂氏）",
+    opt_wu_f: "°F（華氏）",
+    btn_save_weather: "都市を保存",
     lbl_saved_albums: "保存済みの接続アルバム・フォルダ（ローカル暗号化保存）",
     saved_albums_empty: "保存されたリンクはまだありません。接続に成功したアルバムやフォルダは自動的に暗号化されて保存されます。",
     btn_use_saved_album: "切替",
@@ -2085,6 +2121,13 @@ const I18N = {
     btn_wf_turn_off: "웹 뷰어 끄기",
     btn_wf_open: "/frame 열기",
     btn_open_webframe: "웹 뷰어 열기 (/frame)",
+    lbl_weather_city: "날씨 오버레이 도시 (/frame)",
+    ph_weather_city: "자동(IP 위치) 또는 도시 이름 (예: 서울 / 上海 闵行)",
+    lbl_weather_unit: "온도 단위 (/frame)",
+    opt_wu_auto: "자동 (°C / °F)",
+    opt_wu_c: "°C (섭씨)",
+    opt_wu_f: "°F (화씨)",
+    btn_save_weather: "도시 저장",
     lbl_saved_albums: "저장된 연결 앨범 및 폴더 (로컬 암호화 저장)",
     saved_albums_empty: "저장된 링크가 없습니다. 성공적으로 연결된 앨범 및 폴더가 자동으로 암호화되어 저장됩니다.",
     btn_use_saved_album: "전환",
@@ -2249,6 +2292,13 @@ const I18N = {
     btn_wf_turn_off: "Desactivar Visor Web",
     btn_wf_open: "Abrir /frame",
     btn_open_webframe: "Abrir Visor Web (/frame)",
+    lbl_weather_city: "Ciudad del Clima (/frame)",
+    ph_weather_city: "Auto (IP) o ej. Madrid / San Francisco",
+    lbl_weather_unit: "Unidad de Temperatura (/frame)",
+    opt_wu_auto: "Auto (°C / °F)",
+    opt_wu_c: "°C (Celsius)",
+    opt_wu_f: "°F (Fahrenheit)",
+    btn_save_weather: "Guardar Ciudad",
     lbl_saved_albums: "Álbumes y Carpetas Guardados (Cifrados Localmente)",
     saved_albums_empty: "Aún no hay enlaces guardados. Los álbumes y carpetas conectados con éxito se cifran y guardan aquí.",
     btn_use_saved_album: "Cambiar",
@@ -2413,6 +2463,13 @@ const I18N = {
     btn_wf_turn_off: "Web-Viewer deaktivieren",
     btn_wf_open: "/frame öffnen",
     btn_open_webframe: "Web-Viewer öffnen (/frame)",
+    lbl_weather_city: "Wetter-Stadt (/frame)",
+    ph_weather_city: "Auto (IP-Standort) oder z.B. Berlin / München",
+    lbl_weather_unit: "Temperatureinheit (/frame)",
+    opt_wu_auto: "Auto (°C / °F)",
+    opt_wu_c: "°C (Celsius)",
+    opt_wu_f: "°F (Fahrenheit)",
+    btn_save_weather: "Stadt speichern",
     lbl_saved_albums: "Gespeicherte Alben & Ordner (Lokal verschlüsselt)",
     saved_albums_empty: "Noch keine Links gespeichert. Erfolgreich verbundene Alben und Ordner werden hier verschlüsselt abgelegt.",
     btn_use_saved_album: "Wechseln",
@@ -3165,6 +3222,10 @@ function applySettingsToForm(cfg) {
   if (upUrlEl) upUrlEl.value = cfg.update_url || '';
   const wfProfEl = document.getElementById('cfg-webframe-profile');
   if (wfProfEl && cfg.web_frame_profile) wfProfEl.value = cfg.web_frame_profile;
+  const wCityEl = document.getElementById('cfg-weather-city');
+  if (wCityEl && cfg.weather_city !== undefined) wCityEl.value = cfg.weather_city || '';
+  const wUnitEl = document.getElementById('cfg-weather-unit');
+  if (wUnitEl && cfg.weather_unit) wUnitEl.value = cfg.weather_unit;
 }
 
 function controlFrame(key) {
@@ -3409,6 +3470,27 @@ async function updateWebFrameProfileLive(profileVal) {
     if (res.ok && data.ok) {
       const labelMap = {auto: 'Auto (Smart Match)', hd: '1080p HD', legacy: '768p Standard'};
       showToast(`Web Viewer picture quality set to ${labelMap[profileVal] || profileVal}`);
+      fetchStatus(false);
+    }
+  } catch (e) {}
+}
+
+async function updateWebFrameWeatherLive() {
+  const cityVal = (document.getElementById('cfg-weather-city')?.value || '').trim();
+  const unitVal = document.getElementById('cfg-weather-unit')?.value || 'auto';
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        target: selectedTarget,
+        weather_city: cityVal,
+        weather_unit: unitVal
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast(`Web Viewer weather updated (${cityVal || 'Auto IP'} · ${unitVal})`);
       fetchStatus(false);
     }
   } catch (e) {}
@@ -3892,6 +3974,8 @@ async function saveSettings(e) {
     night_end: document.getElementById('cfg-night-end').value,
     timezone: (typeof Intl !== 'undefined' && Intl.DateTimeFormat ? (Intl.DateTimeFormat().resolvedOptions().timeZone || '') : ''),
     web_frame_profile: document.getElementById('cfg-webframe-profile')?.value || 'auto',
+    weather_city: (document.getElementById('cfg-weather-city')?.value || '').trim(),
+    weather_unit: document.getElementById('cfg-weather-unit')?.value || 'auto',
   };
   if (!isAll) {
     payload.album = document.getElementById('cfg-album').value.trim();

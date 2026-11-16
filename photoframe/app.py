@@ -38,8 +38,10 @@ from .mdns import (
 from .qrcode_gen import encode_qr_matrix
 from .web_frame import (
     DEFAULT_WEB_FRAME_PORT,
+    VALID_WEATHER_UNITS,
     VALID_WEB_FRAME_PROFILES,
     WebFrameController,
+    normalize_weather_unit,
     normalize_web_frame_profile,
 )
 from .web_portal import start_web_config_server
@@ -83,6 +85,10 @@ class SlideshowApp:
             self.args.web_frame_port = DEFAULT_WEB_FRAME_PORT
         if not hasattr(self.args, "web_frame_profile"):
             self.args.web_frame_profile = "auto"
+        if not hasattr(self.args, "weather_city"):
+            self.args.weather_city = ""
+        if not hasattr(self.args, "weather_unit"):
+            self.args.weather_unit = "auto"
 
         saved = self.config_store.get_settings()
         if saved:
@@ -1495,6 +1501,8 @@ class SlideshowApp:
             "web_frame_enabled": bool(wf_status.get("web_frame_enabled", getattr(self.args, "web_frame_enabled", False))),
             "web_frame_port": int(wf_status.get("web_frame_port", getattr(self.args, "web_frame_port", DEFAULT_WEB_FRAME_PORT))),
             "web_frame_profile": str(wf_status.get("web_frame_profile", getattr(self.args, "web_frame_profile", "auto"))),
+            "weather_city": str(getattr(self.args, "weather_city", "") or ""),
+            "weather_unit": normalize_weather_unit(getattr(self.args, "weather_unit", "auto")),
         }
 
     def get_ram_log_tail(self, max_lines: int = 35) -> str:
@@ -1572,6 +1580,10 @@ class SlideshowApp:
                     clean["web_frame_port"] = wfp
             except Exception:
                 pass
+        if "weather_city" in data:
+            clean["weather_city"] = str(data["weather_city"] or "").strip()[:80]
+        if "weather_unit" in data:
+            clean["weather_unit"] = normalize_weather_unit(str(data["weather_unit"]))
 
         self.config_store.save_settings(clean)
         if hasattr(self, "web_frame") and self.web_frame and (
@@ -2035,6 +2047,17 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         choices=list(VALID_WEB_FRAME_PROFILES),
         default="auto",
         help="Picture Quality & Device Profile for Web Slideshow Viewer: 'auto' (Smart Match), 'hd' (1080p HD), or 'legacy' (768p Standard for older tablets)"
+    )
+    parser.add_argument(
+        "--weather-city",
+        default="",
+        help="Default Weather City for Web Slideshow Viewer (/frame) overlay (default: auto IP location)"
+    )
+    parser.add_argument(
+        "--weather-unit",
+        choices=list(VALID_WEATHER_UNITS),
+        default="auto",
+        help="Default Temperature Unit for Web Slideshow Viewer (/frame): 'auto', 'C', or 'F'"
     )
     parser.add_argument(
         "--device-name", "--hostname",

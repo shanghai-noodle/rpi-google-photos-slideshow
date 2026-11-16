@@ -542,6 +542,43 @@ class TestWebFrameUnit(unittest.TestCase):
         self.assertIn("targetImg.onload = null;", html)
         self.assertIn("currentImg.onload = null;", html)
         self.assertIn("cleanupTimer", html)
+        self.assertIn('id="clock-widget"', html)
+        self.assertIn('id="digital-clock"', html)
+        self.assertIn('id="analog-clock"', html)
+        self.assertIn('id="weather-widget"', html)
+        self.assertIn("pos-bottom-banner", html)
+
+    def test_weather_localization_and_endpoint(self):
+        self.assertEqual(web_frame_mod.normalize_weather_unit("c"), "C")
+        self.assertEqual(web_frame_mod.normalize_weather_unit("Fahrenheit"), "F")
+        self.assertEqual(web_frame_mod.normalize_weather_unit("unknown"), "auto")
+
+        desc_zh, icon_zh = web_frame_mod.localize_wmo_weather(0, is_day=True, lang="zh")
+        self.assertEqual(desc_zh, "晴")
+        self.assertEqual(icon_zh, "☀️")
+
+        desc_en, icon_en = web_frame_mod.localize_zh_weather_desc("多云", lang="en")
+        self.assertEqual(desc_en, "Partly Cloudy")
+        self.assertEqual(icon_en, "⛅")
+
+        cn_info = web_frame_mod.match_china_city("上海 闵行")
+        self.assertIsNotNone(cn_info)
+        self.assertEqual(cn_info[3], "上海 闵行")
+
+        self.app.update_and_persist_settings({
+            "weather_city": "San Francisco",
+            "weather_unit": "F",
+            "language": "en",
+        })
+        self.app._process_web_actions()
+        cfg = self.app.get_current_settings_dict()
+        self.assertEqual(cfg["weather_city"], "San Francisco")
+        self.assertEqual(cfg["weather_unit"], "F")
+
+        state_payload = self.app.web_frame.build_state_payload()
+        self.assertEqual(state_payload["weather_city"], "San Francisco")
+        self.assertEqual(state_payload["weather_unit"], "F")
+        self.assertEqual(state_payload["language"], "en")
 
 
 if __name__ == "__main__":
