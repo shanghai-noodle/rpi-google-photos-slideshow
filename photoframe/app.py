@@ -89,6 +89,8 @@ class SlideshowApp:
             self.args.weather_city = ""
         if not hasattr(self.args, "weather_unit"):
             self.args.weather_unit = "auto"
+        if not hasattr(self.args, "vpn_only_admin"):
+            self.args.vpn_only_admin = False
 
         saved = self.config_store.get_settings()
         if saved:
@@ -1503,6 +1505,7 @@ class SlideshowApp:
             "web_frame_profile": str(wf_status.get("web_frame_profile", getattr(self.args, "web_frame_profile", "auto"))),
             "weather_city": str(getattr(self.args, "weather_city", "") or ""),
             "weather_unit": normalize_weather_unit(getattr(self.args, "weather_unit", "auto")),
+            "vpn_only_admin": bool(getattr(self.args, "vpn_only_admin", False)),
         }
 
     def get_ram_log_tail(self, max_lines: int = 35) -> str:
@@ -1584,6 +1587,8 @@ class SlideshowApp:
             clean["weather_city"] = str(data["weather_city"] or "").strip()[:80]
         if "weather_unit" in data:
             clean["weather_unit"] = normalize_weather_unit(str(data["weather_unit"]))
+        if "vpn_only_admin" in data:
+            clean["vpn_only_admin"] = bool(data["vpn_only_admin"])
 
         self.config_store.save_settings(clean)
         if hasattr(self, "web_frame") and self.web_frame and (
@@ -2058,6 +2063,13 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         choices=list(VALID_WEATHER_UNITS),
         default="auto",
         help="Default Temperature Unit for Web Slideshow Viewer (/frame): 'auto', 'C', or 'F'"
+    )
+    parser.add_argument(
+        "--vpn-only-admin",
+        dest="vpn_only_admin",
+        action="store_true",
+        default=False,
+        help="Restrict Admin Control Portal (:8080/) to VPN (Tailscale/EasyTier/WireGuard) and localhost, redirecting Wi-Fi LAN clients to /frame"
     )
     parser.add_argument(
         "--device-name", "--hostname",

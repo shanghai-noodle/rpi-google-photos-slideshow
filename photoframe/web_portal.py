@@ -17,7 +17,7 @@ import urllib.parse
 from typing import TYPE_CHECKING, Any, Dict, Optional, Type
 
 from .config import FrameConfigStore
-from .fleet import FleetManager, verify_peer_password_auth, verify_peer_request
+from .fleet import FleetManager, is_vpn_or_localhost_ip, verify_peer_password_auth, verify_peer_request
 from .hardware import logger
 from .m3_assets import get_m3_asset
 from .mdns import MDNS_HOSTNAME, get_active_mdns_hostname, start_mdns_responder
@@ -1308,6 +1308,12 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
                 <option value="F" data-i18n="opt_wu_f">°F (Fahrenheit)</option>
               </select>
             </div>
+            <div class="form-group full" style="margin-top:2px;">
+              <label class="checkbox-label" for="cfg-vpn-only-admin" style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                <input type="checkbox" id="cfg-vpn-only-admin" onchange="updateWebFrameVpnOnlyLive(this.checked)" style="width:18px; height:18px;">
+                <span data-i18n="lbl_vpn_only_admin">VPN-Only Admin Access (Redirect local Wi-Fi clients on :8080 to /frame and block Admin APIs)</span>
+              </label>
+            </div>
           </div>
           <div class="btn-grid">
             <button type="button" id="btn-webframe-toggle" class="primary" onclick="toggleWebFramePower()">
@@ -1615,6 +1621,7 @@ const I18N = {
     opt_wu_c: "°C (Celsius)",
     opt_wu_f: "°F (Fahrenheit)",
     btn_save_weather: "Save City",
+    lbl_vpn_only_admin: "VPN-Only Admin Access (Redirect local Wi-Fi clients on :8080 to /frame and block Admin APIs)",
     lbl_saved_albums: "Saved Connected Albums & Folders (Encrypted Locally)",
     saved_albums_empty: "No connected links saved yet. Successfully connected albums and folders are automatically encrypted and stored here.",
     btn_use_saved_album: "Switch",
@@ -1786,6 +1793,7 @@ const I18N = {
     opt_wu_c: "°C (摄氏度)",
     opt_wu_f: "°F (华氏度)",
     btn_save_weather: "保存城市",
+    lbl_vpn_only_admin: "仅允许 VPN 访问管理后台 (局域网 Wi-Fi 访问 :8080 自动跳转至 /frame 并拦截管理接口)",
     lbl_saved_albums: "已保存的历史连接相册与网盘目录（本地加密存储）",
     saved_albums_empty: "暂无已保存的历史链接。成功连接的相册或网盘分享将自动加密保存在此处。",
     btn_use_saved_album: "切换",
@@ -1957,6 +1965,7 @@ const I18N = {
     opt_wu_c: "°C（摂氏）",
     opt_wu_f: "°F（華氏）",
     btn_save_weather: "都市を保存",
+    lbl_vpn_only_admin: "VPN のみ管理画面を許可（Wi-Fi からの :8080 アクセスを /frame に転送し管理 API を遮断）",
     lbl_saved_albums: "保存済みの接続アルバム・フォルダ（ローカル暗号化保存）",
     saved_albums_empty: "保存されたリンクはまだありません。接続に成功したアルバムやフォルダは自動的に暗号化されて保存されます。",
     btn_use_saved_album: "切替",
@@ -2128,6 +2137,7 @@ const I18N = {
     opt_wu_c: "°C (섭씨)",
     opt_wu_f: "°F (화씨)",
     btn_save_weather: "도시 저장",
+    lbl_vpn_only_admin: "VPN 전용 관리자 접속 (로컬 Wi-Fi의 :8080 접속을 /frame으로 리디렉션하고 관리자 API 차단)",
     lbl_saved_albums: "저장된 연결 앨범 및 폴더 (로컬 암호화 저장)",
     saved_albums_empty: "저장된 링크가 없습니다. 성공적으로 연결된 앨범 및 폴더가 자동으로 암호화되어 저장됩니다.",
     btn_use_saved_album: "전환",
@@ -2299,6 +2309,7 @@ const I18N = {
     opt_wu_c: "°C (Celsius)",
     opt_wu_f: "°F (Fahrenheit)",
     btn_save_weather: "Guardar Ciudad",
+    lbl_vpn_only_admin: "Acceso Admin solo por VPN (Redirigir clientes Wi-Fi en :8080 a /frame y bloquear APIs admin)",
     lbl_saved_albums: "Álbumes y Carpetas Guardados (Cifrados Localmente)",
     saved_albums_empty: "Aún no hay enlaces guardados. Los álbumes y carpetas conectados con éxito se cifran y guardan aquí.",
     btn_use_saved_album: "Cambiar",
@@ -2470,6 +2481,7 @@ const I18N = {
     opt_wu_c: "°C (Celsius)",
     opt_wu_f: "°F (Fahrenheit)",
     btn_save_weather: "Stadt speichern",
+    lbl_vpn_only_admin: "Admin-Zugriff nur über VPN (WLAN-Clients auf :8080 zu /frame weiterleiten & Admin-APIs sperren)",
     lbl_saved_albums: "Gespeicherte Alben & Ordner (Lokal verschlüsselt)",
     saved_albums_empty: "Noch keine Links gespeichert. Erfolgreich verbundene Alben und Ordner werden hier verschlüsselt abgelegt.",
     btn_use_saved_album: "Wechseln",
@@ -3226,6 +3238,8 @@ function applySettingsToForm(cfg) {
   if (wCityEl && cfg.weather_city !== undefined) wCityEl.value = cfg.weather_city || '';
   const wUnitEl = document.getElementById('cfg-weather-unit');
   if (wUnitEl && cfg.weather_unit) wUnitEl.value = cfg.weather_unit;
+  const vpnOnlyEl = document.getElementById('cfg-vpn-only-admin');
+  if (vpnOnlyEl) vpnOnlyEl.checked = Boolean(cfg.vpn_only_admin);
 }
 
 function controlFrame(key) {
@@ -3491,6 +3505,24 @@ async function updateWebFrameWeatherLive() {
     const data = await res.json();
     if (res.ok && data.ok) {
       showToast(`Web Viewer weather updated (${cityVal || 'Auto IP'} · ${unitVal})`);
+      fetchStatus(false);
+    }
+  } catch (e) {}
+}
+
+async function updateWebFrameVpnOnlyLive(enabledVal) {
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        target: selectedTarget,
+        vpn_only_admin: Boolean(enabledVal)
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast(enabledVal ? 'VPN-Only Admin Access enabled (Wi-Fi redirected to /frame)' : 'VPN-Only Admin Access disabled');
       fetchStatus(false);
     }
   } catch (e) {}
@@ -3976,6 +4008,7 @@ async function saveSettings(e) {
     web_frame_profile: document.getElementById('cfg-webframe-profile')?.value || 'auto',
     weather_city: (document.getElementById('cfg-weather-city')?.value || '').trim(),
     weather_unit: document.getElementById('cfg-weather-unit')?.value || 'auto',
+    vpn_only_admin: Boolean(document.getElementById('cfg-vpn-only-admin')?.checked),
   };
   if (!isAll) {
     payload.album = document.getElementById('cfg-album').value.trim();
@@ -4344,12 +4377,38 @@ def create_portal_handler(
             except Exception:
                 pass
 
+        def _is_admin_restricted_for_client(self) -> bool:
+            if not bool(getattr(app.args, "vpn_only_admin", False)):
+                return False
+            client_ip = self.client_address[0] if self.client_address else ""
+            local_ip = ""
+            try:
+                sock_addr = self.connection.getsockname()
+                if sock_addr and len(sock_addr) >= 1:
+                    local_ip = str(sock_addr[0])
+            except Exception:
+                pass
+            return not (is_vpn_or_localhost_ip(client_ip) or is_vpn_or_localhost_ip(local_ip))
+
         def do_GET(self):
             self._sync_bound_port()
             if hasattr(app, "web_frame") and app.web_frame is not None:
                 if app.web_frame.handle_http_get(self, is_dedicated_port=False):
                     return
             parsed = urllib.parse.urlparse(self.path)
+            if self._is_admin_restricted_for_client():
+                if parsed.path in ("/", "/index.html"):
+                    self.send_response(302)
+                    self.send_header("Location", "/frame")
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                self._send_json(403, {
+                    "ok": False,
+                    "error": "Admin Portal access is restricted to VPN / localhost connections.",
+                })
+                return
             if parsed.path in ("/", "/index.html"):
                 body = WEB_PORTAL_HTML.encode("utf-8")
                 self.send_response(200)
@@ -4471,6 +4530,12 @@ def create_portal_handler(
 
         def do_POST(self):
             self._sync_bound_port()
+            if self._is_admin_restricted_for_client():
+                self._send_json(403, {
+                    "ok": False,
+                    "error": "Admin Portal access is restricted to VPN / localhost connections.",
+                })
+                return
             parsed = urllib.parse.urlparse(self.path)
 
             if parsed.path == "/api/update_upload":

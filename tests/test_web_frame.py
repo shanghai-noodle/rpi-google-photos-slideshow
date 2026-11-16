@@ -580,6 +580,48 @@ class TestWebFrameUnit(unittest.TestCase):
         self.assertEqual(state_payload["weather_unit"], "F")
         self.assertEqual(state_payload["language"], "en")
 
+    def test_vpn_only_admin_mode_redirects_wifi_to_frame_and_blocks_admin_apis(self):
+        from photoframe.fleet import is_vpn_or_localhost_ip
+
+        self.assertTrue(is_vpn_or_localhost_ip("127.0.0.1"))
+        self.assertTrue(is_vpn_or_localhost_ip("::1"))
+        self.assertTrue(is_vpn_or_localhost_ip("100.74.85.54"))
+        self.assertTrue(is_vpn_or_localhost_ip("10.144.144.44"))
+        self.assertTrue(is_vpn_or_localhost_ip("10.14.14.2"))
+        self.assertFalse(is_vpn_or_localhost_ip("192.168.86.45"))
+        self.assertFalse(is_vpn_or_localhost_ip("172.16.0.10"))
+
+        self.app.update_and_persist_settings({
+            "web_frame_enabled": True,
+            "vpn_only_admin": True,
+        })
+        self.app._process_web_actions()
+        self.assertTrue(self.app.args.vpn_only_admin)
+        self.assertTrue(self.app.get_current_settings_dict()["vpn_only_admin"])
+
+        handler_cls = create_portal_handler(self.app, self.store, login_fail_delay=0.0, port=0)
+        portal_srv = _ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
+        srv_port = portal_srv.server_address[1]
+        t = threading.Thread(target=portal_srv.serve_forever, daemon=True)
+        t.start()
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{srv_port}/api/status", timeout=3) as r:
+                self.assertEqual(r.status, 200)
+
+            with mock.patch("photoframe.web_portal.is_vpn_or_localhost_ip", return_value=False):
+                with urllib.request.urlopen(f"http://127.0.0.1:{srv_port}/frame", timeout=3) as rf:
+                    self.assertEqual(rf.status, 200)
+                with urllib.request.urlopen(f"http://127.0.0.1:{srv_port}/", timeout=3) as rr:
+                    self.assertEqual(rr.status, 200)
+                    self.assertTrue(rr.geturl().endswith("/frame"))
+
+                with self.assertRaises(urllib.error.HTTPError) as ctx_get:
+                    urllib.request.urlopen(f"http://127.0.0.1:{srv_port}/api/status", timeout=3)
+                self.assertEqual(ctx_get.exception.code, 403)
+        finally:
+            portal_srv.shutdown()
+            portal_srv.server_close()
+
 
 if __name__ == "__main__":
     unittest.main()

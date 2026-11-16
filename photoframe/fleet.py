@@ -120,6 +120,39 @@ def is_trusted_peer_ip(ip_str: str) -> bool:
 
 _TAILSCALE_V4 = ipaddress.ip_network("100.64.0.0/10")
 
+_VPN_AND_LOCALHOST_NETWORKS = tuple(
+    ipaddress.ip_network(n)
+    for n in (
+        "127.0.0.0/8",
+        "100.64.0.0/10",
+        "10.144.144.0/24",
+        "10.14.14.0/24",
+        "::1/128",
+        "fd7a:115c:a1e0::/48",
+    )
+)
+
+
+def is_vpn_or_localhost_ip(ip_str: str) -> bool:
+    """
+    Returns True if `ip_str` belongs to loopback (`127.0.0.0/8`, `::1`),
+    Tailscale (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`), EasyTier (`10.144.144.0/24`),
+    or WireGuard (`10.14.14.0/24`).
+    """
+    s = (ip_str or "").strip().lower()
+    if not s:
+        return False
+    if s == "localhost":
+        return True
+    s = s.split("%", 1)[0]
+    if s.startswith("::ffff:"):
+        s = s[7:]
+    try:
+        addr = ipaddress.ip_address(s)
+    except ValueError:
+        return False
+    return any(addr in net for net in _VPN_AND_LOCALHOST_NETWORKS if net.version == addr.version)
+
 
 def _address_rank(ip_str: str, my_ip: str) -> int:
     """Lower is better. Picks the preferred alias when one frame is reachable via several addresses."""
