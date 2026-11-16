@@ -505,6 +505,80 @@ def _fetch_china_weather_endpoints(
     return None
 
 
+def localize_en_weather_desc(raw_desc: str, lang: str = "en") -> Tuple[str, str]:
+    """Maps an English weather description (e.g. from wttr.in) to `(localized_desc, icon)`."""
+    d = (raw_desc or "Clear").strip()
+    low = d.lower()
+    lg = (lang or "en").strip().lower()[:2]
+    if lg not in ("en", "zh", "ja", "ko", "es", "de"):
+        lg = "en"
+
+    if "thunder" in low or "storm" in low:
+        key, icon = "thunderstorm", "⚡"
+    elif "snow" in low or "blizzard" in low or "sleet" in low or "ice" in low:
+        key, icon = "snow", "❄️"
+    elif "heavy rain" in low or "torrential" in low:
+        key, icon = "heavy_rain", "⛈️"
+    elif "shower" in low:
+        key, icon = "showers", "🌦️"
+    elif "light rain" in low or "patchy rain" in low:
+        key, icon = "light_rain", "🌦️"
+    elif "drizzle" in low:
+        key, icon = "drizzle", "🌦️"
+    elif "rain" in low:
+        key, icon = "rain", "🌧️"
+    elif "fog" in low or "mist" in low or "haze" in low:
+        key, icon = "fog", "🌫️"
+    elif "partly cloudy" in low:
+        key, icon = "partly_cloudy", "⛅"
+    elif "cloudy" in low or "overcast" in low:
+        key, icon = "overcast", "☁️"
+    elif "clear" in low or "sunny" in low:
+        key, icon = "clear", ("🌙" if "clear" in low and "sunny" not in low else "☀️")
+    else:
+        key, icon = "clear", "☀️"
+
+    return _WMO_I18N[key].get(lg, _WMO_I18N[key]["en"]), icon
+
+
+def _fetch_wttr_weather(city_query: str, lang: str = "en") -> Optional[Dict[str, Any]]:
+    """Fetches current weather from `wttr.in/{city}?format=j1` (IPv4-friendly global endpoint)."""
+    ctx = _get_unverified_ssl_ctx()
+    q = (city_query or "").strip()
+    if not q:
+        return None
+    try:
+        encoded_city = urllib.parse.quote(q)
+        req = urllib.request.Request(
+            f"https://wttr.in/{encoded_city}?format=j1",
+            headers={"User-Agent": "Mozilla/5.0 (PhotoFrame/1.0)"},
+        )
+        with urllib.request.urlopen(req, context=ctx, timeout=4.5) as r:
+            d = json.loads(r.read().decode("utf-8"))
+            cond_list = d.get("current_condition") or []
+            if cond_list:
+                cur = cond_list[0]
+                temp_c = int(round(float(cur.get("temp_C", 22))))
+                temp_f = int(round(float(cur.get("temp_F", round(temp_c * 9.0 / 5.0 + 32.0)))))
+                w_desc_list = cur.get("weatherDesc") or [{}]
+                raw_desc = str((w_desc_list[0] if w_desc_list else {}).get("value", "Clear") or "Clear")
+                desc, icon = localize_en_weather_desc(raw_desc, lang=lang)
+                hum = cur.get("humidity", "")
+                return {
+                    "ok": True,
+                    "city": q,
+                    "tempC": temp_c,
+                    "tempF": temp_f,
+                    "desc": desc,
+                    "icon": icon,
+                    "humidity": f"{hum}%" if hum != "" else "",
+                    "source": "wttr.in",
+                }
+    except Exception:
+        pass
+    return None
+
+
 def _fetch_open_meteo_by_coords(
     lat: float,
     lon: float,
@@ -613,13 +687,13 @@ def fetch_weather_data(
             prov, cty, cty_code, disp, cma_code = cn_match
             result = _fetch_china_weather_endpoints(prov, cty, cty_code, disp, cma_code, lang=lg)
             if result is None:
-                result = _fetch_open_meteo_by_city(cty or clean_q, lang=lg)
+                result = _fetch_wttr_weather(cty or clean_q, lang=lg) or _fetch_open_meteo_by_city(cty or clean_q, lang=lg)
                 if result is not None:
                     result["city"] = disp
         else:
-            result = _fetch_open_meteo_by_city(clean_q, lang=lg)
+            result = _fetch_wttr_weather(clean_q, lang=lg) or _fetch_open_meteo_by_city(clean_q, lang=lg)
             if result is None:
-                # Fallback if Open-Meteo is blocked in China
+                # Fallback if global endpoints are blocked in China
                 result = _fetch_china_weather_endpoints("上海", "上海", "闵行", clean_q, "101020200", lang=lg)
     else:
         # Case 2: Auto-detect from IP geolocation
@@ -644,6 +718,8 @@ def fetch_weather_data(
                         "101020200",
                         lang=lg,
                     )
+            if result is None and city_name:
+                result = _fetch_wttr_weather(city_name, lang=lg)
             if result is None and (lat != 0.0 or lon != 0.0):
                 result = _fetch_open_meteo_by_coords(lat, lon, city_name or "Local", lang=lg)
 
@@ -651,7 +727,7 @@ def fetch_weather_data(
             if edition == "baidupan" or lg == "zh":
                 result = _fetch_china_weather_endpoints("上海", "上海", "闵行", "上海 闵行", "101020200", lang=lg)
             else:
-                result = _fetch_open_meteo_by_coords(37.7749, -122.4194, "San Francisco", lang=lg)
+                result = _fetch_wttr_weather("San Francisco", lang=lg) or _fetch_open_meteo_by_coords(37.7749, -122.4194, "San Francisco", lang=lg)
 
     if result is None:
         default_city = clean_q or ("上海 闵行" if (edition == "baidupan" or lg == "zh") else "San Francisco")
