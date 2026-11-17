@@ -1004,8 +1004,54 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
 
   #night-overlay {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    background-color: #000000; color: #475569; z-index: 50;
-    display: none; text-align: center; padding-top: 42vh; font-size: 15px;
+    background-color: #000000; color: rgba(226, 232, 240, 0.34); z-index: 50;
+    display: none; text-align: center; padding: 24px;
+    -webkit-flex-direction: column; flex-direction: column;
+    -webkit-align-items: center; align-items: center;
+    -webkit-justify-content: center; justify-content: center;
+  }
+  #night-overlay.active {
+    display: -webkit-flex; display: flex;
+  }
+  .night-clock-wrap {
+    display: -webkit-flex; display: flex;
+    -webkit-flex-direction: column; flex-direction: column;
+    -webkit-align-items: center; align-items: center;
+    -webkit-justify-content: center; justify-content: center;
+    margin-bottom: 4vh;
+  }
+  .night-time-row {
+    display: -webkit-flex; display: flex;
+    -webkit-align-items: baseline; align-items: baseline;
+    -webkit-justify-content: center; justify-content: center;
+    font-weight: 700; line-height: 1; letter-spacing: -0.03em;
+    color: rgba(226, 232, 240, 0.34);
+    font-variant-numeric: tabular-nums;
+  }
+  .night-time-main {
+    font-size: 132px; font-size: clamp(4.8rem, 17.5vw, 13.5rem);
+  }
+  .night-time-colon {
+    font-size: 112px; font-size: clamp(4.0rem, 14.5vw, 11.2rem);
+    opacity: 0.78; margin: 0 6px;
+  }
+  .night-time-ampm {
+    font-size: 28px; font-size: clamp(1.25rem, 3.2vw, 2.6rem);
+    font-weight: 600; margin-left: 14px;
+    color: rgba(226, 232, 240, 0.26);
+  }
+  .night-sub-row {
+    font-size: 24px; font-size: clamp(1.1rem, 2.8vw, 2.1rem);
+    font-weight: 500; color: rgba(226, 232, 240, 0.25);
+    margin-top: 14px; line-height: 1.3;
+  }
+  .night-disclaimer {
+    position: fixed; left: 16px; right: 16px; bottom: 18px;
+    text-align: center; font-size: 12px; font-weight: 500;
+    letter-spacing: 0.03em; color: rgba(148, 163, 184, 0.28);
+  }
+  #night-overlay.disabled-mode .night-disclaimer {
+    position: static; font-size: 16px; color: #64748b;
   }
   #hud {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
@@ -1091,7 +1137,16 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
   <div id="clock-pill"></div>
 
   <div id="night-overlay" onclick="toggleHud()">
-    <div id="night-msg">🌙 Night Mode Active</div>
+    <div id="night-clock-wrap" class="night-clock-wrap">
+      <div class="night-time-row">
+        <span id="night-clock-hours" class="night-time-main">12</span>
+        <span class="night-time-colon">:</span>
+        <span id="night-clock-minutes" class="night-time-main">00</span>
+        <span id="night-clock-ampm" class="night-time-ampm">PM</span>
+      </div>
+      <div id="night-clock-sub" class="night-sub-row">Sunday · Nov 15</div>
+    </div>
+    <div id="night-msg" class="night-disclaimer">🌙 Night Mode Active</div>
   </div>
 
   <div id="hud">
@@ -1533,10 +1588,34 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
     var elSep = document.getElementById("clock-date-sep");
     var elDate = document.getElementById("clock-date");
     var elAnaDate = document.getElementById("analog-date-text");
+    var sepStr = (frameLang === "zh" || frameLang === "ja" || frameLang === "ko") ? " · " : ", ";
     if (elDay) elDay.innerHTML = dayName;
-    if (elSep) elSep.innerHTML = (frameLang === "zh" || frameLang === "ja" || frameLang === "ko") ? " · " : ", ";
+    if (elSep) elSep.innerHTML = sepStr;
     if (elDate) elDate.innerHTML = fullDateStr;
     if (elAnaDate) elAnaDate.innerHTML = dayName + " · " + fullDateStr;
+
+    var nH = document.getElementById("night-clock-hours");
+    var nM = document.getElementById("night-clock-minutes");
+    var nAmpm = document.getElementById("night-clock-ampm");
+    var nSub = document.getElementById("night-clock-sub");
+    if (nH) nH.innerHTML = hStr;
+    if (nM) nM.innerHTML = mStr;
+    if (nAmpm) {
+      nAmpm.innerHTML = ampmStr;
+      nAmpm.style.display = clock24h ? "none" : "";
+    }
+    if (nSub) {
+      var wPart = "";
+      if (lastWeatherData && clientWeatherUnit !== "off") {
+        var uName = effectiveTemperatureUnit();
+        var tVal = (uName === "F")
+          ? (lastWeatherData.tempF !== undefined ? lastWeatherData.tempF : 75)
+          : (lastWeatherData.tempC !== undefined ? lastWeatherData.tempC : 24);
+        wPart = "  ·  " + (lastWeatherData.icon || "☀️") + " " + tVal + "°" + uName;
+        if (lastWeatherData.desc) wPart += " " + lastWeatherData.desc;
+      }
+      nSub.innerHTML = dayName + sepStr + fullDateStr + wPart;
+    }
 
     var minAngle = mm * 6;
     var hrAngle = ((hh24 % 12) + mm / 60.0) * 30;
@@ -1576,6 +1655,7 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
     if (elTemp) elTemp.innerHTML = tempVal + "°" + unit;
     if (elDesc) elDesc.innerHTML = lastWeatherData.desc || "";
     if (elLoc) elLoc.innerHTML = lastWeatherData.city || "";
+    updateClock();
   }
 
   function fetchWeather() {
@@ -1836,20 +1916,32 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
           renderHudStatusInfo();
 
           var overlay = document.getElementById("night-overlay");
+          var nClockWrap = document.getElementById("night-clock-wrap");
           if (!isEnabled) {
-            if (overlay) overlay.style.display = "block";
+            if (overlay) {
+              overlay.className = "active disabled-mode";
+              overlay.style.display = "block";
+            }
+            if (nClockWrap) nClockWrap.style.display = "none";
             var imgA = document.getElementById("slide-a");
             var imgB = document.getElementById("slide-b");
             if (imgA) { imgA.onload = null; imgA.onerror = null; imgA.src = BLANK_GIF; }
             if (imgB) { imgB.onload = null; imgB.onerror = null; imgB.src = BLANK_GIF; }
           } else if (isNightMode) {
-            if (overlay) overlay.style.display = "block";
+            if (overlay) {
+              overlay.className = "active";
+              overlay.style.display = "";
+            }
+            if (nClockWrap) nClockWrap.style.display = "";
             var imgA2 = document.getElementById("slide-a");
             var imgB2 = document.getElementById("slide-b");
             if (imgA2) { imgA2.onload = null; imgA2.onerror = null; imgA2.src = BLANK_GIF; }
             if (imgB2) { imgB2.onload = null; imgB2.onerror = null; imgB2.src = BLANK_GIF; }
           } else {
-            if (overlay) overlay.style.display = "none";
+            if (overlay) {
+              overlay.className = "";
+              overlay.style.display = "none";
+            }
             if (wasNightOrDisabled && slideCount > 0) {
               loadSlide("next");
             }
