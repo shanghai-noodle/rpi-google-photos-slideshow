@@ -78,9 +78,11 @@ def detect_hardware_profile(
         machine_override is not None or sys.platform.startswith("linux")
     )
     if is_arm_sbc and total_ram_mb < 1500:
-        # Raspberry Pi 2 / Pi 3 1GB: cap FFmpeg internal decode/pipe resolution at 640px
-        # (matching =m18 native 640x360 stream with zero quality loss while avoiding 9x
-        # wasted FFmpeg software upscale/transpose/pipe work) and pace at 20 FPS with headroom.
+        # Raspberry Pi 2 / Pi 3 1GB: keep full 1080p photo sharpness & 20 FPS @ 640px video,
+        # while halving off-screen decoded image queues (4+4) and slide history (1) to avoid swap pressure.
+        prof["portrait_queue_max"] = 4
+        prof["landscape_queue_max"] = 4
+        prof["slide_history_max"] = 1
         prof["video_fps"] = 20
         prof["video_max_edge"] = 640
     elif is_arm_sbc:

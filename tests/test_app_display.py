@@ -412,6 +412,10 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         _, pi3_prof = detect_hardware_profile("auto", machine_override="armv7l", meminfo_path=mem_1gb)
         self.assertEqual(pi3_prof["video_fps"], 20)
         self.assertEqual(pi3_prof["video_max_edge"], 640)
+        self.assertEqual(pi3_prof["portrait_queue_max"], 4)
+        self.assertEqual(pi3_prof["landscape_queue_max"], 4)
+        self.assertEqual(pi3_prof["slide_history_max"], 1)
+        self.assertEqual(pi3_prof["cdn_scale"], 1.0)
 
         mem_4gb = os.path.join(self.tmp_dir.name, "meminfo_4gb")
         with open(mem_4gb, "w", encoding="utf-8") as f:
@@ -419,6 +423,9 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         _, hi_prof = detect_hardware_profile("auto", machine_override="aarch64", meminfo_path=mem_4gb)
         self.assertEqual(hi_prof["video_fps"], 30)
         self.assertEqual(hi_prof["video_max_edge"], 960)
+        self.assertEqual(hi_prof["portrait_queue_max"], 8)
+        self.assertEqual(hi_prof["landscape_queue_max"], 8)
+        self.assertEqual(hi_prof["slide_history_max"], 3)
 
         # Verify capped-resolution FFmpeg decode sizing (e.g. 1080x1920 rotated 270 -> 640x360 pipe)
         args_pi = parse_args(["--rotate", "270"])

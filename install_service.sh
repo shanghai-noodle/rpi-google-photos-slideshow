@@ -35,6 +35,8 @@ WorkingDirectory=${REPO_DIR}
 # Auto-detects Wayland/X11 Desktop or direct KMS/DRM / Framebuffer
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=MALLOC_ARENA_MAX=2
+Environment=MALLOC_MMAP_THRESHOLD_=65536
 Nice=-5
 # Starts in Demo Showcase Mode until configured via the Web Portal (http://<device-ip>:8080)
 ExecStart=/usr/bin/python3 -B ${REPO_DIR}/slideshow.py --duration 15 --rotate 0 --landscape-mode collage --quiet
