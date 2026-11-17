@@ -1150,6 +1150,41 @@ class SlideshowApp:
         "de": ("Diashow Pausiert", "Bildschirm antippen oder Leertaste zum Fortsetzen"),
     }
 
+    _CJK_FONT_CANDIDATES = (
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+        "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/STHeiti Medium.ttc",
+    )
+
+    @classmethod
+    def _load_cjk_font(cls, size: int, bold: bool = True) -> Any:
+        pygame.font.init()
+        for font_path in cls._CJK_FONT_CANDIDATES:
+            if os.path.isfile(font_path):
+                try:
+                    f = pygame.font.Font(font_path, size)
+                    f.set_bold(bold)
+                    return f
+                except Exception:
+                    pass
+        try:
+            matched = pygame.font.match_font(
+                "notosanscjksc,notosanscjktc,notosanscjkjp,wenquanyimicrohei,droidsansfallback,pingfangsc,hiraginosans,malgungothic",
+                bold=False,
+            )
+            if matched:
+                f = pygame.font.Font(matched, size)
+                f.set_bold(bold)
+                return f
+        except Exception:
+            pass
+        return pygame.font.SysFont("dejavusans,freesans,arial,sans-serif", size, bold=bold)
+
     def _draw_pause_banner(self, target: Any):
         """
         Draws a prominent, elderly-friendly top-center Pause pill banner with a warm
@@ -1162,10 +1197,8 @@ class SlideshowApp:
             title_txt, sub_txt = self._PAUSE_I18N.get(lang, self._PAUSE_I18N["en"])
             cache_key = ("pause_banner", lang)
             if getattr(self, "_cached_pause_banner_key", None) != cache_key or getattr(self, "_cached_pause_banner", None) is None:
-                pygame.font.init()
-                font_names = "notosanscjksc,notosanscjktc,notosanscjkjp,wenquanyimicrohei,droidsansfallback,pingfangsc,hiraginosans,malgungothic,dejavusans,arial,sans-serif"
-                t_font = pygame.font.SysFont(font_names, 26, bold=True)
-                s_font = pygame.font.SysFont(font_names, 17, bold=True)
+                t_font = self._load_cjk_font(26, bold=True)
+                s_font = self._load_cjk_font(17, bold=True)
 
                 s_title = t_font.render(title_txt, True, (254, 243, 199))
                 s_sub = s_font.render(sub_txt, True, (253, 230, 138))
