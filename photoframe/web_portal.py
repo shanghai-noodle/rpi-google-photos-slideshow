@@ -1319,6 +1319,14 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
                 <option value="de">Deutsch</option>
               </select>
             </div>
+            <div class="form-group">
+              <label for="cfg-webframe-scale" data-i18n="lbl_webframe_scale">Clock &amp; Weather Tile Size (/frame)</label>
+              <select id="cfg-webframe-scale" onchange="updateWebFrameScaleLive(this.value)">
+                <option value="small" data-i18n="opt_wfs_small">Small (0.75× Compact)</option>
+                <option value="medium" selected data-i18n="opt_wfs_medium">Medium (1.0× Standard — Default)</option>
+                <option value="large" data-i18n="opt_wfs_large">Large (1.35× Extra Large)</option>
+              </select>
+            </div>
             <div class="form-group full" style="margin-top:2px;">
               <label class="checkbox-label" for="cfg-vpn-only-admin" style="display:flex; align-items:center; gap:10px; cursor:pointer;">
                 <input type="checkbox" id="cfg-vpn-only-admin" onchange="updateWebFrameVpnOnlyLive(this.checked)" style="width:18px; height:18px;">
@@ -1632,6 +1640,10 @@ const I18N = {
     opt_wu_c: "°C (Celsius)",
     opt_wu_f: "°F (Fahrenheit)",
     btn_save_weather: "Save City",
+    lbl_webframe_scale: "Clock & Weather Tile Size (/frame)",
+    opt_wfs_small: "Small (0.75× Compact)",
+    opt_wfs_medium: "Medium (1.0× Standard — Default)",
+    opt_wfs_large: "Large (1.35× Extra Large)",
     lbl_vpn_only_admin: "VPN-Only Admin Access (Redirect local Wi-Fi clients on :8080 to /frame and block Admin APIs)",
     lbl_saved_albums: "Saved Connected Albums & Folders (Encrypted Locally)",
     saved_albums_empty: "No connected links saved yet. Successfully connected albums and folders are automatically encrypted and stored here.",
@@ -1804,6 +1816,10 @@ const I18N = {
     opt_wu_c: "°C (摄氏度)",
     opt_wu_f: "°F (华氏度)",
     btn_save_weather: "保存城市",
+    lbl_webframe_scale: "时钟与天气卡片尺寸 (/frame)",
+    opt_wfs_small: "小号 (0.75× 紧凑)",
+    opt_wfs_medium: "中号 (1.0× 标准 — 默认)",
+    opt_wfs_large: "大号 (1.35× 特大)",
     lbl_vpn_only_admin: "仅允许 VPN 访问管理后台 (局域网 Wi-Fi 访问 :8080 自动跳转至 /frame 并拦截管理接口)",
     lbl_saved_albums: "已保存的历史连接相册与网盘目录（本地加密存储）",
     saved_albums_empty: "暂无已保存的历史链接。成功连接的相册或网盘分享将自动加密保存在此处。",
@@ -1976,6 +1992,10 @@ const I18N = {
     opt_wu_c: "°C（摂氏）",
     opt_wu_f: "°F（華氏）",
     btn_save_weather: "都市を保存",
+    lbl_webframe_scale: "時計・天気タイルのサイズ (/frame)",
+    opt_wfs_small: "小 (0.75× コンパクト)",
+    opt_wfs_medium: "中 (1.0× 標準 — デフォルト)",
+    opt_wfs_large: "大 (1.35× 特大)",
     lbl_vpn_only_admin: "VPN のみ管理画面を許可（Wi-Fi からの :8080 アクセスを /frame に転送し管理 API を遮断）",
     lbl_saved_albums: "保存済みの接続アルバム・フォルダ（ローカル暗号化保存）",
     saved_albums_empty: "保存されたリンクはまだありません。接続に成功したアルバムやフォルダは自動的に暗号化されて保存されます。",
@@ -2148,6 +2168,10 @@ const I18N = {
     opt_wu_c: "°C (섭씨)",
     opt_wu_f: "°F (화씨)",
     btn_save_weather: "도시 저장",
+    lbl_webframe_scale: "시계 및 날씨 타일 크기 (/frame)",
+    opt_wfs_small: "작게 (0.75× 콤팩트)",
+    opt_wfs_medium: "보통 (1.0× 표준 — 기본값)",
+    opt_wfs_large: "크게 (1.35× 특대)",
     lbl_vpn_only_admin: "VPN 전용 관리자 접속 (로컬 Wi-Fi의 :8080 접속을 /frame으로 리디렉션하고 관리자 API 차단)",
     lbl_saved_albums: "저장된 연결 앨범 및 폴더 (로컬 암호화 저장)",
     saved_albums_empty: "저장된 링크가 없습니다. 성공적으로 연결된 앨범 및 폴더가 자동으로 암호화되어 저장됩니다.",
@@ -2320,6 +2344,10 @@ const I18N = {
     opt_wu_c: "°C (Celsius)",
     opt_wu_f: "°F (Fahrenheit)",
     btn_save_weather: "Guardar Ciudad",
+    lbl_webframe_scale: "Tamaño de Reloj y Clima (/frame)",
+    opt_wfs_small: "Pequeño (0.75× Compacto)",
+    opt_wfs_medium: "Mediano (1.0× Estándar — Predet.)",
+    opt_wfs_large: "Grande (1.35× Extra Grande)",
     lbl_vpn_only_admin: "Acceso Admin solo por VPN (Redirigir clientes Wi-Fi en :8080 a /frame y bloquear APIs admin)",
     lbl_saved_albums: "Álbumes y Carpetas Guardados (Cifrados Localmente)",
     saved_albums_empty: "Aún no hay enlaces guardados. Los álbumes y carpetas conectados con éxito se cifran y guardan aquí.",
@@ -2492,6 +2520,10 @@ const I18N = {
     opt_wu_c: "°C (Celsius)",
     opt_wu_f: "°F (Fahrenheit)",
     btn_save_weather: "Stadt speichern",
+    lbl_webframe_scale: "Uhr- & Wetter-Kachelgröße (/frame)",
+    opt_wfs_small: "Klein (0.75× Kompakt)",
+    opt_wfs_medium: "Mittel (1.0× Standard)",
+    opt_wfs_large: "Groß (1.35× Extra Groß)",
     lbl_vpn_only_admin: "Admin-Zugriff nur über VPN (WLAN-Clients auf :8080 zu /frame weiterleiten & Admin-APIs sperren)",
     lbl_saved_albums: "Gespeicherte Alben & Ordner (Lokal verschlüsselt)",
     saved_albums_empty: "Noch keine Links gespeichert. Erfolgreich verbundene Alben und Ordner werden hier verschlüsselt abgelegt.",
@@ -3254,6 +3286,8 @@ function applySettingsToForm(cfg) {
   if (wCityEl && cfg.weather_city !== undefined) wCityEl.value = cfg.weather_city || '';
   const wUnitEl = document.getElementById('cfg-weather-unit');
   if (wUnitEl && cfg.weather_unit) wUnitEl.value = cfg.weather_unit;
+  const wfScaleEl = document.getElementById('cfg-webframe-scale');
+  if (wfScaleEl && cfg.web_frame_overlay_scale) wfScaleEl.value = cfg.web_frame_overlay_scale;
   const vpnOnlyEl = document.getElementById('cfg-vpn-only-admin');
   if (vpnOnlyEl) vpnOnlyEl.checked = Boolean(cfg.vpn_only_admin);
 }
@@ -3521,6 +3555,25 @@ async function updateWebFrameWeatherLive() {
     const data = await res.json();
     if (res.ok && data.ok) {
       showToast(`Web Viewer weather updated (${cityVal || 'Auto IP'} · ${unitVal})`);
+      fetchStatus(false);
+    }
+  } catch (e) {}
+}
+
+async function updateWebFrameScaleLive(scaleVal) {
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        target: selectedTarget,
+        web_frame_overlay_scale: scaleVal || 'medium'
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      const labelMap = {small: 'Small (0.75×)', medium: 'Medium (1.0×)', large: 'Large (1.35×)'};
+      showToast(`Clock & Weather tile size set to ${labelMap[scaleVal] || scaleVal}`);
       fetchStatus(false);
     }
   } catch (e) {}

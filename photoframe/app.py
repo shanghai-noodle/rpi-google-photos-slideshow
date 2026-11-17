@@ -38,9 +38,11 @@ from .mdns import (
 from .qrcode_gen import encode_qr_matrix
 from .web_frame import (
     DEFAULT_WEB_FRAME_PORT,
+    VALID_OVERLAY_SCALES,
     VALID_WEATHER_UNITS,
     VALID_WEB_FRAME_PROFILES,
     WebFrameController,
+    normalize_overlay_scale,
     normalize_weather_unit,
     normalize_web_frame_profile,
 )
@@ -89,6 +91,8 @@ class SlideshowApp:
             self.args.weather_city = ""
         if not hasattr(self.args, "weather_unit"):
             self.args.weather_unit = "auto"
+        if not hasattr(self.args, "web_frame_overlay_scale"):
+            self.args.web_frame_overlay_scale = "medium"
         if not hasattr(self.args, "vpn_only_admin"):
             self.args.vpn_only_admin = False
 
@@ -1505,6 +1509,7 @@ class SlideshowApp:
             "web_frame_profile": str(wf_status.get("web_frame_profile", getattr(self.args, "web_frame_profile", "auto"))),
             "weather_city": str(getattr(self.args, "weather_city", "") or ""),
             "weather_unit": normalize_weather_unit(getattr(self.args, "weather_unit", "auto")),
+            "web_frame_overlay_scale": normalize_overlay_scale(getattr(self.args, "web_frame_overlay_scale", "medium")),
             "vpn_only_admin": bool(getattr(self.args, "vpn_only_admin", False)),
         }
 
@@ -1587,6 +1592,8 @@ class SlideshowApp:
             clean["weather_city"] = str(data["weather_city"] or "").strip()[:80]
         if "weather_unit" in data:
             clean["weather_unit"] = normalize_weather_unit(str(data["weather_unit"]))
+        if "web_frame_overlay_scale" in data:
+            clean["web_frame_overlay_scale"] = normalize_overlay_scale(str(data["web_frame_overlay_scale"]))
         if "vpn_only_admin" in data:
             clean["vpn_only_admin"] = bool(data["vpn_only_admin"])
 
@@ -2063,6 +2070,13 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         choices=list(VALID_WEATHER_UNITS),
         default="auto",
         help="Default Temperature Unit for Web Slideshow Viewer (/frame): 'auto', 'C', or 'F'"
+    )
+    parser.add_argument(
+        "--web-frame-overlay-scale",
+        dest="web_frame_overlay_scale",
+        choices=list(VALID_OVERLAY_SCALES),
+        default="medium",
+        help="Clock & Weather Overlay Size for Web Slideshow Viewer (/frame): 'small' (0.75x), 'medium' (1.0x), or 'large' (1.35x)"
     )
     parser.add_argument(
         "--vpn-only-admin",

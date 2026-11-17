@@ -51,6 +51,7 @@ from .mdns import get_active_mdns_hostname
 
 VALID_WEB_FRAME_PROFILES = ("auto", "legacy", "hd")
 VALID_WEATHER_UNITS = ("auto", "C", "F")
+VALID_OVERLAY_SCALES = ("small", "medium", "large")
 DEFAULT_WEB_FRAME_PORT = 0
 
 # Minimal valid 1x1 black baseline JPEG fallback when Pillow is unavailable
@@ -100,6 +101,18 @@ def normalize_weather_unit(unit: Optional[str]) -> str:
     if val in ("F", "FAHRENHEIT", "°F"):
         return "F"
     return "auto"
+
+
+def normalize_overlay_scale(scale: Optional[str]) -> str:
+    """Normalizes a clock/weather overlay scale into `'small'`, `'medium'`, or `'large'`."""
+    if not scale:
+        return "medium"
+    val = str(scale).strip().lower()
+    if val in ("small", "s", "compact", "0.75"):
+        return "small"
+    if val in ("large", "l", "xl", "1.35"):
+        return "large"
+    return "medium"
 
 
 def detect_web_client_profile(
@@ -1000,6 +1013,31 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
     margin-top: 3px; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.95);
   }
 
+  /* 3-Level Clock & Weather Overlay Scale (small = 0.75x, medium = 1.0x, large = 1.35x) */
+  .clock-widget.scale-small:not(.pos-bottom-banner) { padding: 11px 16px; border-radius: 16px; }
+  .clock-widget.scale-small .time-main { font-size: 44px; font-size: clamp(2.1rem, 5.0vw, 4.4rem); }
+  .clock-widget.scale-small .time-colon { font-size: 38px; font-size: clamp(1.8rem, 4.3vw, 3.8rem); }
+  .clock-widget.scale-small .time-ampm { font-size: 14px; font-size: clamp(0.85rem, 1.6vw, 1.4rem); margin-left: 7px; }
+  .clock-widget.scale-small .date-row { font-size: 16px; font-size: clamp(0.92rem, 1.75vw, 1.45rem); }
+  .clock-widget.scale-small .analog-dial { width: 88px; height: 88px; }
+  .clock-widget.scale-small .analog-date-label { font-size: 12px; }
+  .clock-widget.scale-small .weather-icon { font-size: 24px; font-size: clamp(1.25rem, 2.3vw, 2.0rem); margin-right: 9px; }
+  .clock-widget.scale-small .weather-temp { font-size: 19px; font-size: clamp(1.0rem, 1.9vw, 1.55rem); margin-right: 6px; }
+  .clock-widget.scale-small .weather-desc { font-size: 14px; font-size: clamp(0.8rem, 1.35vw, 1.05rem); }
+  .clock-widget.scale-small .weather-location { font-size: 11px; font-size: clamp(0.68rem, 1.05vw, 0.85rem); }
+
+  .clock-widget.scale-large:not(.pos-bottom-banner) { padding: 22px 30px; border-radius: 28px; }
+  .clock-widget.scale-large .time-main { font-size: 86px; font-size: clamp(4.1rem, 9.8vw, 8.6rem); }
+  .clock-widget.scale-large .time-colon { font-size: 74px; font-size: clamp(3.4rem, 8.4vw, 7.4rem); }
+  .clock-widget.scale-large .time-ampm { font-size: 27px; font-size: clamp(1.45rem, 3.0vw, 2.7rem); margin-left: 13px; }
+  .clock-widget.scale-large .date-row { font-size: 30px; font-size: clamp(1.6rem, 3.25vw, 2.7rem); margin-top: 6px; }
+  .clock-widget.scale-large .analog-dial { width: 164px; height: 164px; }
+  .clock-widget.scale-large .analog-date-label { font-size: 20px; }
+  .clock-widget.scale-large .weather-icon { font-size: 44px; font-size: clamp(2.3rem, 4.4vw, 3.7rem); margin-right: 16px; }
+  .clock-widget.scale-large .weather-temp { font-size: 36px; font-size: clamp(1.85rem, 3.5vw, 2.9rem); margin-right: 10px; }
+  .clock-widget.scale-large .weather-desc { font-size: 24px; font-size: clamp(1.35rem, 2.4vw, 1.9rem); }
+  .clock-widget.scale-large .weather-location { font-size: 19px; font-size: clamp(1.1rem, 1.9vw, 1.5rem); margin-top: 4px; }
+
   #clock-pill { display: none; }
 
   #night-overlay {
@@ -1190,6 +1228,12 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
         <option value="pos-top-right" id="opt-pos-tr">Top Right</option>
         <option value="pos-center-bottom" id="opt-pos-bc">Bottom Center</option>
       </select>
+      <select id="hud-clock-scale" class="hud-select" onchange="changeClockScale(this.value)">
+        <option value="auto" id="opt-sc-auto">🔍 Size: Auto (Admin)</option>
+        <option value="small" id="opt-sc-small">🔍 Small (0.75×)</option>
+        <option value="medium" id="opt-sc-medium">🔍 Medium (1.0×)</option>
+        <option value="large" id="opt-sc-large">🔍 Large (1.35×)</option>
+      </select>
       <button type="button" class="hud-btn" id="btn-clock-24h" onclick="toggleClock24h()">12h</button>
       <select id="hud-weather-unit" class="hud-select" onchange="changeWeatherUnit(this.value)">
         <option value="auto" id="opt-wu-auto">🌤️ Unit: Auto</option>
@@ -1228,6 +1272,8 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
   var frameEdition = "gphotos";
   var serverWeatherCity = "";
   var serverWeatherUnit = "auto";
+  var serverOverlayScale = "medium";
+  var clientOverlayScale = "auto";
   var clockStyle = "digital";
   var clockPos = "pos-bottom-banner";
   var clock24h = false;
@@ -1276,6 +1322,7 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       clk_digital: "⏰ Digital Clock", clk_analog: "🕰️ Analog Clock", clk_hidden: "🚫 Hide Clock",
       pos_banner: "Banner (Bottom)", pos_bl: "Bottom Left", pos_br: "Bottom Right",
       pos_tl: "Top Left", pos_tr: "Top Right", pos_bc: "Bottom Center",
+      sc_auto: "🔍 Size: Auto (Admin)", sc_small: "🔍 Small (0.75×)", sc_medium: "🔍 Medium (1.0×)", sc_large: "🔍 Large (1.35×)",
       wu_auto: "🌤️ Unit: Auto", wu_off: "🚫 Weather Off",
       ph_city_auto: "City (Auto IP)", ph_city_def: "Default: ", btn_set_city: "Set City",
       items_unit: "items", p_hd: "1080p HD", p_leg: "768p Standard",
@@ -1288,6 +1335,7 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       clk_digital: "⏰ 数字时钟", clk_analog: "🕰️ 指针时钟", clk_hidden: "🚫 隐藏时钟",
       pos_banner: "底部通栏", pos_bl: "左下角", pos_br: "右下角",
       pos_tl: "左上角", pos_tr: "右上角", pos_bc: "底部居中",
+      sc_auto: "🔍 尺寸: 自动 (跟随管理端)", sc_small: "🔍 小号 (0.75×)", sc_medium: "🔍 标准 (1.0×)", sc_large: "🔍 大号 (1.35×)",
       wu_auto: "🌤️ 温度: 自动", wu_off: "🚫 关闭天气",
       ph_city_auto: "城市 (自动定位)", ph_city_def: "默认: ", btn_set_city: "设置城市",
       items_unit: "项", p_hd: "1080p 高清", p_leg: "768p 标准",
@@ -1300,6 +1348,7 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       clk_digital: "⏰ デジタル時計", clk_analog: "🕰️ アナログ時計", clk_hidden: "🚫 時計を隠す",
       pos_banner: "下部バナー", pos_bl: "左下", pos_br: "右下",
       pos_tl: "左上", pos_tr: "右上", pos_bc: "下部中央",
+      sc_auto: "🔍 サイズ: 自動 (管理画面)", sc_small: "🔍 小 (0.75×)", sc_medium: "🔍 標準 (1.0×)", sc_large: "🔍 大 (1.35×)",
       wu_auto: "🌤️ 単位: 自動", wu_off: "🚫 天気オフ",
       ph_city_auto: "都市 (自動IP)", ph_city_def: "既定: ", btn_set_city: "都市設定",
       items_unit: "件", p_hd: "1080p HD", p_leg: "768p 標準",
@@ -1312,6 +1361,7 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       clk_digital: "⏰ 디지털 시계", clk_analog: "🕰️ 아날로그 시계", clk_hidden: "🚫 시계 숨기기",
       pos_banner: "하단 배너", pos_bl: "왼쪽 하단", pos_br: "오른쪽 하단",
       pos_tl: "왼쪽 상단", pos_tr: "오른쪽 상단", pos_bc: "하단 중앙",
+      sc_auto: "🔍 크기: 자동 (관리자)", sc_small: "🔍 작게 (0.75×)", sc_medium: "🔍 보통 (1.0×)", sc_large: "🔍 크게 (1.35×)",
       wu_auto: "🌤️ 단위: 자동", wu_off: "🚫 날씨 끄기",
       ph_city_auto: "도시 (자동 IP)", ph_city_def: "기본: ", btn_set_city: "도시 설정",
       items_unit: "개 항목", p_hd: "1080p HD", p_leg: "768p 표준",
@@ -1324,6 +1374,7 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       clk_digital: "⏰ Reloj Digital", clk_analog: "🕰️ Reloj Analógico", clk_hidden: "🚫 Ocultar Reloj",
       pos_banner: "Banner (Abajo)", pos_bl: "Abajo Izq.", pos_br: "Abajo Der.",
       pos_tl: "Arriba Izq.", pos_tr: "Arriba Der.", pos_bc: "Abajo Centro",
+      sc_auto: "🔍 Tamaño: Auto (Admin)", sc_small: "🔍 Pequeño (0.75×)", sc_medium: "🔍 Mediano (1.0×)", sc_large: "🔍 Grande (1.35×)",
       wu_auto: "🌤️ Unidad: Auto", wu_off: "🚫 Clima Apagado",
       ph_city_auto: "Ciudad (IP Auto)", ph_city_def: "Predet.: ", btn_set_city: "Fijar Ciudad",
       items_unit: "elem.", p_hd: "1080p HD", p_leg: "768p Estándar",
@@ -1336,6 +1387,7 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       clk_digital: "⏰ Digitaluhr", clk_analog: "🕰️ Analoguhr", clk_hidden: "🚫 Uhr ausblenden",
       pos_banner: "Banner (Unten)", pos_bl: "Unten Links", pos_br: "Unten Rechts",
       pos_tl: "Oben Links", pos_tr: "Oben Rechts", pos_bc: "Unten Mitte",
+      sc_auto: "🔍 Größe: Auto (Admin)", sc_small: "🔍 Klein (0.75×)", sc_medium: "🔍 Mittel (1.0×)", sc_large: "🔍 Groß (1.35×)",
       wu_auto: "🌤️ Einheit: Auto", wu_off: "🚫 Wetter Aus",
       ph_city_auto: "Stadt (Auto-IP)", ph_city_def: "Standard: ", btn_set_city: "Stadt setzen",
       items_unit: "Elem.", p_hd: "1080p HD", p_leg: "768p Standard",
@@ -1367,6 +1419,10 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       "opt-pos-tl": u.pos_tl,
       "opt-pos-tr": u.pos_tr,
       "opt-pos-bc": u.pos_bc,
+      "opt-sc-auto": u.sc_auto,
+      "opt-sc-small": u.sc_small,
+      "opt-sc-medium": u.sc_medium,
+      "opt-sc-large": u.sc_large,
       "opt-wu-auto": u.wu_auto,
       "opt-wu-off": u.wu_off,
       "btn-set-city": u.btn_set_city
@@ -1437,6 +1493,8 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       if (cs === "digital" || cs === "analog" || cs === "hidden") clockStyle = cs;
       var cp = localStorage.getItem("webframe_clock_pos");
       if (cp) clockPos = cp;
+      var csc = localStorage.getItem("webframe_clock_scale");
+      if (csc === "auto" || csc === "small" || csc === "medium" || csc === "large") clientOverlayScale = csc;
       var c24 = localStorage.getItem("webframe_clock_24h");
       if (c24 === "1" || c24 === "0") clock24h = (c24 === "1");
       var wu = localStorage.getItem("webframe_weather_unit");
@@ -1451,6 +1509,8 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
     if (elStyle) elStyle.value = clockStyle;
     var elPos = document.getElementById("hud-clock-pos");
     if (elPos) elPos.value = clockPos;
+    var elScale = document.getElementById("hud-clock-scale");
+    if (elScale) elScale.value = clientOverlayScale;
     var el24 = document.getElementById("btn-clock-24h");
     if (el24) el24.innerHTML = clock24h ? "24h" : "12h";
     var elUnit = document.getElementById("hud-weather-unit");
@@ -1470,6 +1530,16 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
     resetHudTimer();
   };
 
+  function effectiveOverlayScale() {
+    if (clientOverlayScale === "small" || clientOverlayScale === "medium" || clientOverlayScale === "large") {
+      return clientOverlayScale;
+    }
+    if (serverOverlayScale === "small" || serverOverlayScale === "medium" || serverOverlayScale === "large") {
+      return serverOverlayScale;
+    }
+    return "medium";
+  }
+
   function applyClockAppearance() {
     var cw = document.getElementById("clock-widget");
     var dig = document.getElementById("digital-clock");
@@ -1478,7 +1548,8 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
     var vig = document.getElementById("vignette-overlay");
     if (!cw) return;
 
-    cw.className = "clock-widget " + clockPos + " style-" + clockStyle + (clockStyle === "hidden" ? " hidden" : "");
+    var effScale = effectiveOverlayScale();
+    cw.className = "clock-widget " + clockPos + " style-" + clockStyle + " scale-" + effScale + (clockStyle === "hidden" ? " hidden" : "");
     if (vig) vig.style.display = (clockStyle === "hidden") ? "none" : "block";
     if (dig) dig.className = (clockStyle === "analog") ? "digital-clock-face hidden" : "digital-clock-face";
     if (ana) ana.className = (clockStyle === "analog") ? "analog-clock-face" : "analog-clock-face hidden";
@@ -1486,6 +1557,13 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
     updateClock();
     renderWeatherUI();
   }
+
+  window.changeClockScale = function(val) {
+    clientOverlayScale = (val === "small" || val === "medium" || val === "large") ? val : "auto";
+    try { localStorage.setItem("webframe_clock_scale", clientOverlayScale); } catch (e) {}
+    applyClockAppearance();
+    resetHudTimer();
+  };
 
   window.changeClockStyle = function(val) {
     clockStyle = val || "digital";
@@ -1900,6 +1978,10 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
           }
           if (data.weather_unit && data.weather_unit !== serverWeatherUnit) {
             serverWeatherUnit = data.weather_unit;
+          }
+          if (data.overlay_scale && data.overlay_scale !== serverOverlayScale) {
+            serverOverlayScale = data.overlay_scale;
+            applyClockAppearance();
           }
           applyFrameI18n();
           if (frameLang !== prevEffectiveLang) {
@@ -2599,6 +2681,7 @@ class WebFrameController:
         lang = str(getattr(args_obj, "language", "en") or "en") if args_obj else "en"
         w_city = str(getattr(args_obj, "weather_city", "") or "") if args_obj else ""
         w_unit = normalize_weather_unit(getattr(args_obj, "weather_unit", "auto") if args_obj else "auto")
+        ov_scale = normalize_overlay_scale(getattr(args_obj, "web_frame_overlay_scale", "medium") if args_obj else "medium")
         edition = str(st.get("edition") or ("baidupan" if hasattr(args_obj, "pwd") else "gphotos"))
         return {
             "ok": True,
@@ -2624,6 +2707,7 @@ class WebFrameController:
             "edition": edition,
             "weather_city": w_city,
             "weather_unit": w_unit,
+            "overlay_scale": ov_scale,
             "active_clients": self.get_active_client_count(),
         }
 
