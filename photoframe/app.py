@@ -1627,14 +1627,11 @@ class SlideshowApp:
         if action == "delete_saved_album":
             removed = self.config_store.remove_album_history_entry(album_arg)
             return "Removed saved album from encrypted history." if removed else "Saved album not found."
-        if action in ("web_frame_on", "web_frame_off", "web_frame_toggle"):
+        if action.startswith("web_frame_"):
             if hasattr(self, "web_frame") and self.web_frame:
-                target_state = (
-                    True if action == "web_frame_on"
-                    else (False if action == "web_frame_off" else not self.web_frame.enabled)
-                )
-                _, msg = self.web_frame.set_enabled(target_state, persist=True)
-                return msg
+                wf_msg = self.web_frame.handle_action(action)
+                if wf_msg is not None:
+                    return wf_msg
             return "Web Photo Frame controller unavailable."
 
         valid = {

@@ -1334,7 +1334,21 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
               </label>
             </div>
           </div>
+          <div class="transport-row" id="webframe-remote-row" style="margin-bottom: 12px;">
+            <button type="button" onclick="sendAction('web_frame_prev')">
+              <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg><span class="btn-label" data-i18n="btn_prev">Previous</span>
+            </button>
+            <button type="button" class="primary" id="btn-wf-pause" onclick="sendAction('web_frame_pause_toggle')">
+              <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg><span class="btn-label" data-i18n="btn_pause">Pause / Resume</span>
+            </button>
+            <button type="button" onclick="sendAction('web_frame_next')">
+              <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg><span class="btn-label" data-i18n="btn_next">Next Slide</span>
+            </button>
+          </div>
           <div class="btn-grid">
+            <button type="button" id="btn-wf-night" class="warn" onclick="sendAction('web_frame_toggle_night')">
+              <svg class="m3-icon-sm" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/></svg><span class="btn-label" data-i18n="btn_wake_sleep">Wake / Sleep</span>
+            </button>
             <button type="button" id="btn-webframe-toggle" class="primary" onclick="toggleWebFramePower()">
               <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M21 3H3c-1.1 0-2 .9-2 2v3h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11z"/></svg><span class="btn-label" data-i18n="btn_wf_turn_on">Enable Web Viewer</span>
             </button>
@@ -3466,10 +3480,22 @@ function renderStatusSnapshot(st) {
 
   const wfEnabled = Boolean(st.web_frame_enabled);
   const wfClients = st.web_frame_clients || 0;
+  const wfPaused = Boolean(st.web_frame_paused);
+  const wfNight = Boolean(st.web_frame_night_mode);
   if (wfEnabled) {
-    setBadgeContent('webframe-state-badge', 'badge active', `ON (/frame • ${wfClients})`);
+    if (wfNight) {
+      setBadgeContent('webframe-state-badge', 'badge night', `ON • ${t('badge_night')} (${wfClients})`);
+    } else if (wfPaused) {
+      setBadgeContent('webframe-state-badge', 'badge', `ON • ${t('badge_paused')} (${wfClients})`);
+    } else {
+      setBadgeContent('webframe-state-badge', 'badge active', `ON (/frame • ${wfClients})`);
+    }
   } else {
     setBadgeContent('webframe-state-badge', 'badge', 'OFF');
+  }
+  const wfNightBtn = document.getElementById('btn-wf-night');
+  if (wfNightBtn) {
+    setBtnLabel(wfNightBtn, wfNight ? t('btn_wake_now') : t('btn_sleep_now'));
   }
   const wfSw = document.getElementById('sw-webframe-power');
   if (wfSw) {

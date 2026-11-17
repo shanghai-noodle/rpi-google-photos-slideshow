@@ -622,6 +622,43 @@ class TestWebFrameUnit(unittest.TestCase):
             portal_srv.shutdown()
             portal_srv.server_close()
 
+    def test_independent_pause_and_remote_webframe_actions(self):
+        # 1. Pausing main app does NOT pause web frame
+        self.app.is_paused = True
+        self.assertFalse(self.app.web_frame.is_paused)
+        self.assertFalse(self.app.web_frame.build_state_payload()["is_paused"])
+
+        # 2. Pausing web frame does NOT change main app pause state
+        self.app.is_paused = False
+        msg = self.app.queue_web_action("web_frame_pause_toggle")
+        self.assertIn("paused", msg)
+        self.assertTrue(self.app.web_frame.is_paused)
+        self.assertFalse(self.app.is_paused)
+        self.assertTrue(self.app.web_frame.build_state_payload()["is_paused"])
+
+        self.app.queue_web_action("web_frame_pause_toggle")
+        self.assertFalse(self.app.web_frame.is_paused)
+
+        # 3. Remote next/prev commands increment remote_cmd_seq
+        self.assertEqual(self.app.web_frame.remote_cmd_seq, 0)
+        self.app.queue_web_action("web_frame_next")
+        st1 = self.app.web_frame.build_state_payload()
+        self.assertEqual(st1["remote_cmd_seq"], 1)
+        self.assertEqual(st1["remote_cmd_action"], "next")
+
+        self.app.queue_web_action("web_frame_prev")
+        st2 = self.app.web_frame.build_state_payload()
+        self.assertEqual(st2["remote_cmd_seq"], 2)
+        self.assertEqual(st2["remote_cmd_action"], "prev")
+
+        # 4. Web frame night mode override is independent of main app is_night_mode
+        self.app.is_night_mode = False
+        self.app.queue_web_action("web_frame_sleep")
+        self.assertTrue(self.app.web_frame.build_state_payload()["is_night_mode"])
+        self.assertFalse(self.app.is_night_mode)
+        self.app.queue_web_action("web_frame_wake")
+        self.assertFalse(self.app.web_frame.build_state_payload()["is_night_mode"])
+
 
 if __name__ == "__main__":
     unittest.main()

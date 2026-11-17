@@ -1281,6 +1281,7 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
   var clientWeatherCity = "";
   var lastWeatherData = null;
   var lastStateData = null;
+  var lastRemoteCmdSeq = -1;
 
   var I18N_DATE = {
     en: {
@@ -1957,9 +1958,31 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
           var data = JSON.parse(xhr.responseText || "{}");
           lastStateData = data;
           var wasNightOrDisabled = (isNightMode || !isEnabled);
+          var prevServerPaused = serverPaused;
           isEnabled = !!data.enabled;
           isNightMode = !!data.is_night_mode;
           serverPaused = !!data.is_paused;
+          if (serverPaused !== prevServerPaused) {
+            var pBtn = document.getElementById("btn-pause");
+            if (pBtn) pBtn.innerHTML = (localPaused || serverPaused) ? "▶" : "⏸";
+            if (serverPaused) {
+              if (slideTimer) { clearTimeout(slideTimer); slideTimer = null; }
+            } else if (!localPaused) {
+              scheduleNextSlide();
+            }
+          }
+          if (data.remote_cmd_seq !== undefined) {
+            var rSeq = parseInt(data.remote_cmd_seq, 10) || 0;
+            if (lastRemoteCmdSeq < 0) {
+              lastRemoteCmdSeq = rSeq;
+            } else if (rSeq > lastRemoteCmdSeq) {
+              lastRemoteCmdSeq = rSeq;
+              var rAct = data.remote_cmd_action || "next";
+              if (isEnabled && !isNightMode && (rAct === "next" || rAct === "prev")) {
+                loadSlide(rAct);
+              }
+            }
+          }
           if (data.effective_profile) effectiveProfile = data.effective_profile;
           if (data.slide_duration && data.slide_duration >= 3) {
             slideDurationMs = Math.round(parseFloat(data.slide_duration) * 1000);
@@ -2054,7 +2077,7 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       loadSlide("next");
     }
   });
-  setInterval(function() { pollState(null); }, 10000);
+  setInterval(function() { pollState(null); }, 3000);
 })();
 </script>
 </body>
@@ -2112,6 +2135,61 @@ class WebFrameController:
 
         self._cache_lock = threading.Lock()
         self._raw_pil_cache: "collections.OrderedDict[str, Any]" = collections.OrderedDict()
+
+        # Independent playback & night-mode state for /frame (separate from main HDMI/TV display)
+        self.is_paused: bool = False
+        self.night_mode_override: Optional[bool] = None
+        self.remote_cmd_seq: int = 0
+        self.remote_cmd_action: str = ""
+
+    def is_effective_night_mode(self) -> bool:
+        if self.night_mode_override is not None:
+            return bool(self.night_mode_override)
+        if hasattr(self.app, "is_within_night_schedule"):
+            try:
+                return bool(self.app.is_within_night_schedule())
+            except Exception:
+                pass
+        return False
+
+    def handle_action(self, action: str) -> Optional[str]:
+        if action in ("web_frame_on", "web_frame_off", "web_frame_toggle"):
+            target_state = (
+                True if action == "web_frame_on"
+                else (False if action == "web_frame_off" else not self.enabled)
+            )
+            _, msg = self.set_enabled(target_state, persist=True)
+            return msg
+        if action == "web_frame_pause":
+            self.is_paused = True
+            return "Web Viewer slideshow paused."
+        if action == "web_frame_resume":
+            self.is_paused = False
+            return "Web Viewer slideshow resumed."
+        if action == "web_frame_pause_toggle":
+            self.is_paused = not self.is_paused
+            return "Web Viewer slideshow paused." if self.is_paused else "Web Viewer slideshow resumed."
+        if action == "web_frame_next":
+            self.night_mode_override = False
+            self.remote_cmd_seq += 1
+            self.remote_cmd_action = "next"
+            return "Web Viewer advancing to next slide..."
+        if action == "web_frame_prev":
+            self.night_mode_override = False
+            self.remote_cmd_seq += 1
+            self.remote_cmd_action = "prev"
+            return "Web Viewer returning to previous slide..."
+        if action == "web_frame_sleep":
+            self.night_mode_override = True
+            return "Web Viewer placed into Night Mode clock."
+        if action == "web_frame_wake":
+            self.night_mode_override = False
+            return "Web Viewer woken from Night Mode clock."
+        if action == "web_frame_toggle_night":
+            next_night = not self.is_effective_night_mode()
+            self.night_mode_override = next_night
+            return "Web Viewer placed into Night Mode clock." if next_night else "Web Viewer woken from Night Mode clock."
+        return None
 
     # ------------------------------------------------------------------
     # Server Lifecycle (On / Off Control)
@@ -2275,6 +2353,8 @@ class WebFrameController:
             "web_frame_port": self.bound_port if self.is_running else self.port,
             "web_frame_profile": self.profile,
             "web_frame_clients": self.get_active_client_count(),
+            "web_frame_paused": self.is_paused,
+            "web_frame_night_mode": self.is_effective_night_mode(),
         }
 
     # ------------------------------------------------------------------
@@ -2692,8 +2772,10 @@ class WebFrameController:
             "effective_profile": effective_profile,
             "target_w": target_w,
             "target_h": target_h,
-            "is_night_mode": bool(st.get("is_night_mode", False)),
-            "is_paused": bool(st.get("is_paused", False)),
+            "is_night_mode": self.is_effective_night_mode(),
+            "is_paused": self.is_paused,
+            "remote_cmd_seq": self.remote_cmd_seq,
+            "remote_cmd_action": self.remote_cmd_action,
             "slide_duration": float(st.get("slide_duration", 15.0)),
             "transition": str(st.get("transition", "none")),
             "landscape_mode": str(st.get("landscape_mode", "collage")),
