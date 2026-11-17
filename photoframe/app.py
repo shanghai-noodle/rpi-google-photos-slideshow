@@ -1141,6 +1141,67 @@ class SlideshowApp:
                     pygame.draw.rect(surf, (0, 0, 0), (x1, y1, max(1, x2 - x1), max(1, y2 - y1)))
         return surf
 
+    _PAUSE_I18N = {
+        "en": ("Slideshow Paused", "Tap screen or press Space / OK to resume"),
+        "zh": ("幻灯片已暂停", "轻触屏幕或按空格 / 确认键继续播放"),
+        "ja": ("一時停止中", "画面をタップまたはキーを押して再開"),
+        "ko": ("일시정지됨", "화면을 탭하거나 키를 눌러 다시 재생"),
+        "es": ("Presentación en Pausa", "Toca la pantalla o pulsa Espacio para reanudar"),
+        "de": ("Diashow Pausiert", "Bildschirm antippen oder Leertaste zum Fortsetzen"),
+    }
+
+    def _draw_pause_banner(self, target: Any):
+        """
+        Draws a prominent, elderly-friendly top-center Pause pill banner with a warm
+        amber border and localized title/subtitle when `self.is_paused` is True.
+        """
+        if not PYGAME_AVAILABLE or not self.is_paused or self.is_night_mode:
+            return
+        try:
+            lang = str(getattr(self.args, "language", "en") or "en").strip().lower()[:2]
+            title_txt, sub_txt = self._PAUSE_I18N.get(lang, self._PAUSE_I18N["en"])
+            cache_key = ("pause_banner", lang)
+            if getattr(self, "_cached_pause_banner_key", None) != cache_key or getattr(self, "_cached_pause_banner", None) is None:
+                pygame.font.init()
+                font_names = "notosanscjksc,notosanscjktc,notosanscjkjp,wenquanyimicrohei,droidsansfallback,pingfangsc,hiraginosans,malgungothic,dejavusans,arial,sans-serif"
+                t_font = pygame.font.SysFont(font_names, 26, bold=True)
+                s_font = pygame.font.SysFont(font_names, 17, bold=True)
+
+                s_title = t_font.render(title_txt, True, (254, 243, 199))
+                s_sub = s_font.render(sub_txt, True, (253, 230, 138))
+
+                icon_w = 24
+                gap = 16
+                pad_x = 30
+                pad_y = 14
+                text_w = max(s_title.get_width(), s_sub.get_width())
+                pw = pad_x * 2 + icon_w + gap + text_w
+                ph = pad_y * 2 + s_title.get_height() + 4 + s_sub.get_height()
+
+                pill = pygame.Surface((pw, ph), pygame.SRCALPHA)
+                pygame.draw.rect(pill, (15, 23, 42, 238), (0, 0, pw, ph), border_radius=ph // 2)
+                pygame.draw.rect(pill, (245, 158, 11, 255), (0, 0, pw, ph), width=3, border_radius=ph // 2)
+
+                # Crisp two-bar pause icon on the left
+                ix = pad_x
+                iy = (ph - 28) // 2
+                pygame.draw.rect(pill, (245, 158, 11, 255), (ix, iy, 8, 28), border_radius=3)
+                pygame.draw.rect(pill, (245, 158, 11, 255), (ix + 14, iy, 8, 28), border_radius=3)
+
+                tx = pad_x + icon_w + gap
+                pill.blit(s_title, (tx, pad_y))
+                pill.blit(s_sub, (tx, pad_y + s_title.get_height() + 4))
+
+                self._cached_pause_banner = pill
+                self._cached_pause_banner_key = cache_key
+
+            pill_surf = self._cached_pause_banner
+            pw, ph = pill_surf.get_size()
+            tw_canvas, _ = target.get_size()
+            target.blit(pill_surf, ((tw_canvas - pw) // 2, 24))
+        except Exception as e:
+            logger.debug("Pause banner render skipped: %s", e)
+
     def _draw_demo_setup_pill(self, target: Any, apply_rotation: int = 0):
         """
         Draws a sleek, non-intrusive bottom-right translucent card containing the
@@ -1316,10 +1377,13 @@ class SlideshowApp:
                     self._draw_demo_setup_pill(target)
                 else:
                     self._last_pill_screen_rect = None
+                if self.is_paused:
+                    self._draw_pause_banner(target)
             else:
                 self._draw_splash_surface(target)
                 if self.is_paused and show_overlay:
                     self._draw_demo_setup_pill(target)
+                    self._draw_pause_banner(target)
                 else:
                     self._last_pill_screen_rect = None
 
@@ -1730,6 +1794,9 @@ class SlideshowApp:
                 if "device_name" in payload:
                     set_mdns_base_name(getattr(self.args, "device_name", "") or "photoframe")
                     self._cached_demo_pill = None
+                    self.full_redraw_needed = True
+                if "language" in payload:
+                    self._cached_pause_banner = None
                     self.full_redraw_needed = True
                 raw_trans = str(getattr(self.args, "transition", "none") or "none").strip().lower()
                 self.transition = raw_trans if raw_trans in self.VALID_TRANSITIONS else "none"

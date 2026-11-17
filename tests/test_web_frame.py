@@ -659,6 +659,35 @@ class TestWebFrameUnit(unittest.TestCase):
         self.app.queue_web_action("web_frame_wake")
         self.assertFalse(self.app.web_frame.build_state_payload()["is_night_mode"])
 
+        # 5. Elderly-friendly pause banner & tap-to-resume endpoint (/api/webframe/resume)
+        self.assertIn('id="pause-banner"', WEB_FRAME_HTML)
+        self.assertIn("resumeFromTap()", WEB_FRAME_HTML)
+        self.assertIn("pause_title", WEB_FRAME_HTML)
+        self.assertIn("pause_sub", WEB_FRAME_HTML)
+        self.assertIn("/api/webframe/resume", WEB_FRAME_HTML)
+
+        self.app.update_and_persist_settings({"web_frame_enabled": True, "vpn_only_admin": True})
+        self.app._process_web_actions()
+        self.app.queue_web_action("web_frame_pause")
+        self.assertTrue(self.app.web_frame.is_paused)
+
+        handler_cls = create_portal_handler(self.app, self.store, login_fail_delay=0.0, port=0)
+        portal_srv = _ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
+        srv_port = portal_srv.server_address[1]
+        t = threading.Thread(target=portal_srv.serve_forever, daemon=True)
+        t.start()
+        try:
+            with mock.patch("photoframe.web_portal.is_vpn_or_localhost_ip", return_value=False):
+                with urllib.request.urlopen(f"http://127.0.0.1:{srv_port}/api/webframe/resume", timeout=3) as r_res:
+                    self.assertEqual(r_res.status, 200)
+                    data = json.loads(r_res.read().decode("utf-8"))
+                    self.assertTrue(data["ok"])
+                    self.assertFalse(data["is_paused"])
+            self.assertFalse(self.app.web_frame.is_paused)
+        finally:
+            portal_srv.shutdown()
+            portal_srv.server_close()
+
 
 if __name__ == "__main__":
     unittest.main()

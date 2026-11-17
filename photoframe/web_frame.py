@@ -1091,6 +1091,28 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
   #night-overlay.disabled-mode .night-disclaimer {
     position: static; font-size: 16px; color: #64748b;
   }
+
+  /* Elderly-Friendly Top-Center Pause Visual Cue Banner */
+  #pause-banner {
+    position: fixed; top: 22px; left: 50%; z-index: 55;
+    -webkit-transform: translateX(-50%); transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.94);
+    border: 3px solid #f59e0b; border-radius: 999px;
+    padding: 14px 32px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 0 4px rgba(245, 158, 11, 0.22);
+    display: none; text-align: center; cursor: pointer;
+    max-width: 92vw;
+  }
+  .pause-banner-title {
+    font-size: 28px; font-size: clamp(1.45rem, 3.2vw, 2.1rem);
+    font-weight: 800; color: #fef3c7; letter-spacing: 0.02em;
+    line-height: 1.2; white-space: nowrap;
+  }
+  .pause-banner-sub {
+    font-size: 17px; font-size: clamp(1.0rem, 2.0vw, 1.25rem);
+    font-weight: 600; color: #fde68a; margin-top: 4px;
+    line-height: 1.25; white-space: nowrap;
+  }
   #hud {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
     background: rgba(11, 15, 25, 0.92); border-top: 1px solid rgba(255, 255, 255, 0.18);
@@ -1173,6 +1195,11 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
   </div>
 
   <div id="clock-pill"></div>
+
+  <div id="pause-banner" onclick="resumeFromTap()">
+    <div id="pause-banner-title" class="pause-banner-title">⏸ Slideshow Paused</div>
+    <div id="pause-banner-sub" class="pause-banner-sub">Tap anywhere on screen to resume</div>
+  </div>
 
   <div id="night-overlay" onclick="toggleHud()">
     <div id="night-clock-wrap" class="night-clock-wrap">
@@ -1269,7 +1296,7 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
   var serverLang = "en";
   var clientLang = "auto";
   var frameLang = "en";
-  var frameEdition = "gphotos";
+  var frameEdition = "baidupan";
   var serverWeatherCity = "";
   var serverWeatherUnit = "auto";
   var serverOverlayScale = "medium";
@@ -1328,7 +1355,9 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       ph_city_auto: "City (Auto IP)", ph_city_def: "Default: ", btn_set_city: "Set City",
       items_unit: "items", p_hd: "1080p HD", p_leg: "768p Standard",
       disabled_msg: "🖼️ Web Slideshow Viewer is Disabled by Admin",
-      night_msg: "🌙 Night Mode Sleep"
+      night_msg: "🌙 Night Mode Sleep",
+      pause_title: "⏸ Slideshow Paused",
+      pause_sub: "Tap anywhere on screen to resume"
     },
     zh: {
       lang_auto: "🌐 语言: 自动 (跟随管理端)",
@@ -1341,7 +1370,9 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       ph_city_auto: "城市 (自动定位)", ph_city_def: "默认: ", btn_set_city: "设置城市",
       items_unit: "项", p_hd: "1080p 高清", p_leg: "768p 标准",
       disabled_msg: "🖼️ 网页幻灯片已被管理员关闭",
-      night_msg: "🌙 夜间休眠模式"
+      night_msg: "🌙 夜间休眠模式",
+      pause_title: "⏸ 幻灯片已暂停",
+      pause_sub: "轻触屏幕任意位置继续播放"
     },
     ja: {
       lang_auto: "🌐 言語: 自動 (管理画面に従う)",
@@ -1354,7 +1385,9 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       ph_city_auto: "都市 (自動IP)", ph_city_def: "既定: ", btn_set_city: "都市設定",
       items_unit: "件", p_hd: "1080p HD", p_leg: "768p 標準",
       disabled_msg: "🖼️ Webスライドショーは管理者により無効化されています",
-      night_msg: "🌙 ナイトモード休止中"
+      night_msg: "🌙 ナイトモード休止中",
+      pause_title: "⏸ 一時停止中",
+      pause_sub: "画面をタップして再開"
     },
     ko: {
       lang_auto: "🌐 언어: 자동 (관리자 설정)",
@@ -1367,7 +1400,9 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       ph_city_auto: "도시 (자동 IP)", ph_city_def: "기본: ", btn_set_city: "도시 설정",
       items_unit: "개 항목", p_hd: "1080p HD", p_leg: "768p 표준",
       disabled_msg: "🖼️ 웹 슬라이드쇼가 관리자에 의해 비활성화되었습니다",
-      night_msg: "🌙 야간 절전 모드"
+      night_msg: "🌙 야간 절전 모드",
+      pause_title: "⏸ 일시정지됨",
+      pause_sub: "화면을 탭하여 다시 재생"
     },
     es: {
       lang_auto: "🌐 Idioma: Auto (Admin)",
@@ -1380,7 +1415,9 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       ph_city_auto: "Ciudad (IP Auto)", ph_city_def: "Predet.: ", btn_set_city: "Fijar Ciudad",
       items_unit: "elem.", p_hd: "1080p HD", p_leg: "768p Estándar",
       disabled_msg: "🖼️ Visor Web desactivado por el administrador",
-      night_msg: "🌙 Modo Noche Activo"
+      night_msg: "🌙 Modo Noche Activo",
+      pause_title: "⏸ Presentación en Pausa",
+      pause_sub: "Toca la pantalla para reanudar"
     },
     de: {
       lang_auto: "🌐 Sprache: Auto (Admin)",
@@ -1393,7 +1430,9 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       ph_city_auto: "Stadt (Auto-IP)", ph_city_def: "Standard: ", btn_set_city: "Stadt setzen",
       items_unit: "Elem.", p_hd: "1080p HD", p_leg: "768p Standard",
       disabled_msg: "🖼️ Web-Diashow vom Administrator deaktiviert",
-      night_msg: "🌙 Nachtmodus Aktiv"
+      night_msg: "🌙 Nachtmodus Aktiv",
+      pause_title: "⏸ Diashow Pausiert",
+      pause_sub: "Bildschirm antippen zum Fortsetzen"
     }
   };
 
@@ -1426,7 +1465,9 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       "opt-sc-large": u.sc_large,
       "opt-wu-auto": u.wu_auto,
       "opt-wu-off": u.wu_off,
-      "btn-set-city": u.btn_set_city
+      "btn-set-city": u.btn_set_city,
+      "pause-banner-title": u.pause_title,
+      "pause-banner-sub": u.pause_sub
     };
     for (var id in mapIds) {
       if (mapIds.hasOwnProperty(id)) {
@@ -1601,7 +1642,7 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
 
   window.saveClientWeatherCity = function() {
     var inp = document.getElementById("hud-weather-city");
-    clientWeatherCity = inp ? inp.value.replace(/^\s+|\s+$/g, "") : "";
+    clientWeatherCity = inp ? inp.value.replace(/^\\s+|\\s+$/g, "") : "";
     try { localStorage.setItem("webframe_weather_city", clientWeatherCity); } catch (e) {}
     fetchWeather();
     resetHudTimer();
@@ -1760,25 +1801,52 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
     xhr.send(null);
   }
 
+  function syncPauseBanner() {
+    var isCurrentlyPaused = (localPaused || serverPaused) && isEnabled && !isNightMode;
+    var pb = document.getElementById("pause-banner");
+    if (pb) pb.style.display = isCurrentlyPaused ? "block" : "none";
+    var btn = document.getElementById("btn-pause");
+    if (btn) btn.innerHTML = (localPaused || serverPaused) ? "▶" : "⏸";
+  }
+
+  function notifyServerResume() {
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open("GET", "/api/webframe/resume?t=" + (new Date().getTime()), true);
+      xhr.send(null);
+    } catch (e) {}
+  }
+
+  window.resumeFromTap = function() {
+    var wasServerPaused = serverPaused;
+    localPaused = false;
+    serverPaused = false;
+    if (wasServerPaused) {
+      notifyServerResume();
+    }
+    var hud = document.getElementById("hud");
+    if (hud) hud.style.display = "none";
+    if (hudTimer) { clearTimeout(hudTimer); hudTimer = null; }
+    syncPauseBanner();
+    scheduleNextSlide();
+  };
+
   window.toggleHud = function() {
     var hud = document.getElementById("hud");
-    localPaused = !localPaused;
-    var btn = document.getElementById("btn-pause");
-    if (btn) btn.innerHTML = localPaused ? "▶" : "⏸";
-    if (localPaused) {
-      if (slideTimer) { clearTimeout(slideTimer); slideTimer = null; }
-      if (hud) hud.style.display = "block";
-      if (hudTimer) { clearTimeout(hudTimer); hudTimer = null; }
-    } else {
-      if (hud) hud.style.display = "none";
-      if (hudTimer) { clearTimeout(hudTimer); hudTimer = null; }
-      scheduleNextSlide();
+    if (localPaused || serverPaused) {
+      window.resumeFromTap();
+      return;
     }
+    localPaused = true;
+    if (slideTimer) { clearTimeout(slideTimer); slideTimer = null; }
+    if (hud) hud.style.display = "block";
+    if (hudTimer) { clearTimeout(hudTimer); hudTimer = null; }
+    syncPauseBanner();
   };
 
   function resetHudTimer() {
     if (hudTimer) clearTimeout(hudTimer);
-    if (localPaused) return;
+    if (localPaused || serverPaused) return;
     hudTimer = setTimeout(function() {
       var hud = document.getElementById("hud");
       if (hud) hud.style.display = "none";
@@ -1786,16 +1854,16 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
   }
 
   window.toggleLocalPause = function() {
-    localPaused = !localPaused;
-    var btn = document.getElementById("btn-pause");
-    if (btn) btn.innerHTML = localPaused ? "▶" : "⏸";
-    resetHudTimer();
-    if (!localPaused) {
-      scheduleNextSlide();
-    } else if (slideTimer) {
+    if (localPaused || serverPaused) {
+      window.resumeFromTap();
+      return;
+    }
+    localPaused = true;
+    if (slideTimer) {
       clearTimeout(slideTimer);
       slideTimer = null;
     }
+    syncPauseBanner();
   };
 
   window.toggleFullscreen = function() {
@@ -1963,14 +2031,13 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
           isNightMode = !!data.is_night_mode;
           serverPaused = !!data.is_paused;
           if (serverPaused !== prevServerPaused) {
-            var pBtn = document.getElementById("btn-pause");
-            if (pBtn) pBtn.innerHTML = (localPaused || serverPaused) ? "▶" : "⏸";
             if (serverPaused) {
               if (slideTimer) { clearTimeout(slideTimer); slideTimer = null; }
             } else if (!localPaused) {
               scheduleNextSlide();
             }
           }
+          syncPauseBanner();
           if (data.remote_cmd_seq !== undefined) {
             var rSeq = parseInt(data.remote_cmd_seq, 10) || 0;
             if (lastRemoteCmdSeq < 0) {
@@ -2836,6 +2903,17 @@ class WebFrameController:
             q_lang = (qs.get("lang", [default_lang])[0] or default_lang).strip()
             wdata = fetch_weather_data(city_query=q_city, lang=q_lang, edition=edition)
             body = json.dumps(wdata, ensure_ascii=False).encode("utf-8")
+            handler.send_response(200)
+            handler.send_header("Content-Type", "application/json; charset=utf-8")
+            handler.send_header("Content-Length", str(len(body)))
+            handler.send_header("Cache-Control", "no-store")
+            handler.end_headers()
+            handler.wfile.write(body)
+            return True
+
+        if path == "/api/webframe/resume":
+            self.is_paused = False
+            body = json.dumps({"ok": True, "is_paused": False}).encode("utf-8")
             handler.send_response(200)
             handler.send_header("Content-Type", "application/json; charset=utf-8")
             handler.send_header("Content-Length", str(len(body)))
