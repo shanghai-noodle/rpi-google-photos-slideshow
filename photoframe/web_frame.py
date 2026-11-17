@@ -795,7 +795,7 @@ DISABLED_WEB_FRAME_HTML = """<!DOCTYPE html>
 """
 
 
-WEB_FRAME_HTML = """<!DOCTYPE html>
+WEB_FRAME_HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -1101,10 +1101,19 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
         <span class="hud-meta" id="hud-info">Loading...</span>
       </div>
       <div class="hud-right">
+        <select id="hud-lang" class="hud-select" onchange="changeClientLang(this.value)">
+          <option value="auto" id="opt-lang-auto">🌐 Lang: Auto (Admin)</option>
+          <option value="en">English</option>
+          <option value="zh">中文</option>
+          <option value="ja">日本語</option>
+          <option value="ko">한국어</option>
+          <option value="es">Español</option>
+          <option value="de">Deutsch</option>
+        </select>
         <select id="hud-profile" class="hud-select" onchange="changeClientProfile(this.value)">
-          <option value="auto">Quality: Auto</option>
-          <option value="hd">Quality: 1080p HD</option>
-          <option value="legacy">Quality: 768p Standard</option>
+          <option value="auto" id="opt-qual-auto">Quality: Auto</option>
+          <option value="hd" id="opt-qual-hd">Quality: 1080p HD</option>
+          <option value="legacy" id="opt-qual-legacy">Quality: 768p Standard</option>
         </select>
         <button type="button" class="hud-btn" onclick="loadSlide('prev')">⏮</button>
         <button type="button" class="hud-btn" id="btn-pause" onclick="toggleLocalPause()">⏸</button>
@@ -1114,27 +1123,27 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
     </div>
     <div class="hud-row-sub">
       <select id="hud-clock-style" class="hud-select" onchange="changeClockStyle(this.value)">
-        <option value="digital">⏰ Digital Clock</option>
-        <option value="analog">🕰️ Analog Clock</option>
-        <option value="hidden">🚫 Hide Clock</option>
+        <option value="digital" id="opt-clk-digital">⏰ Digital Clock</option>
+        <option value="analog" id="opt-clk-analog">🕰️ Analog Clock</option>
+        <option value="hidden" id="opt-clk-hidden">🚫 Hide Clock</option>
       </select>
       <select id="hud-clock-pos" class="hud-select" onchange="changeClockPosition(this.value)">
-        <option value="pos-bottom-banner">Banner (Bottom)</option>
-        <option value="pos-bottom-left">Bottom Left</option>
-        <option value="pos-bottom-right">Bottom Right</option>
-        <option value="pos-top-left">Top Left</option>
-        <option value="pos-top-right">Top Right</option>
-        <option value="pos-center-bottom">Bottom Center</option>
+        <option value="pos-bottom-banner" id="opt-pos-banner">Banner (Bottom)</option>
+        <option value="pos-bottom-left" id="opt-pos-bl">Bottom Left</option>
+        <option value="pos-bottom-right" id="opt-pos-br">Bottom Right</option>
+        <option value="pos-top-left" id="opt-pos-tl">Top Left</option>
+        <option value="pos-top-right" id="opt-pos-tr">Top Right</option>
+        <option value="pos-center-bottom" id="opt-pos-bc">Bottom Center</option>
       </select>
       <button type="button" class="hud-btn" id="btn-clock-24h" onclick="toggleClock24h()">12h</button>
       <select id="hud-weather-unit" class="hud-select" onchange="changeWeatherUnit(this.value)">
-        <option value="auto">🌤️ Unit: Auto</option>
+        <option value="auto" id="opt-wu-auto">🌤️ Unit: Auto</option>
         <option value="C">🌤️ °C</option>
         <option value="F">🌤️ °F</option>
-        <option value="off">🚫 Weather Off</option>
+        <option value="off" id="opt-wu-off">🚫 Weather Off</option>
       </select>
       <input type="text" id="hud-weather-city" class="hud-input" placeholder="City (e.g. 上海 闵行)">
-      <button type="button" class="hud-btn" onclick="saveClientWeatherCity()">Set City</button>
+      <button type="button" class="hud-btn" id="btn-set-city" onclick="saveClientWeatherCity()">Set City</button>
     </div>
   </div>
 
@@ -1158,8 +1167,10 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
   var hudTimer = null;
 
   /* Clock & Weather State */
+  var serverLang = "en";
+  var clientLang = "auto";
   var frameLang = "en";
-  var frameEdition = "baidupan";
+  var frameEdition = "gphotos";
   var serverWeatherCity = "";
   var serverWeatherUnit = "auto";
   var clockStyle = "digital";
@@ -1168,6 +1179,7 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
   var clientWeatherUnit = "auto";
   var clientWeatherCity = "";
   var lastWeatherData = null;
+  var lastStateData = null;
 
   var I18N_DATE = {
     en: {
@@ -1202,6 +1214,143 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
     }
   };
 
+  var I18N_UI = {
+    en: {
+      lang_auto: "🌐 Lang: Auto (Admin)",
+      qual_auto: "Quality: Auto", qual_hd: "Quality: 1080p HD", qual_legacy: "Quality: 768p Standard",
+      clk_digital: "⏰ Digital Clock", clk_analog: "🕰️ Analog Clock", clk_hidden: "🚫 Hide Clock",
+      pos_banner: "Banner (Bottom)", pos_bl: "Bottom Left", pos_br: "Bottom Right",
+      pos_tl: "Top Left", pos_tr: "Top Right", pos_bc: "Bottom Center",
+      wu_auto: "🌤️ Unit: Auto", wu_off: "🚫 Weather Off",
+      ph_city_auto: "City (Auto IP)", ph_city_def: "Default: ", btn_set_city: "Set City",
+      items_unit: "items", p_hd: "1080p HD", p_leg: "768p Standard",
+      disabled_msg: "🖼️ Web Slideshow Viewer is Disabled by Admin",
+      night_msg: "🌙 Night Mode Sleep"
+    },
+    zh: {
+      lang_auto: "🌐 语言: 自动 (跟随管理端)",
+      qual_auto: "画质: 自动", qual_hd: "画质: 1080p 高清", qual_legacy: "画质: 768p 标准",
+      clk_digital: "⏰ 数字时钟", clk_analog: "🕰️ 指针时钟", clk_hidden: "🚫 隐藏时钟",
+      pos_banner: "底部通栏", pos_bl: "左下角", pos_br: "右下角",
+      pos_tl: "左上角", pos_tr: "右上角", pos_bc: "底部居中",
+      wu_auto: "🌤️ 温度: 自动", wu_off: "🚫 关闭天气",
+      ph_city_auto: "城市 (自动定位)", ph_city_def: "默认: ", btn_set_city: "设置城市",
+      items_unit: "项", p_hd: "1080p 高清", p_leg: "768p 标准",
+      disabled_msg: "🖼️ 网页幻灯片已被管理员关闭",
+      night_msg: "🌙 夜间休眠模式"
+    },
+    ja: {
+      lang_auto: "🌐 言語: 自動 (管理画面に従う)",
+      qual_auto: "画質: 自動", qual_hd: "画質: 1080p HD", qual_legacy: "画質: 768p 標準",
+      clk_digital: "⏰ デジタル時計", clk_analog: "🕰️ アナログ時計", clk_hidden: "🚫 時計を隠す",
+      pos_banner: "下部バナー", pos_bl: "左下", pos_br: "右下",
+      pos_tl: "左上", pos_tr: "右上", pos_bc: "下部中央",
+      wu_auto: "🌤️ 単位: 自動", wu_off: "🚫 天気オフ",
+      ph_city_auto: "都市 (自動IP)", ph_city_def: "既定: ", btn_set_city: "都市設定",
+      items_unit: "件", p_hd: "1080p HD", p_leg: "768p 標準",
+      disabled_msg: "🖼️ Webスライドショーは管理者により無効化されています",
+      night_msg: "🌙 ナイトモード休止中"
+    },
+    ko: {
+      lang_auto: "🌐 언어: 자동 (관리자 설정)",
+      qual_auto: "화질: 자동", qual_hd: "화질: 1080p HD", qual_legacy: "화질: 768p 표준",
+      clk_digital: "⏰ 디지털 시계", clk_analog: "🕰️ 아날로그 시계", clk_hidden: "🚫 시계 숨기기",
+      pos_banner: "하단 배너", pos_bl: "왼쪽 하단", pos_br: "오른쪽 하단",
+      pos_tl: "왼쪽 상단", pos_tr: "오른쪽 상단", pos_bc: "하단 중앙",
+      wu_auto: "🌤️ 단위: 자동", wu_off: "🚫 날씨 끄기",
+      ph_city_auto: "도시 (자동 IP)", ph_city_def: "기본: ", btn_set_city: "도시 설정",
+      items_unit: "개 항목", p_hd: "1080p HD", p_leg: "768p 표준",
+      disabled_msg: "🖼️ 웹 슬라이드쇼가 관리자에 의해 비활성화되었습니다",
+      night_msg: "🌙 야간 절전 모드"
+    },
+    es: {
+      lang_auto: "🌐 Idioma: Auto (Admin)",
+      qual_auto: "Calidad: Auto", qual_hd: "Calidad: 1080p HD", qual_legacy: "Calidad: 768p Estándar",
+      clk_digital: "⏰ Reloj Digital", clk_analog: "🕰️ Reloj Analógico", clk_hidden: "🚫 Ocultar Reloj",
+      pos_banner: "Banner (Abajo)", pos_bl: "Abajo Izq.", pos_br: "Abajo Der.",
+      pos_tl: "Arriba Izq.", pos_tr: "Arriba Der.", pos_bc: "Abajo Centro",
+      wu_auto: "🌤️ Unidad: Auto", wu_off: "🚫 Clima Apagado",
+      ph_city_auto: "Ciudad (IP Auto)", ph_city_def: "Predet.: ", btn_set_city: "Fijar Ciudad",
+      items_unit: "elem.", p_hd: "1080p HD", p_leg: "768p Estándar",
+      disabled_msg: "🖼️ Visor Web desactivado por el administrador",
+      night_msg: "🌙 Modo Noche Activo"
+    },
+    de: {
+      lang_auto: "🌐 Sprache: Auto (Admin)",
+      qual_auto: "Qualität: Auto", qual_hd: "Qualität: 1080p HD", qual_legacy: "Qualität: 768p Standard",
+      clk_digital: "⏰ Digitaluhr", clk_analog: "🕰️ Analoguhr", clk_hidden: "🚫 Uhr ausblenden",
+      pos_banner: "Banner (Unten)", pos_bl: "Unten Links", pos_br: "Unten Rechts",
+      pos_tl: "Oben Links", pos_tr: "Oben Rechts", pos_bc: "Unten Mitte",
+      wu_auto: "🌤️ Einheit: Auto", wu_off: "🚫 Wetter Aus",
+      ph_city_auto: "Stadt (Auto-IP)", ph_city_def: "Standard: ", btn_set_city: "Stadt setzen",
+      items_unit: "Elem.", p_hd: "1080p HD", p_leg: "768p Standard",
+      disabled_msg: "🖼️ Web-Diashow vom Administrator deaktiviert",
+      night_msg: "🌙 Nachtmodus Aktiv"
+    }
+  };
+
+  function resolveEffectiveLang() {
+    if (clientLang && clientLang !== "auto" && I18N_DATE[clientLang]) return clientLang;
+    if (serverLang && I18N_DATE[serverLang]) return serverLang;
+    return "en";
+  }
+
+  function applyFrameI18n() {
+    frameLang = resolveEffectiveLang();
+    var u = I18N_UI[frameLang] || I18N_UI.en;
+    var mapIds = {
+      "opt-lang-auto": u.lang_auto,
+      "opt-qual-auto": u.qual_auto,
+      "opt-qual-hd": u.qual_hd,
+      "opt-qual-legacy": u.qual_legacy,
+      "opt-clk-digital": u.clk_digital,
+      "opt-clk-analog": u.clk_analog,
+      "opt-clk-hidden": u.clk_hidden,
+      "opt-pos-banner": u.pos_banner,
+      "opt-pos-bl": u.pos_bl,
+      "opt-pos-br": u.pos_br,
+      "opt-pos-tl": u.pos_tl,
+      "opt-pos-tr": u.pos_tr,
+      "opt-pos-bc": u.pos_bc,
+      "opt-wu-auto": u.wu_auto,
+      "opt-wu-off": u.wu_off,
+      "btn-set-city": u.btn_set_city
+    };
+    for (var id in mapIds) {
+      if (mapIds.hasOwnProperty(id)) {
+        var el = document.getElementById(id);
+        if (el) el.innerHTML = mapIds[id];
+      }
+    }
+    var elCity = document.getElementById("hud-weather-city");
+    if (elCity && !clientWeatherCity) {
+      elCity.placeholder = serverWeatherCity ? (u.ph_city_def + serverWeatherCity) : u.ph_city_auto;
+    }
+    updateClock();
+    renderWeatherUI();
+    renderHudStatusInfo();
+  }
+
+  function renderHudStatusInfo() {
+    var u = I18N_UI[frameLang] || I18N_UI.en;
+    var vp = getViewportSize();
+    var infoEl = document.getElementById("hud-info");
+    if (infoEl && lastStateData) {
+      var pLabel = (effectiveProfile === "legacy") ? u.p_leg : u.p_hd;
+      infoEl.innerHTML = (lastStateData.photo_count || 0) + " " + u.items_unit + " · " + pLabel + " (" + (lastStateData.target_w || vp.w) + "×" + (lastStateData.target_h || vp.h) + ")";
+    }
+    var nightMsg = document.getElementById("night-msg");
+    if (nightMsg) {
+      if (!isEnabled) {
+        nightMsg.innerHTML = u.disabled_msg;
+      } else if (isNightMode) {
+        var ns = (lastStateData && lastStateData.night_start) ? lastStateData.night_start : "";
+        var ne = (lastStateData && lastStateData.night_end) ? lastStateData.night_end : "";
+        nightMsg.innerHTML = u.night_msg + (ns ? (" (" + ns + " - " + ne + ")") : "");
+      }
+    }
+  }
+
   function getQueryParam(name) {
     var s = window.location.search || "";
     var re = new RegExp("[?&]" + name + "=([^&#]*)");
@@ -1221,7 +1370,14 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
     var sel = document.getElementById("hud-profile");
     if (sel) sel.value = profileOverride;
 
+    var ql = getQueryParam("lang");
     try {
+      var sl = localStorage.getItem("webframe_lang") || "auto";
+      if (ql && (ql === "auto" || I18N_DATE[ql])) {
+        clientLang = ql;
+      } else if (sl === "auto" || I18N_DATE[sl]) {
+        clientLang = sl;
+      }
       var cs = localStorage.getItem("webframe_clock_style");
       if (cs === "digital" || cs === "analog" || cs === "hidden") clockStyle = cs;
       var cp = localStorage.getItem("webframe_clock_pos");
@@ -1234,6 +1390,8 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
       if (wc !== null) clientWeatherCity = wc;
     } catch (e) {}
 
+    var elLang = document.getElementById("hud-lang");
+    if (elLang) elLang.value = clientLang;
     var elStyle = document.getElementById("hud-clock-style");
     if (elStyle) elStyle.value = clockStyle;
     var elPos = document.getElementById("hud-clock-pos");
@@ -1245,8 +1403,17 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
     var elCity = document.getElementById("hud-weather-city");
     if (elCity) elCity.value = clientWeatherCity;
 
+    applyFrameI18n();
     applyClockAppearance();
   }
+
+  window.changeClientLang = function(val) {
+    clientLang = (val && (val === "auto" || I18N_DATE[val])) ? val : "auto";
+    try { localStorage.setItem("webframe_lang", clientLang); } catch (e) {}
+    applyFrameI18n();
+    fetchWeather();
+    resetHudTimer();
+  };
 
   function applyClockAppearance() {
     var cw = document.getElementById("clock-widget");
@@ -1300,7 +1467,7 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
 
   window.saveClientWeatherCity = function() {
     var inp = document.getElementById("hud-weather-city");
-    clientWeatherCity = inp ? inp.value.replace(/^\\s+|\\s+$/g, "") : "";
+    clientWeatherCity = inp ? inp.value.replace(/^\s+|\s+$/g, "") : "";
     try { localStorage.setItem("webframe_weather_city", clientWeatherCity); } catch (e) {}
     fetchWeather();
     resetHudTimer();
@@ -1363,9 +1530,11 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
     }
 
     var elDay = document.getElementById("clock-day");
+    var elSep = document.getElementById("clock-date-sep");
     var elDate = document.getElementById("clock-date");
     var elAnaDate = document.getElementById("analog-date-text");
     if (elDay) elDay.innerHTML = dayName;
+    if (elSep) elSep.innerHTML = (frameLang === "zh" || frameLang === "ja" || frameLang === "ko") ? " · " : ", ";
     if (elDate) elDate.innerHTML = fullDateStr;
     if (elAnaDate) elAnaDate.innerHTML = dayName + " · " + fullDateStr;
 
@@ -1628,6 +1797,7 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
       if (xhr.status === 200 || xhr.status === 403) {
         try {
           var data = JSON.parse(xhr.responseText || "{}");
+          lastStateData = data;
           var wasNightOrDisabled = (isNightMode || !isEnabled);
           isEnabled = !!data.enabled;
           isNightMode = !!data.is_night_mode;
@@ -1638,24 +1808,22 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
           }
           if (data.transition) transitionMode = data.transition;
 
+          var prevEffectiveLang = frameLang;
           var langOrCityChanged = false;
-          if (data.language && data.language !== frameLang) {
-            frameLang = data.language;
-            langOrCityChanged = true;
-            updateClock();
+          if (data.language && data.language !== serverLang) {
+            serverLang = data.language;
           }
           if (data.edition) frameEdition = data.edition;
           if (data.weather_city !== undefined && data.weather_city !== serverWeatherCity) {
             serverWeatherCity = data.weather_city || "";
             langOrCityChanged = true;
-            var elCity = document.getElementById("hud-weather-city");
-            if (elCity && !clientWeatherCity) {
-              elCity.placeholder = serverWeatherCity ? ("Default: " + serverWeatherCity) : "City (Auto IP)";
-            }
           }
           if (data.weather_unit && data.weather_unit !== serverWeatherUnit) {
             serverWeatherUnit = data.weather_unit;
-            renderWeatherUI();
+          }
+          applyFrameI18n();
+          if (frameLang !== prevEffectiveLang) {
+            langOrCityChanged = true;
           }
           if (langOrCityChanged || !lastWeatherData) {
             fetchWeather();
@@ -1665,24 +1833,17 @@ WEB_FRAME_HTML = """<!DOCTYPE html>
           if (hostEl && data.mdns_hostname) {
             hostEl.innerHTML = "🖼️ " + data.mdns_hostname;
           }
-          var infoEl = document.getElementById("hud-info");
-          if (infoEl) {
-            var pLabel = (effectiveProfile === "legacy") ? "768p Standard" : "1080p HD";
-            infoEl.innerHTML = (data.photo_count || 0) + " items · " + pLabel + " (" + (data.target_w || vp.w) + "×" + (data.target_h || vp.h) + ")";
-          }
+          renderHudStatusInfo();
 
           var overlay = document.getElementById("night-overlay");
-          var nightMsg = document.getElementById("night-msg");
           if (!isEnabled) {
             if (overlay) overlay.style.display = "block";
-            if (nightMsg) nightMsg.innerHTML = "🖼️ Web Slideshow Viewer is Disabled by Admin";
             var imgA = document.getElementById("slide-a");
             var imgB = document.getElementById("slide-b");
             if (imgA) { imgA.onload = null; imgA.onerror = null; imgA.src = BLANK_GIF; }
             if (imgB) { imgB.onload = null; imgB.onerror = null; imgB.src = BLANK_GIF; }
           } else if (isNightMode) {
             if (overlay) overlay.style.display = "block";
-            if (nightMsg) nightMsg.innerHTML = "🌙 Night Mode Sleep (" + (data.night_start || "") + " - " + (data.night_end || "") + ")";
             var imgA2 = document.getElementById("slide-a");
             var imgB2 = document.getElementById("slide-b");
             if (imgA2) { imgA2.onload = null; imgA2.onerror = null; imgA2.src = BLANK_GIF; }

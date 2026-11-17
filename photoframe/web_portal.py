@@ -1308,6 +1308,17 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
                 <option value="F" data-i18n="opt_wu_f">°F (Fahrenheit)</option>
               </select>
             </div>
+            <div class="form-group">
+              <label for="cfg-webframe-language" data-i18n="lbl_language">Language</label>
+              <select id="cfg-webframe-language" onchange="setLanguage(this.value, true, true)">
+                <option value="en">English</option>
+                <option value="zh">中文 (简体)</option>
+                <option value="ja">日本語</option>
+                <option value="ko">한국어</option>
+                <option value="es">Español</option>
+                <option value="de">Deutsch</option>
+              </select>
+            </div>
             <div class="form-group full" style="margin-top:2px;">
               <label class="checkbox-label" for="cfg-vpn-only-admin" style="display:flex; align-items:center; gap:10px; cursor:pointer;">
                 <input type="checkbox" id="cfg-vpn-only-admin" onchange="updateWebFrameVpnOnlyLive(this.checked)" style="width:18px; height:18px;">
@@ -2948,10 +2959,13 @@ function setLanguage(lang, syncSelectors = true, userPicked = false) {
   }
   document.documentElement.lang = lang;
   if (syncSelectors) {
-    ['login-lang-select', 'header-lang-select', 'cfg-language'].forEach(id => {
+    ['login-lang-select', 'header-lang-select', 'cfg-language', 'cfg-webframe-language'].forEach(id => {
       const el = document.getElementById(id);
       if (el && el.value !== lang) el.value = lang;
     });
+  }
+  if (userPicked && !document.getElementById('app-view')?.classList.contains('hidden')) {
+    updateWebFrameLanguageLive(lang);
   }
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
@@ -3205,6 +3219,8 @@ function applySettingsToForm(cfg) {
   if (devEl) devEl.value = cfg.device_name || '';
   const langEl = document.getElementById('cfg-language');
   if (langEl) langEl.value = cfg.language || currentLang || 'en';
+  const wfLangEl = document.getElementById('cfg-webframe-language');
+  if (wfLangEl) wfLangEl.value = cfg.language || currentLang || 'en';
   const layEl = document.getElementById('cfg-layout');
   if (layEl) layEl.value = cfg.landscape_mode || 'collage';
   const durEl = document.getElementById('cfg-duration');
@@ -3505,6 +3521,23 @@ async function updateWebFrameWeatherLive() {
     const data = await res.json();
     if (res.ok && data.ok) {
       showToast(`Web Viewer weather updated (${cityVal || 'Auto IP'} · ${unitVal})`);
+      fetchStatus(false);
+    }
+  } catch (e) {}
+}
+
+async function updateWebFrameLanguageLive(langVal) {
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        target: selectedTarget,
+        language: langVal
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
       fetchStatus(false);
     }
   } catch (e) {}
