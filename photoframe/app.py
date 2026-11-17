@@ -695,7 +695,8 @@ class SlideshowApp:
         if not video_list or self.is_night_mode:
             return
         self._pending_slide_videos = collections.deque(video_list)
-        self._start_next_queued_video()
+        if not self._start_next_queued_video() and self.photo_manager:
+            self.photo_manager.trigger_prefetch_next()
 
     @staticmethod
     def _build_ffmpeg_rawvideo_cmd(
@@ -1069,6 +1070,7 @@ class SlideshowApp:
             self._run_slide_transition(prev_surf, next_surf, prev_screen_surf=prev_screen_surf)
             self.full_redraw_needed = True
             self.render_frame()
+            self.last_slide_switch = time.time()
             if next_vids:
                 self.start_slide_videos(next_vids)
 
@@ -1086,6 +1088,7 @@ class SlideshowApp:
             self._run_slide_transition(prev_surf, prev_slide_surf, prev_screen_surf=prev_screen_surf)
             self.full_redraw_needed = True
             self.render_frame()
+            self.last_slide_switch = time.time()
             if prev_vids:
                 self.start_slide_videos(prev_vids)
 
@@ -1988,9 +1991,10 @@ class SlideshowApp:
                             daemon=True,
                         ).start()
                     else:
-                        with self.photo_manager._prefetch_lock:
-                            self.photo_manager.prefetched_surface = None
-                            self.photo_manager.prefetched_video_list = []
+                        if layout_or_fit_changed or "videos" in payload or "shuffle" in payload:
+                            with self.photo_manager._prefetch_lock:
+                                self.photo_manager.prefetched_surface = None
+                                self.photo_manager.prefetched_video_list = []
                         if layout_or_fit_changed:
                             self.advance_slide()
                         else:
@@ -2081,7 +2085,11 @@ class SlideshowApp:
                 self.render_frame()
                 if self._video_eof and not self.is_paused:
                     if not self._start_next_queued_video():
-                        self.advance_slide()
+                        self.stop_video_playback(clear_queue=True)
+                        if self.photo_manager:
+                            self.photo_manager.trigger_prefetch_next()
+                        if (time.time() - self.last_slide_switch) >= self.slide_duration:
+                            self.advance_slide()
                 # Poll at >=60 Hz so decoded frames from `reader_worker` are presented
                 # within <8ms without beat-frequency drops between two equal-rate clocks.
                 # Idle polls (`_latest_video_frame is None`) return immediately in <5us.

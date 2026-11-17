@@ -680,6 +680,16 @@ class TestWebFrameUnit(unittest.TestCase):
         self.assertEqual(self.app._classify_char_script("あ"), "cjk")
         self.assertEqual(self.app._classify_char_script("일"), "ko")
 
+        # 6. Guarantee full slide_duration interval even if photo_manager.advance_slide() takes time
+        def slow_advance():
+            # Simulate a 5s download/composition delay by rewinding last_slide_switch inside advance_slide()
+            self.app.last_slide_switch -= 5.0
+            return ("dummy_surf", [])
+
+        with mock.patch.object(self.app.photo_manager, "advance_slide", side_effect=slow_advance):
+            self.app.advance_slide()
+            self.assertLess(time.time() - self.app.last_slide_switch, 1.0)
+
         self.app.update_and_persist_settings({"web_frame_enabled": True, "vpn_only_admin": True})
         self.app._process_web_actions()
         self.app.queue_web_action("web_frame_pause")
