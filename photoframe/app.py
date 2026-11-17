@@ -1150,6 +1150,18 @@ class SlideshowApp:
         "de": ("Diashow Pausiert", "Bildschirm antippen oder Leertaste zum Fortsetzen"),
     }
 
+    _LATIN_BOLD_FONT_CANDIDATES = (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    )
+
+    _LATIN_REG_FONT_CANDIDATES = (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    )
+
     _CJK_FONT_CANDIDATES = (
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
@@ -1161,22 +1173,47 @@ class SlideshowApp:
         "/System/Library/Fonts/STHeiti Medium.ttc",
     )
 
+    _KO_FONT_CANDIDATES = (
+        "/usr/share/fonts/truetype/unfonts-core/UnDotumBold.ttf",
+        "/usr/share/fonts/truetype/unfonts-core/UnDotum.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+        "/System/Library/Fonts/PingFang.ttc",
+        "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+    )
+
     @classmethod
-    def _load_cjk_font(cls, size: int, bold: bool = True) -> Any:
+    def _load_script_font(cls, script: str, size: int, bold: bool = True) -> Any:
         pygame.font.init()
-        for font_path in cls._CJK_FONT_CANDIDATES:
+        if script == "latin":
+            candidates = cls._LATIN_BOLD_FONT_CANDIDATES if bold else cls._LATIN_REG_FONT_CANDIDATES
+            for font_path in candidates:
+                if os.path.isfile(font_path):
+                    try:
+                        return pygame.font.Font(font_path, size)
+                    except Exception:
+                        pass
+            return pygame.font.SysFont("dejavusans,freesans,liberationsans,arial,sans-serif", size, bold=bold)
+
+        candidates = cls._KO_FONT_CANDIDATES if script == "ko" else cls._CJK_FONT_CANDIDATES
+        for font_path in candidates:
             if os.path.isfile(font_path):
                 try:
                     f = pygame.font.Font(font_path, size)
-                    f.set_bold(bold)
+                    if not font_path.lower().endswith("bold.ttf") and not font_path.lower().endswith("bold.ttc"):
+                        f.set_bold(bold)
                     return f
                 except Exception:
                     pass
         try:
-            matched = pygame.font.match_font(
-                "notosanscjksc,notosanscjktc,notosanscjkjp,wenquanyimicrohei,droidsansfallback,pingfangsc,hiraginosans,malgungothic",
-                bold=False,
+            names = (
+                "undotum,notosanscjkkr,notosanscjksc,malgungothic,applesdgothicneo,wenquanyimicrohei"
+                if script == "ko"
+                else "notosanscjksc,notosanscjktc,notosanscjkjp,wenquanyimicrohei,droidsansfallback,pingfangsc,hiraginosans"
             )
+            matched = pygame.font.match_font(names, bold=False)
             if matched:
                 f = pygame.font.Font(matched, size)
                 f.set_bold(bold)
@@ -1184,6 +1221,68 @@ class SlideshowApp:
         except Exception:
             pass
         return pygame.font.SysFont("dejavusans,freesans,arial,sans-serif", size, bold=bold)
+
+    @staticmethod
+    def _classify_char_script(ch: str) -> str:
+        cp = ord(ch)
+        if cp < 0x1100:
+            return "latin"
+        if (0xAC00 <= cp <= 0xD7AF) or (0x1100 <= cp <= 0x11FF) or (0x3130 <= cp <= 0x318F):
+            return "ko"
+        return "cjk"
+
+    @classmethod
+    def _render_multilingual_text(
+        cls,
+        text: str,
+        size: int,
+        color: Tuple[int, int, int],
+        bold: bool = True,
+    ) -> Any:
+        """
+        Renders `text` across all 6 supported languages (`en`, `zh`, `ja`, `ko`, `es`, `de`)
+        by splitting into script runs (`latin`, `cjk`, `ko`) so Latin/European characters and
+        ASCII symbols (`/`, `OK`, `Space`) always use a full Latin font while CJK/Hangul
+        characters use a dedicated CJK/Korean font — preventing missing-glyph boxes when
+        switching languages.
+        """
+        if not text:
+            f = cls._load_script_font("latin", size, bold=bold)
+            return f.render("", True, color)
+
+        runs: List[Tuple[str, str]] = []
+        cur_script = cls._classify_char_script(text[0])
+        cur_chars = [text[0]]
+        for ch in text[1:]:
+            sc = cls._classify_char_script(ch)
+            if sc == cur_script:
+                cur_chars.append(ch)
+            else:
+                runs.append((cur_script, "".join(cur_chars)))
+                cur_script = sc
+                cur_chars = [ch]
+        runs.append((cur_script, "".join(cur_chars)))
+
+        if len(runs) == 1:
+            f = cls._load_script_font(runs[0][0], size, bold=bold)
+            return f.render(runs[0][1], True, color)
+
+        font_cache: Dict[str, Any] = {}
+        surfs = []
+        for sc, segment in runs:
+            if sc not in font_cache:
+                font_cache[sc] = cls._load_script_font(sc, size, bold=bold)
+            surfs.append(font_cache[sc].render(segment, True, color))
+
+        total_w = max(1, sum(s.get_width() for s in surfs))
+        max_h = max(1, max(s.get_height() for s in surfs))
+        combined = pygame.Surface((total_w, max_h), pygame.SRCALPHA)
+        x = 0
+        for s in surfs:
+            y = (max_h - s.get_height()) // 2
+            combined.blit(s, (x, y))
+            x += s.get_width()
+        return combined
 
     def _draw_pause_banner(self, target: Any):
         """
@@ -1197,11 +1296,8 @@ class SlideshowApp:
             title_txt, sub_txt = self._PAUSE_I18N.get(lang, self._PAUSE_I18N["en"])
             cache_key = ("pause_banner", lang)
             if getattr(self, "_cached_pause_banner_key", None) != cache_key or getattr(self, "_cached_pause_banner", None) is None:
-                t_font = self._load_cjk_font(26, bold=True)
-                s_font = self._load_cjk_font(17, bold=True)
-
-                s_title = t_font.render(title_txt, True, (254, 243, 199))
-                s_sub = s_font.render(sub_txt, True, (253, 230, 138))
+                s_title = self._render_multilingual_text(title_txt, 26, (254, 243, 199), bold=True)
+                s_sub = self._render_multilingual_text(sub_txt, 17, (253, 230, 138), bold=True)
 
                 icon_w = 24
                 gap = 16

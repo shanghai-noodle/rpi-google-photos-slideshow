@@ -666,6 +666,20 @@ class TestWebFrameUnit(unittest.TestCase):
         self.assertIn("pause_sub", WEB_FRAME_HTML)
         self.assertIn("/api/webframe/resume", WEB_FRAME_HTML)
 
+        from photoframe import app as app_mod
+        if app_mod.PYGAME_AVAILABLE:
+            for lg, (t_str, s_str) in self.app._PAUSE_I18N.items():
+                surf_t = self.app._render_multilingual_text(t_str, 26, (254, 243, 199), bold=True)
+                surf_s = self.app._render_multilingual_text(s_str, 17, (253, 230, 138), bold=True)
+                self.assertGreater(surf_t.get_width(), 10, f"Title width too small for {lg}")
+                self.assertGreater(surf_s.get_width(), 10, f"Subtitle width too small for {lg}")
+        self.assertEqual(self.app._classify_char_script("A"), "latin")
+        self.assertEqual(self.app._classify_char_script("ó"), "latin")
+        self.assertEqual(self.app._classify_char_script("ü"), "latin")
+        self.assertEqual(self.app._classify_char_script("幻"), "cjk")
+        self.assertEqual(self.app._classify_char_script("あ"), "cjk")
+        self.assertEqual(self.app._classify_char_script("일"), "ko")
+
         self.app.update_and_persist_settings({"web_frame_enabled": True, "vpn_only_admin": True})
         self.app._process_web_actions()
         self.app.queue_web_action("web_frame_pause")
