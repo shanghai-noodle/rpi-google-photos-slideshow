@@ -1,7 +1,9 @@
 import json
 import os
 import tempfile
+import time
 import unittest
+from unittest import mock
 
 from photoframe.collage import PhotoManager
 
@@ -146,6 +148,123 @@ class TestGooglePhotosScraperAndCache(unittest.TestCase):
         # Broken Unsplash URLs must be replaced in photo_sources with the local fallback paths
         self.assertNotIn(broken_portrait, pm_demo.photo_sources)
         self.assertNotIn(broken_landscape, pm_demo.photo_sources)
+
+    def test_extract_item_metadata_prefers_added_timestamp(self):
+        u_new = "https://lh3.googleusercontent.com/pw/AP1GczAddedTsItem_1234567890"
+        u_cap = "https://lh3.googleusercontent.com/pw/AP1GczCaptureTsItem_1234567890"
+        u_none = "https://lh3.googleusercontent.com/pw/AP1GczNoTsItem_1234567890"
+        self.assertEqual(
+            PhotoManager._extract_item_metadata(["id1", [u_new, 1000, 800], 1700000000000, None, None, 1795400000000]),
+            (u_new, False, 1795400000000),
+        )
+        self.assertEqual(
+            PhotoManager._extract_item_metadata(["id2", [u_cap, 1000, 800], 1712345000000, None, {"76647426": [1]}]),
+            (u_cap, True, 1712345000000),
+        )
+        self.assertEqual(
+            PhotoManager._extract_item_metadata(["id3", [u_none, 1000, 800]]),
+            (u_none, False, 0),
+        )
+
+    def test_quick_refresh_recent_and_expiry_lifecycle(self):
+        """
+        Verifies quick_refresh_recent collects newest uploaded items (even on oldest-first
+        multi-page albums via RPC tail fetch), flushes prefetched queues, cycles newest-first
+        when active, persists recent_items in RAM cache, and reverts cleanly on stop or expiry.
+        """
+        u_old = "https://lh3.googleusercontent.com/pw/AP1GczOldItem_123456789012345"
+        u_mid = "https://lh3.googleusercontent.com/pw/AP1GczMidItem_123456789012345"
+        u_newest = "https://lh3.googleusercontent.com/pw/AP1GczNewestItem_123456789012345"
+        album_id = "AF1QipN_RecentAlbum_123456"
+
+        ds1_obj = [
+            None,
+            [
+                ["i1", [u_old, 1000, 800], 1600000000000, None, None, 1700000000000],
+                ["i2", [u_mid, 1000, 800], 1600000000000, None, None, 1750000000000],
+            ],
+            "PAGE_TOKEN_2",
+            [album_id],
+        ]
+        html_page1 = (
+            'window.WIZ_global_data = {"FdrFJe": "111", "cfb2h": "b1", "SNlM0e": "a1"};\n'
+            f"AF_initDataCallback({{key: 'ds:1', data: {json.dumps(ds1_obj)}, sideChannel: {{}}}});"
+        )
+        rpc_inner = json.dumps([
+            None,
+            [
+                ["i3", [u_newest, 1000, 800], 1600000000000, None, {"76647426": [5000]}, 1795499999000],
+            ],
+            None,
+        ])
+        rpc_body = ')]}\'\n' + json.dumps([["wrb.fr", "snAcKc", rpc_inner]])
+
+        class _FakeResp:
+            def __init__(self, payload: str, url: str = ""):
+                self._data = payload.encode("utf-8")
+                self._url = url
+            def read(self):
+                return self._data
+            def geturl(self):
+                return self._url
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+
+        def fake_urlopen(req, context=None, timeout=15):
+            req_url = req.full_url if hasattr(req, "full_url") else str(req)
+            if "batchexecute" in req_url:
+                return _FakeResp(rpc_body, req_url)
+            return _FakeResp(html_page1, f"https://photos.google.com/share/{album_id}?key=AuthK")
+
+        cdn_suffix = f"=w{self.pm.cdn_w}-h{self.pm.cdn_h}"
+        self.pm.photo_sources = [f"{u_old}{cdn_suffix}", f"{u_mid}{cdn_suffix}"]
+        self.pm.prefetched_surface = object()
+
+        with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            recent = self.pm.quick_refresh_recent(max_items=40)
+
+        self.assertEqual(
+            [u.split("=")[0] for u in recent],
+            [u_newest, u_mid, u_old],
+        )
+        self.assertTrue(self.pm.is_video_source(f"{u_newest}{cdn_suffix}"))
+        self.assertIn(f"{u_newest}{cdn_suffix}", self.pm.photo_sources)
+
+        # Cache reload preserves recent_items
+        pm_reloaded = PhotoManager(
+            1920, 1080,
+            album_url="https://photos.app.goo.gl/TestAlbum999",
+            cache_file=self.cache_path,
+            auto_refresh=False,
+        )
+        pm_reloaded._load_cached_photos()
+        self.assertEqual([u.split("=")[0] for u in pm_reloaded._recent_sources], [u_newest, u_mid, u_old])
+
+        # Activation -> pops newest-first, Stop -> reverts to full album & flushes prefetch
+        with self.pm._sources_lock:
+            self.pm._recent_mode_until = time.time() + 300.0
+            self.pm._recent_index = 0
+        self.assertEqual(self.pm._pop_next_source_url().split("=")[0], u_newest)
+        self.assertEqual(self.pm._pop_next_source_url().split("=")[0], u_mid)
+        self.assertTrue(self.pm.get_recent_mode_status()["recent_mode_active"])
+        self.assertGreater(self.pm.get_recent_mode_status()["recent_mode_remaining_sec"], 0)
+
+        self.pm.prefetched_surface = object()
+        self.assertTrue(self.pm.stop_recent_mode())
+        self.assertIsNone(self.pm.prefetched_surface)
+        self.assertFalse(self.pm.is_recent_mode_active())
+
+        # Natural expiry clears prefetched slide and reverts
+        with self.pm._sources_lock:
+            self.pm._recent_mode_until = time.time() - 1.0
+        self.pm.prefetched_surface = object()
+        self.assertTrue(self.pm.check_recent_mode_expiry())
+        self.assertIsNone(self.pm.prefetched_surface)
+        self.assertFalse(self.pm.get_recent_mode_status()["recent_mode_active"])
+        self.assertTrue(self.pm.consume_recent_expiry_notification())
+        self.assertFalse(self.pm.consume_recent_expiry_notification())
 
 
 if __name__ == "__main__":

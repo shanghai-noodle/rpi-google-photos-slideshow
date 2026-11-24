@@ -509,6 +509,30 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 10px;
   }
+  .recent-stream-box {
+    margin-top: 12px; padding-top: 12px;
+    border-top: 1.5px solid var(--md-sys-color-subtle-border);
+  }
+  .recent-stream-title {
+    font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--md-sys-color-on-surface-variant); margin-bottom: 8px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .recent-btn-row {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+  }
+  .recent-banner {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 10px; padding: 10px 14px; border-radius: 14px;
+    background: var(--md-sys-color-secondary-container);
+    color: var(--md-sys-color-on-secondary-container);
+    border: 1.5px solid var(--md-sys-color-accent-text);
+    font-size: 0.86rem; font-weight: 700;
+  }
+  .recent-banner-left {
+    display: inline-flex; align-items: center; gap: 8px; min-width: 0;
+  }
 
   /* Forms & Outlined Inputs */
   .form-grid {
@@ -899,11 +923,12 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     .transport-row { grid-template-columns: 1fr 1fr; gap: 10px; }
     .transport-row #btn-pause { grid-column: 1 / -1; order: -1; min-height: 52px; }
     .btn-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
-    .btn-grid > button, .transport-row > button {
+    .recent-btn-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn-grid > button, .transport-row > button, .recent-btn-row > button {
       border-radius: 26px; padding: 10px 14px; min-height: 52px;
       line-height: 1.2; text-align: center;
     }
-    .btn-grid > button .btn-label, .transport-row > button .btn-label { min-width: 0; overflow-wrap: anywhere; }
+    .btn-grid > button .btn-label, .transport-row > button .btn-label, .recent-btn-row > button .btn-label { min-width: 0; overflow-wrap: anywhere; }
     .card-header { flex-wrap: wrap; gap: 10px; }
     .m3-nav-tab span:not(.m3-nav-pill) {
       max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.72rem;
@@ -1072,6 +1097,29 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
             <button type="button" onclick="sendAction('test_videos')">
               <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg><span class="btn-label" data-i18n="btn_test_vid">Test Video Tiles</span>
             </button>
+          </div>
+          <div class="recent-stream-box">
+            <div class="recent-stream-title">
+              <svg class="m3-icon-sm" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+              <span data-i18n="sec_recent_stream">Stream Recent Uploads</span>
+            </div>
+            <div id="recent-stream-banner" class="recent-banner hidden" role="status" aria-live="polite">
+              <span class="recent-banner-left"><span class="status-dot" aria-hidden="true"></span><span id="recent-stream-text"></span></span>
+              <button type="button" id="btn-recent-stop" class="btn-sm danger" onclick="sendAction('recent_stop')">
+                <svg class="m3-icon-sm" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M6 6h12v12H6z"/></svg><span class="btn-label" data-i18n="btn_recent_stop">Stop Recent</span>
+              </button>
+            </div>
+            <div class="recent-btn-row">
+              <button type="button" id="btn-recent-5" class="tonal" onclick="sendAction('recent_5')">
+                <svg class="m3-icon-sm" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61 1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0 0 12 4c-4.97 0-9 4.03-9 9s4.02 9 9 9a8.994 8.994 0 0 0 7.03-14.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg><span class="btn-label" data-i18n="btn_recent_5">Recent (5 min)</span>
+              </button>
+              <button type="button" id="btn-recent-10" class="tonal" onclick="sendAction('recent_10')">
+                <svg class="m3-icon-sm" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg><span class="btn-label" data-i18n="btn_recent_10">Recent (10 min)</span>
+              </button>
+              <button type="button" id="btn-recent-stop-all" class="outlined hidden" onclick="sendAction('recent_stop')">
+                <svg class="m3-icon-sm" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M6 6h12v12H6z"/></svg><span class="btn-label" data-i18n="btn_recent_stop">Stop Recent</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1529,6 +1577,12 @@ const I18N = {
     btn_resync: "Sync Album",
     btn_demo: "Play Demo Showcase",
     btn_test_vid: "Test Video Tiles",
+    sec_recent_stream: "Stream Recent Uploads",
+    btn_recent_5: "Recent (5 min)",
+    btn_recent_10: "Recent (10 min)",
+    btn_recent_stop: "Stop Recent",
+    recent_active_fmt: "Streaming newest {count} items • {time} left",
+    recent_refreshing: "Checking for latest uploads...",
     sec_settings: "Album, Collage & Schedule",
     sec_advanced_options: "Advanced Display & Network Options",
     lbl_album: "Google Photos Shared Album URL (leave blank or 'demo' for Demo Showcase Pack)",
@@ -1705,6 +1759,12 @@ const I18N = {
     btn_resync: "同步相册",
     btn_demo: "播放内置演示集",
     btn_test_vid: "测试视频拼图",
+    sec_recent_stream: "优先播放最新上传照片",
+    btn_recent_5: "最新照片 (5分钟)",
+    btn_recent_10: "最新照片 (10分钟)",
+    btn_recent_stop: "恢复全部相册",
+    recent_active_fmt: "正在优先播放最新 {count} 项 • 剩余 {time}",
+    recent_refreshing: "正在检查最新上传的照片...",
     sec_settings: "相册、拼图与定时设置",
     sec_advanced_options: "高级显示与网络选项",
     lbl_album: "相册或网盘共享链接（留空或填 'demo' 播放内置演示）",
@@ -1881,6 +1941,12 @@ const I18N = {
     btn_resync: "アルバム同期",
     btn_demo: "デモショーケース再生",
     btn_test_vid: "動画タイルをテスト",
+    sec_recent_stream: "最近のアップロードを優先再生",
+    btn_recent_5: "最新 (5分)",
+    btn_recent_10: "最新 (10分)",
+    btn_recent_stop: "通常再生に戻す",
+    recent_active_fmt: "最新 {count} 件を再生中 • 残り {time}",
+    recent_refreshing: "最新のアップロードを確認中...",
     sec_settings: "アルバム・コラージュ・予定設定",
     sec_advanced_options: "高度な表示・ネットワーク設定",
     lbl_album: "共有アルバム URL（空欄または 'demo' で内蔵デモ再生）",
@@ -2057,6 +2123,12 @@ const I18N = {
     btn_resync: "앨범 동기화",
     btn_demo: "데모 쇼케이스 재생",
     btn_test_vid: "비디오 타일 테스트",
+    sec_recent_stream: "최근 업로드 사진 우선 재생",
+    btn_recent_5: "최근 사진 (5분)",
+    btn_recent_10: "최근 사진 (10분)",
+    btn_recent_stop: "일반 재생으로 복귀",
+    recent_active_fmt: "최신 {count}개 재생 중 • 남은 시간 {time}",
+    recent_refreshing: "최신 업로드를 확인하는 중...",
     sec_settings: "앨범, 콜라주 및 일정 설정",
     sec_advanced_options: "고급 화면 및 네트워크 옵션",
     lbl_album: "공유 앨범 URL (비워두거나 'demo' 입력 시 데모 팩 재생)",
@@ -2233,6 +2305,12 @@ const I18N = {
     btn_resync: "Sincronizar Álbum",
     btn_demo: "Reproducir Demo",
     btn_test_vid: "Probar Videos",
+    sec_recent_stream: "Mostrar fotos recientes",
+    btn_recent_5: "Recientes (5 min)",
+    btn_recent_10: "Recientes (10 min)",
+    btn_recent_stop: "Detener recientes",
+    recent_active_fmt: "Mostrando {count} recientes • queda {time}",
+    recent_refreshing: "Buscando fotos nuevas...",
     sec_settings: "Álbum, Collage y Horario",
     sec_advanced_options: "Opciones Avanzadas de Pantalla y Red",
     lbl_album: "URL del Álbum Compartido (dejar vacío o 'demo' para el paquete Demo)",
@@ -2409,6 +2487,12 @@ const I18N = {
     btn_resync: "Album synchronisieren",
     btn_demo: "Demo abspielen",
     btn_test_vid: "Videos testen",
+    sec_recent_stream: "Neueste Uploads abspielen",
+    btn_recent_5: "Neueste (5 Min.)",
+    btn_recent_10: "Neueste (10 Min.)",
+    btn_recent_stop: "Beenden",
+    recent_active_fmt: "Neueste {count} Medien • noch {time}",
+    recent_refreshing: "Suche nach neuen Uploads...",
     sec_settings: "Album, Collagen & Zeitplan",
     sec_advanced_options: "Erweiterte Anzeige- & Netzwerkoptionen",
     lbl_album: "Geteilte Album-URL (leer oder 'demo' für Demo-Paket)",
@@ -2601,12 +2685,67 @@ let hasLoadedFleetOnce = false;
 let lastIsDefaultPassword = false;
 let manageMode = false;
 const settingsCacheByTarget = {};
+let recentCountdownEndMs = 0;
+let recentCountdownCount = 0;
+let recentRefreshing = false;
+let recentCountdownTimer = null;
 
 function setSelectedTarget(target, persist = true) {
   selectedTarget = target || 'self';
   if (persist) {
     try { sessionStorage.setItem('frame_selected_target', selectedTarget); } catch (e) {}
     try { localStorage.setItem('frame_selected_target', selectedTarget); } catch (e) {}
+  }
+  updateRecentStreamUI();
+}
+
+function formatCountdownMMSS(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  const mm = String(Math.floor(s / 60)).padStart(2, '0');
+  const ss = String(s % 60).padStart(2, '0');
+  return `${mm}:${ss}`;
+}
+
+function updateRecentStreamUI() {
+  const banner = document.getElementById('recent-stream-banner');
+  const txtEl = document.getElementById('recent-stream-text');
+  const stopAllBtn = document.getElementById('btn-recent-stop-all');
+  const remSec = recentCountdownEndMs > Date.now()
+    ? Math.max(0, Math.ceil((recentCountdownEndMs - Date.now()) / 1000))
+    : 0;
+  const active = remSec > 0;
+  if (banner && txtEl) {
+    if (recentRefreshing && active) {
+      txtEl.textContent = t('recent_refreshing');
+      banner.classList.remove('hidden');
+    } else if (active) {
+      txtEl.textContent = t('recent_active_fmt', {
+        count: recentCountdownCount,
+        time: formatCountdownMMSS(remSec)
+      });
+      banner.classList.remove('hidden');
+    } else {
+      banner.classList.add('hidden');
+    }
+  }
+  if (stopAllBtn) {
+    stopAllBtn.classList.toggle('hidden', selectedTarget !== 'all');
+  }
+  if (active && !recentCountdownTimer) {
+    recentCountdownTimer = setInterval(() => {
+      if (recentCountdownEndMs <= Date.now()) {
+        recentCountdownEndMs = 0;
+        clearInterval(recentCountdownTimer);
+        recentCountdownTimer = null;
+        updateRecentStreamUI();
+        fetchStatus(false);
+        return;
+      }
+      updateRecentStreamUI();
+    }, 1000);
+  } else if (!active && recentCountdownTimer) {
+    clearInterval(recentCountdownTimer);
+    recentCountdownTimer = null;
   }
 }
 
@@ -3522,6 +3661,12 @@ function renderStatusSnapshot(st) {
   if (wfProfSel && st.web_frame_profile) {
     wfProfSel.value = st.web_frame_profile;
   }
+
+  recentRefreshing = Boolean(st.recent_mode_refreshing);
+  recentCountdownCount = Number(st.recent_mode_count || 0);
+  const rem = Number(st.recent_mode_remaining_sec || 0);
+  recentCountdownEndMs = (st.recent_mode_active && rem > 0) ? (Date.now() + rem * 1000) : 0;
+  updateRecentStreamUI();
 }
 
 async function toggleWebFramePower() {
@@ -3874,6 +4019,9 @@ async function sendAction(action) {
       } else {
         showToast(data.message || 'Action executed');
         setTimeout(() => fetchStatus(false), 600);
+        if (action === 'recent_5' || action === 'recent_10') {
+          setTimeout(() => fetchStatus(false), 2200);
+        }
       }
     } else if (res.status === 403 && data.locked) {
       const lockedTarget = data.target || selectedTarget;

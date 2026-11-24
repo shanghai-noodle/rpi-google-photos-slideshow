@@ -33,7 +33,18 @@ CANDIDATE_WEB_PORTS = (8080, 8081, 8082, 8088)
 
 # Only these remote-control actions may be broadcast to all frames at once.
 BROADCAST_ALLOWED_ACTIONS = frozenset(
-    {"prev", "next", "pause_toggle", "toggle_night", "resync", "demo", "test_videos"}
+    {
+        "prev",
+        "next",
+        "pause_toggle",
+        "toggle_night",
+        "resync",
+        "demo",
+        "test_videos",
+        "recent_5",
+        "recent_10",
+        "recent_stop",
+    }
 )
 
 SHARED_SETTINGS_KEYS = (

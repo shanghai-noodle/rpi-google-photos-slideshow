@@ -633,6 +633,37 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
             app.handle_events()
         self.assertFalse(app.is_paused)
 
+    def test_recent_mode_actions_and_status_snapshot(self):
+        from photoframe.collage import PhotoManager
+        args = parse_args(["--album", "demo", "--log-file", "none"])
+        app = SlideshowApp(args, hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
+        app.photo_manager = PhotoManager(1920, 1080, album_url="demo", auto_refresh=False)
+        app.photo_manager.photo_sources = ["/tmp/p1.jpg", "/tmp/p2.jpg"]
+
+        st0 = app.get_status_snapshot()
+        self.assertFalse(st0["recent_mode_active"])
+        self.assertEqual(st0["recent_mode_remaining_sec"], 0)
+        self.assertEqual(st0["recent_mode_count"], 0)
+        self.assertFalse(st0["recent_mode_refreshing"])
+
+        with unittest.mock.patch.object(app.photo_manager, "quick_refresh_recent", return_value=["/tmp/p2.jpg", "/tmp/p1.jpg"]):
+            msg5 = app.queue_web_action("recent_5")
+            self.assertIn("5 minutes", msg5)
+            app._process_web_actions()
+            time.sleep(0.1)
+            app._process_web_actions()
+
+        st1 = app.get_status_snapshot()
+        self.assertTrue(st1["recent_mode_active"])
+        self.assertGreater(st1["recent_mode_remaining_sec"], 250)
+
+        msg_stop = app.queue_web_action("recent_stop")
+        self.assertIn("Stopped", msg_stop)
+        app._process_web_actions()
+        st2 = app.get_status_snapshot()
+        self.assertFalse(st2["recent_mode_active"])
+        self.assertEqual(st2["recent_mode_remaining_sec"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

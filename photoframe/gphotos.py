@@ -12,6 +12,7 @@ import glob
 import html as html_lib
 import io
 import json
+import math
 import os
 import random
 import re
@@ -20,7 +21,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
-from typing import Any, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 try:
     from PIL import Image, ImageOps
@@ -38,6 +39,7 @@ class GooglePhotosMixin:
     """Mixin providing Google Photos scraping, RAM caching, and media download methods."""
 
     VIDEO_EXTENSIONS = (".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi")
+    RECENT_MAX_ITEMS = 40
     DEFAULT_DEMO_DIR = os.path.join(PROJECT_ROOT, "demo_media")
     CURATED_DEMO_URLS = (
         # 12 Portrait Showcase Photos
@@ -86,15 +88,31 @@ class GooglePhotosMixin:
         return not bool(self.gphotos_url)
 
     @staticmethod
-    def _extract_item_url_and_is_video(it: Any) -> Tuple[Optional[str], bool]:
-        """Extracts `(base_url, is_video)` from a Google Photos RPC item array."""
+    def _extract_item_metadata(it: Any) -> Tuple[Optional[str], bool, int]:
+        """
+        Extracts `(base_url, is_video, added_ts_ms)` from a Google Photos RPC item array.
+        Prefers `it[5]` (added-to-album / upload epoch ms), falling back to `it[2]` (capture ms).
+        """
         if not isinstance(it, list) or len(it) <= 1 or not isinstance(it[1], list) or not it[1]:
-            return None, False
+            return None, False, 0
         u = it[1][0]
         if not isinstance(u, str) or not u.startswith("http"):
-            return None, False
+            return None, False, 0
         base = u.split("=")[0]
         is_vid = any(isinstance(el, dict) and "76647426" in el for el in it)
+        added_ts = 0
+        for idx in (5, 2):
+            if len(it) > idx:
+                val = it[idx]
+                if isinstance(val, (int, float)) and not isinstance(val, bool) and val > 0:
+                    added_ts = int(val)
+                    break
+        return base, is_vid, added_ts
+
+    @classmethod
+    def _extract_item_url_and_is_video(cls, it: Any) -> Tuple[Optional[str], bool]:
+        """Extracts `(base_url, is_video)` from a Google Photos RPC item array."""
+        base, is_vid, _ = cls._extract_item_metadata(it)
         return base, is_vid
 
     def is_video_source(self, source: str) -> bool:
@@ -153,21 +171,39 @@ class GooglePhotosMixin:
                 raw_urls = data.get("urls", [])
                 has_videos_key = "videos" in data
                 raw_videos = data.get("videos", []) if has_videos_key else []
+                raw_recent = data.get("recent_items", [])
                 updated_at = float(data.get("updated_at", 0.0))
                 cached_title = str(data.get("album_title") or "").strip()
                 if cached_title:
                     self.album_title = cached_title
                 if raw_urls:
+                    ts_map: Dict[str, int] = {}
+                    if isinstance(raw_recent, list):
+                        for entry in raw_recent:
+                            if (
+                                isinstance(entry, (list, tuple))
+                                and len(entry) >= 2
+                                and isinstance(entry[0], str)
+                                and entry[0].startswith("http")
+                            ):
+                                try:
+                                    ts_map[entry[0].split("=")[0]] = int(entry[1])
+                                except (TypeError, ValueError):
+                                    pass
                     with self._sources_lock:
                         self.video_bases = set(
                             v.split("=")[0] for v in raw_videos if isinstance(v, str) and v.startswith("http")
                         )
+                        if ts_map:
+                            self._item_added_ts.update(ts_map)
                     cdn_params = f"=w{self.cdn_w}-h{self.cdn_h}"
                     formatted = [
                         f"{u.split('=')[0]}{cdn_params}"
                         for u in raw_urls
                         if isinstance(u, str) and u.startswith("http")
                     ]
+                    if ts_map:
+                        self._rebuild_recent_sources(ordered_fallback=formatted)
                     logger.info(
                         "Loaded %d items (%d videos) from cache (%s, CDN size: %dx%d)",
                         len(formatted), len(self.video_bases), path, self.cdn_w, self.cdn_h
@@ -193,11 +229,18 @@ class GooglePhotosMixin:
                 clean_videos = sorted(list(set(
                     v.split("=")[0] for v in video_urls if isinstance(v, str) and v.startswith("http")
                 )))
+            with self._sources_lock:
+                recent_pairs = sorted(
+                    ((u, int(ts)) for u, ts in self._item_added_ts.items() if u.startswith("http") and ts > 0),
+                    key=lambda kv: kv[1],
+                    reverse=True,
+                )[:60]
             payload = {
                 "album_url": self.gphotos_url,
                 "album_title": getattr(self, "album_title", "") or "",
                 "urls": clean_urls,
                 "videos": clean_videos,
+                "recent_items": [[u, ts] for u, ts in recent_pairs],
                 "count": len(clean_urls),
                 "video_count": len(clean_videos),
                 "updated_at": time.time(),
@@ -213,7 +256,9 @@ class GooglePhotosMixin:
         except Exception as e:
             logger.warning("Failed to save RAM photo cache: %s", e)
 
-    def _parse_initial_page(self, html: str, final_url: str = "") -> Tuple[List[str], Set[str], Optional[str], Optional[str], Optional[str], dict]:
+    def _parse_initial_page_with_timestamps(
+        self, html: str, final_url: str = ""
+    ) -> Tuple[List[str], Set[str], Optional[str], Optional[str], Optional[str], dict, Dict[str, int]]:
         wiz_m = re.search(r'window\.WIZ_global_data\s*=\s*(\{.*?\});', html)
         wiz_data = {}
         if wiz_m:
@@ -230,6 +275,7 @@ class GooglePhotosMixin:
 
         photos: List[str] = []
         videos: Set[str] = set()
+        timestamps: Dict[str, int] = {}
         page_token = None
         album_key = None
 
@@ -241,11 +287,13 @@ class GooglePhotosMixin:
                 album_info = ds1[3] if len(ds1) > 3 and isinstance(ds1[3], list) else []
                 album_key = album_info[0] if album_info else None
                 for it in items:
-                    base, is_vid = self._extract_item_url_and_is_video(it)
+                    base, is_vid, added_ts = self._extract_item_metadata(it)
                     if base:
                         photos.append(base)
                         if is_vid:
                             videos.add(base)
+                        if added_ts > timestamps.get(base, 0):
+                            timestamps[base] = added_ts
             except Exception as e:
                 logger.debug("Failed parsing structured ds:1 callback: %s", e)
 
@@ -271,7 +319,120 @@ class GooglePhotosMixin:
         extracted_title = self.extract_gphotos_album_title(html)
         if extracted_title:
             self.album_title = extracted_title
+        return photos, videos, page_token, album_key, auth_key, wiz_data, timestamps
+
+    def _parse_initial_page(self, html: str, final_url: str = "") -> Tuple[List[str], Set[str], Optional[str], Optional[str], Optional[str], dict]:
+        photos, videos, page_token, album_key, auth_key, wiz_data, _ = self._parse_initial_page_with_timestamps(
+            html, final_url
+        )
         return photos, videos, page_token, album_key, auth_key, wiz_data
+
+    @classmethod
+    def _parse_rpc_page_items(cls, body: str) -> Tuple[Optional[str], List[Tuple[str, bool, int]]]:
+        """Parses a Google Photos `batchexecute` `snAcKc` response into `(next_token, [(base_url, is_vid, added_ts)])`."""
+        new_token = None
+        parsed_items: List[Tuple[str, bool, int]] = []
+        for line in (body or "").splitlines():
+            line = line.strip()
+            if line.startswith('[["wrb.fr"'):
+                parsed_line = json.loads(line)
+                inner_payload = json.loads(parsed_line[0][2])
+                items = inner_payload[1] if len(inner_payload) > 1 and isinstance(inner_payload[1], list) else []
+                new_token = inner_payload[2] if len(inner_payload) > 2 and isinstance(inner_payload[2], str) else None
+                for it in items:
+                    base, is_vid, added_ts = cls._extract_item_metadata(it)
+                    if base:
+                        parsed_items.append((base, is_vid, added_ts))
+                break
+        return new_token, parsed_items
+
+    def _fetch_rpc_page(
+        self,
+        album_key: str,
+        token: str,
+        auth_key: Optional[str],
+        wiz_data: Optional[dict],
+    ) -> Tuple[Optional[str], List[Tuple[str, bool, int]]]:
+        wiz = wiz_data or {}
+        f_sid = wiz.get("FdrFJe", "")
+        bl = wiz.get("cfb2h", "")
+        at = wiz.get("SNlM0e", "")
+        rpc_payload = json.dumps([album_key, token, None, auth_key])
+        envelope = json.dumps([[["snAcKc", rpc_payload, None, "generic"]]])
+        post_data = urllib.parse.urlencode({"f.req": envelope, "at": at}).encode("utf-8")
+
+        query_params = {
+            "rpcids": "snAcKc",
+            "_reqid": str(int(time.time() * 1000) % 1000000),
+            "bl": bl,
+            "soc-app": "1",
+            "soc-platform": "1",
+            "soc-device": "1",
+            "rt": "c",
+        }
+        if f_sid:
+            query_params["f.sid"] = f_sid
+
+        post_url = "https://photos.google.com/_/PhotosUi/data/batchexecute?" + urllib.parse.urlencode(query_params)
+        req = urllib.request.Request(
+            post_url,
+            data=post_data,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                "User-Agent": "curl/7.68.0",
+                "Referer": "https://photos.google.com/",
+            },
+        )
+        with urllib.request.urlopen(req, context=self.ssl_ctx, timeout=15) as res:
+            body = res.read().decode("utf-8", errors="ignore")
+        return self._parse_rpc_page_items(body)
+
+    def _rebuild_recent_sources(
+        self,
+        ts_map: Optional[Dict[str, int]] = None,
+        ordered_fallback: Optional[List[str]] = None,
+        max_items: Optional[int] = None,
+    ) -> List[str]:
+        limit = max(1, int(max_items or self.RECENT_MAX_ITEMS))
+        cdn_params = f"=w{self.cdn_w}-h{self.cdn_h}"
+        with self._sources_lock:
+            if ts_map:
+                for base_u, ts in ts_map.items():
+                    if base_u and ts > self._item_added_ts.get(base_u, 0):
+                        self._item_added_ts[base_u] = int(ts)
+
+            candidates: List[str] = []
+            seen: Set[str] = set()
+            for raw_u in list(self._item_added_ts.keys()) + list(ordered_fallback or []) + list(self.photo_sources):
+                if not isinstance(raw_u, str) or not raw_u:
+                    continue
+                key = raw_u.split("=")[0] if raw_u.startswith("http") else raw_u
+                if key not in seen:
+                    seen.add(key)
+                    candidates.append(raw_u)
+
+            has_ts = any(self._item_added_ts.get(u.split("=")[0] if u.startswith("http") else u, 0) > 0 for u in candidates)
+            if has_ts:
+                indexed = list(enumerate(candidates))
+                indexed.sort(
+                    key=lambda pair: (
+                        self._item_added_ts.get(pair[1].split("=")[0] if pair[1].startswith("http") else pair[1], 0),
+                        -pair[0],
+                    ),
+                    reverse=True,
+                )
+                ordered_raw = [u for _, u in indexed]
+            else:
+                ordered_raw = candidates
+
+            recent_formatted: List[str] = []
+            for u in ordered_raw[:limit]:
+                if u.startswith("http") and "lh3.googleusercontent.com" in u:
+                    recent_formatted.append(f"{u.split('=')[0]}{cdn_params}")
+                else:
+                    recent_formatted.append(u)
+            self._recent_sources = recent_formatted
+            return list(recent_formatted)
 
     def fetch_google_photos(self, url: str) -> List[str]:
         if not url:
@@ -284,6 +445,9 @@ class GooglePhotosMixin:
             with self._sources_lock:
                 self.photo_sources = list(cached)
                 self.current_index = 0
+                has_recent = bool(self._recent_sources)
+            if not has_recent:
+                self._rebuild_recent_sources(ordered_fallback=cached)
             now = time.time()
             if not has_video_metadata or (self._resync_interval > 0 and (now - updated_at > self._resync_interval)):
                 logger.info("Starting background album sync (video metadata indexed: %s)...", has_video_metadata)
@@ -297,7 +461,9 @@ class GooglePhotosMixin:
                 final_url = getattr(res, "geturl", lambda: "")() or ""
                 html = res.read().decode("utf-8", errors="ignore")
 
-            page1_photos, page1_videos, next_token, album_key, auth_key, wiz_data = self._parse_initial_page(html, final_url)
+            page1_photos, page1_videos, next_token, album_key, auth_key, wiz_data, page1_ts = (
+                self._parse_initial_page_with_timestamps(html, final_url)
+            )
             cdn_params = f"=w{self.cdn_w}-h{self.cdn_h}"
             result_urls = [f"{base.split('=')[0]}{cdn_params}" for base in page1_photos]
             shuffled_page1 = list(result_urls)
@@ -308,6 +474,7 @@ class GooglePhotosMixin:
                 self.video_bases = set(page1_videos)
                 self.photo_sources = shuffled_page1
                 self.current_index = 0
+            self._rebuild_recent_sources(ts_map=page1_ts, ordered_fallback=result_urls)
 
             logger.info("Found %d items (%d videos) on page 1.", len(result_urls), len(page1_videos))
 
@@ -381,6 +548,7 @@ class GooglePhotosMixin:
         logger.info("Starting background Google Photos full album pagination...")
         discovered_urls: List[str] = list(initial_photos or [])
         discovered_videos: Set[str] = set(initial_videos or set())
+        discovered_ts: Dict[str, int] = {}
         token = initial_token
         a_key = album_key
         auth = auth_key
@@ -394,19 +562,17 @@ class GooglePhotosMixin:
                     html = res.read().decode("utf-8", errors="ignore")
                 if expected_gen is not None and self._album_generation != expected_gen:
                     return
-                p1, v1, token, a_key, auth, wiz = self._parse_initial_page(html, final_url)
+                p1, v1, token, a_key, auth, wiz, ts1 = self._parse_initial_page_with_timestamps(html, final_url)
                 cdn_params = f"=w{self.cdn_w}-h{self.cdn_h}"
                 discovered_urls = [f"{u.split('=')[0]}{cdn_params}" for u in p1]
                 discovered_videos.update(v1)
+                discovered_ts.update(ts1)
                 with self._sources_lock:
                     self.video_bases.update(v1)
             except Exception as e:
                 logger.error("Failed to fetch album root during background sync: %s", e)
                 return
 
-        f_sid = wiz.get("FdrFJe", "")
-        bl = wiz.get("cfb2h", "")
-        at = wiz.get("SNlM0e", "")
         cdn_params = f"=w{self.cdn_w}-h{self.cdn_h}"
 
         with self._sources_lock:
@@ -424,60 +590,20 @@ class GooglePhotosMixin:
                 return
             page_num += 1
             try:
-                rpc_payload = json.dumps([a_key, token, None, auth])
-                envelope = json.dumps([[["snAcKc", rpc_payload, None, "generic"]]])
-                post_data = urllib.parse.urlencode({"f.req": envelope, "at": at}).encode("utf-8")
-
-                query_params = {
-                    "rpcids": "snAcKc",
-                    "_reqid": str(int(time.time() * 1000) % 1000000),
-                    "bl": bl,
-                    "soc-app": "1",
-                    "soc-platform": "1",
-                    "soc-device": "1",
-                    "rt": "c",
-                }
-                if f_sid:
-                    query_params["f.sid"] = f_sid
-
-                post_url = "https://photos.google.com/_/PhotosUi/data/batchexecute?" + urllib.parse.urlencode(query_params)
-                req = urllib.request.Request(
-                    post_url,
-                    data=post_data,
-                    headers={
-                        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-                        "User-Agent": "curl/7.68.0",
-                        "Referer": "https://photos.google.com/",
-                    },
-                )
-
-                with urllib.request.urlopen(req, context=self.ssl_ctx, timeout=15) as res:
-                    body = res.read().decode("utf-8", errors="ignore")
-
+                new_token, rpc_items = self._fetch_rpc_page(a_key, token, auth, wiz)
                 if expected_gen is not None and self._album_generation != expected_gen:
                     return
 
-                new_token = None
                 batch_urls = []
                 batch_videos = set()
-                page_item_count = 0
-                for line in body.splitlines():
-                    line = line.strip()
-                    if line.startswith('[["wrb.fr"'):
-                        parsed_line = json.loads(line)
-                        inner_payload = json.loads(parsed_line[0][2])
-                        items = inner_payload[1] if len(inner_payload) > 1 and isinstance(inner_payload[1], list) else []
-                        new_token = inner_payload[2] if len(inner_payload) > 2 and isinstance(inner_payload[2], str) else None
-                        for it in items:
-                            base, is_vid = self._extract_item_url_and_is_video(it)
-                            if base:
-                                page_item_count += 1
-                                if is_vid:
-                                    batch_videos.add(base)
-                                if base not in seen_bases:
-                                    seen_bases.add(base)
-                                    batch_urls.append(f"{base}{cdn_params}")
-                        break
+                for base, is_vid, added_ts in rpc_items:
+                    if is_vid:
+                        batch_videos.add(base)
+                    if added_ts > discovered_ts.get(base, 0):
+                        discovered_ts[base] = added_ts
+                    if base not in seen_bases:
+                        seen_bases.add(base)
+                        batch_urls.append(f"{base}{cdn_params}")
 
                 if batch_videos:
                     discovered_videos.update(batch_videos)
@@ -498,7 +624,7 @@ class GooglePhotosMixin:
                             self.photo_sources.extend(batch_urls)
                     discovered_urls.extend(batch_urls)
 
-                if not new_token or page_item_count == 0:
+                if not new_token or not rpc_items:
                     break
                 token = new_token
                 time.sleep(self.sync_sleep_sec)
@@ -512,6 +638,8 @@ class GooglePhotosMixin:
         with self._sources_lock:
             all_urls = list(self.photo_sources) if len(self.photo_sources) >= len(discovered_urls) else discovered_urls
             all_vids = list(self.video_bases | discovered_videos)
+
+        self._rebuild_recent_sources(ts_map=discovered_ts, ordered_fallback=discovered_urls)
 
         logger.info(
             "Google Photos album sync complete: %d total items (%d videos).",
@@ -600,14 +728,16 @@ class GooglePhotosMixin:
             self.photo_sources = []
             self.video_bases = set()
             self.current_index = 0
+            self._item_added_ts = {}
+            self._recent_sources = []
+            self._recent_index = 0
+            self._recent_mode_until = 0.0
+            self._recent_refreshing = False
+            self._recent_expiry_notify_pending = False
+            self._recent_activation_seq += 1
 
-        self._portrait_queue.clear()
-        self._landscape_queue.clear()
-        self._video_url_queue.clear()
+        self.flush_slide_queues()
         self._slide_history.clear()
-        with self._prefetch_lock:
-            self.prefetched_surface = None
-            self.prefetched_video_list = []
 
         if self.is_demo_mode:
             logger.info("✨ Switching slideshow to built-in Demo Showcase Mode...")
@@ -615,17 +745,237 @@ class GooglePhotosMixin:
             logger.info("🔄 Switching Google Photos album to: %s", self.gphotos_url)
         self.refresh_sources()
 
-        self._portrait_queue.clear()
-        self._landscape_queue.clear()
-        with self._prefetch_lock:
-            self.prefetched_surface = None
-            self.prefetched_video_list = []
+        self.flush_slide_queues()
 
         if callable(on_ready_callback) and self.photo_sources:
             on_ready_callback()
 
-    def _pop_next_source_url(self) -> Optional[str]:
+    def flush_slide_queues(self):
+        """Clears prefetched surfaces and oriented queues so pool changes take effect immediately."""
+        if hasattr(self, "_portrait_queue"):
+            self._portrait_queue.clear()
+        if hasattr(self, "_landscape_queue"):
+            self._landscape_queue.clear()
+        if hasattr(self, "_video_url_queue"):
+            self._video_url_queue.clear()
+        with self._prefetch_lock:
+            self.prefetched_surface = None
+            self.prefetched_video_list = []
+
+    def check_recent_mode_expiry(self) -> bool:
+        """
+        Checks if a running Recent Photos session has expired. If so, resets state,
+        flushes stale prefetched slides, and returns `True`.
+        """
+        expired = False
         with self._sources_lock:
+            if self._recent_mode_until > 0.0 and time.time() >= self._recent_mode_until:
+                self._recent_mode_until = 0.0
+                self._recent_refreshing = False
+                self._recent_index = 0
+                self._recent_expiry_notify_pending = True
+                expired = True
+        if expired:
+            logger.info("🕒 Stream Recent Photos timer expired — reverting to full album.")
+            self.flush_slide_queues()
+        return expired
+
+    def consume_recent_expiry_notification(self) -> bool:
+        """
+        Checks expiry and atomically consumes any pending natural-expiry notification flag,
+        preventing missed web_frame pool notifications when advance_slide expires first.
+        """
+        self.check_recent_mode_expiry()
+        with self._sources_lock:
+            if getattr(self, "_recent_expiry_notify_pending", False):
+                self._recent_expiry_notify_pending = False
+                return True
+            return False
+
+    def is_recent_mode_active(self) -> bool:
+        self.check_recent_mode_expiry()
+        with self._sources_lock:
+            return self._recent_mode_until > time.time()
+
+    def get_recent_mode_status(self) -> Dict[str, Any]:
+        self.check_recent_mode_expiry()
+        now = time.time()
+        with self._sources_lock:
+            until = self._recent_mode_until
+            active = until > now
+            remaining = int(math.ceil(max(0.0, until - now))) if active else 0
+            count = len(self._recent_sources)
+            refreshing = bool(self._recent_refreshing)
+        return {
+            "recent_mode_active": active,
+            "recent_mode_remaining_sec": remaining,
+            "recent_mode_count": count,
+            "recent_mode_refreshing": refreshing,
+        }
+
+    def get_active_sources_snapshot(self) -> List[str]:
+        self.check_recent_mode_expiry()
+        now = time.time()
+        with self._sources_lock:
+            if self._recent_mode_until > now and self._recent_sources:
+                return list(self._recent_sources)
+            return list(self.photo_sources)
+
+    def quick_refresh_recent(self, max_items: int = 40) -> List[str]:
+        """
+        Fetches the newest uploaded/added items without waiting for a full resync,
+        updates `self._recent_sources` (newest-first, up to `max_items`), and merges
+        newly discovered media into `self.photo_sources`.
+        """
+        limit = max(1, int(max_items or self.RECENT_MAX_ITEMS))
+        if self.is_demo_mode or not self.gphotos_url:
+            with self._sources_lock:
+                cur_sources = list(self.photo_sources)
+            if cur_sources and any(isinstance(s, str) and os.path.exists(s) for s in cur_sources):
+                cur_sources = sorted(
+                    cur_sources,
+                    key=lambda p: os.path.getmtime(p) if isinstance(p, str) and os.path.exists(p) else 0.0,
+                    reverse=True,
+                )
+            top = cur_sources[:limit]
+            with self._sources_lock:
+                self._recent_sources = list(top)
+                self._recent_index = 0
+            return list(top)
+
+        try:
+            req = urllib.request.Request(self.gphotos_url, headers={"User-Agent": "curl/7.68.0"})
+            with urllib.request.urlopen(req, context=self.ssl_ctx, timeout=15) as res:
+                final_url = getattr(res, "geturl", lambda: "")() or ""
+                html = res.read().decode("utf-8", errors="ignore")
+
+            p1, v1, next_token, album_key, auth_key, wiz_data, ts1 = self._parse_initial_page_with_timestamps(
+                html, final_url
+            )
+            discovered_bases = list(p1)
+            discovered_videos = set(v1)
+            discovered_ts = dict(ts1)
+
+            # Oldest-first album safeguard: if Page 1 ascends chronologically and has a next_token,
+            # follow RPC pagination (up to 20 pages) to reach the newest end of the album.
+            nonzero_p1 = [ts1.get(b, 0) for b in p1 if ts1.get(b, 0) > 0]
+            if next_token and album_key and len(nonzero_p1) >= 2 and nonzero_p1[0] < nonzero_p1[-1]:
+                token: Optional[str] = next_token
+                seen_bases = set(discovered_bases)
+                for _ in range(20):
+                    if not token:
+                        break
+                    try:
+                        new_token, rpc_items = self._fetch_rpc_page(album_key, token, auth_key, wiz_data)
+                        if not rpc_items:
+                            break
+                        for base, is_vid, added_ts in rpc_items:
+                            if is_vid:
+                                discovered_videos.add(base)
+                            if added_ts > discovered_ts.get(base, 0):
+                                discovered_ts[base] = added_ts
+                            if base not in seen_bases:
+                                seen_bases.add(base)
+                                discovered_bases.append(base)
+                        token = new_token
+                        time.sleep(0.05)
+                    except Exception as rpc_err:
+                        logger.debug("Quick-refresh RPC tail scan stopped: %s", rpc_err)
+                        break
+
+            cdn_params = f"=w{self.cdn_w}-h{self.cdn_h}"
+            formatted_discovered = [f"{b.split('=')[0]}{cdn_params}" for b in discovered_bases]
+            if formatted_discovered:
+                with self._sources_lock:
+                    self.video_bases.update(discovered_videos)
+                    existing_bases = set(u.split("=")[0] for u in self.photo_sources)
+                    new_urls = [u for u in formatted_discovered if u.split("=")[0] not in existing_bases]
+                    if new_urls:
+                        for new_u in reversed(new_urls):
+                            self.photo_sources.insert(self.current_index, new_u)
+                    all_urls = list(self.photo_sources)
+                    all_vids = list(self.video_bases)
+                recent = self._rebuild_recent_sources(
+                    ts_map=discovered_ts, ordered_fallback=formatted_discovered, max_items=limit
+                )
+                self._save_cached_photos(all_urls, all_vids)
+                logger.info("⚡ Quick-refresh indexed %d recent Google Photos item(s).", len(recent))
+                return recent
+        except Exception as e:
+            logger.warning("Quick-refresh recent photos failed (using cached list): %s", e)
+
+        return self._rebuild_recent_sources(max_items=limit)
+
+    def activate_recent_mode(
+        self,
+        duration_sec: float = 300.0,
+        on_ready_callback: Optional[Callable[[], None]] = None,
+    ) -> int:
+        """
+        Activates Recent Photos priority playback for `duration_sec` seconds and starts
+        a fast background quick-refresh so brand-new uploads play immediately.
+        """
+        dur = max(30.0, float(duration_sec))
+        with self._sources_lock:
+            self._recent_activation_seq += 1
+            seq = self._recent_activation_seq
+            gen = self._album_generation
+            self._recent_mode_until = time.time() + dur
+            self._recent_refreshing = True
+            self._recent_expiry_notify_pending = False
+            self._recent_index = 0
+
+        self.flush_slide_queues()
+
+        def worker():
+            try:
+                self.quick_refresh_recent(max_items=self.RECENT_MAX_ITEMS)
+                ready = False
+                with self._sources_lock:
+                    if (
+                        self._recent_activation_seq == seq
+                        and self._album_generation == gen
+                        and self._recent_mode_until > 0.0
+                    ):
+                        self._recent_mode_until = time.time() + dur
+                        self._recent_index = 0
+                        self._recent_refreshing = False
+                        ready = bool(self._recent_sources or self.photo_sources)
+                if ready:
+                    self.flush_slide_queues()
+                    if callable(on_ready_callback):
+                        on_ready_callback()
+            finally:
+                with self._sources_lock:
+                    if self._recent_activation_seq == seq:
+                        self._recent_refreshing = False
+
+        threading.Thread(target=worker, name="QuickRefreshRecentThread", daemon=True).start()
+        return seq
+
+    def stop_recent_mode(self) -> bool:
+        """Stops Recent Photos mode early and flushes slide queues back to full album."""
+        was_active = False
+        with self._sources_lock:
+            was_active = self._recent_mode_until > 0.0 or self._recent_refreshing
+            self._recent_activation_seq += 1
+            self._recent_mode_until = 0.0
+            self._recent_refreshing = False
+            self._recent_expiry_notify_pending = False
+            self._recent_index = 0
+        self.flush_slide_queues()
+        if was_active:
+            logger.info("🖼️ Stopped Stream Recent Photos early — resuming full album.")
+        return was_active
+
+    def _pop_next_source_url(self) -> Optional[str]:
+        self.check_recent_mode_expiry()
+        now = time.time()
+        with self._sources_lock:
+            if self._recent_mode_until > now and self._recent_sources:
+                url = self._recent_sources[self._recent_index % len(self._recent_sources)]
+                self._recent_index = (self._recent_index + 1) % len(self._recent_sources)
+                return url
             if not self.photo_sources:
                 return None
             url = self.photo_sources[self.current_index]

@@ -1637,8 +1637,16 @@ class SlideshowApp:
         items_count = 0
         videos_count = 0
         is_demo = True
+        recent_status: Dict[str, Any] = {
+            "recent_mode_active": False,
+            "recent_mode_remaining_sec": 0,
+            "recent_mode_count": 0,
+            "recent_mode_refreshing": False,
+        }
         if self.photo_manager:
             is_demo = self.photo_manager.is_demo_mode
+            if hasattr(self.photo_manager, "get_recent_mode_status"):
+                recent_status = self.photo_manager.get_recent_mode_status()
             with self.photo_manager._sources_lock:
                 items_count = len(self.photo_manager.photo_sources)
                 videos_count = len(self.photo_manager.video_bases)
@@ -1677,6 +1685,7 @@ class SlideshowApp:
             "web_port": int(getattr(self.args, "web_port", 8080) or 8080),
             "edition": "gphotos",
             "platform": "linux",
+            **recent_status,
             **wf_status,
         }
 
@@ -1842,6 +1851,9 @@ class SlideshowApp:
             "resync": "Syncing Google Photos album now...",
             "demo": "Switched to built-in Demo Showcase Pack!",
             "test_videos": "Queued video tile test sequence.",
+            "recent_5": "Checking latest uploads and streaming recent photos for 5 minutes...",
+            "recent_10": "Checking latest uploads and streaming recent photos for 10 minutes...",
+            "recent_stop": "Stopped recent photos stream; resuming full album.",
             "exit_app": "Closing Photo Frame...",
         }
         if action not in valid:
@@ -1917,6 +1929,29 @@ class SlideshowApp:
                 if self.photo_manager:
                     self.photo_manager.queue_video_positions_test()
                     self.advance_slide()
+            elif action in ("recent_5", "recent_10"):
+                duration_sec = 300.0 if action == "recent_5" else 600.0
+                self.is_night_mode = False
+                self.is_paused = False
+                self._startup_overlay_expired = True
+                self.full_redraw_needed = True
+                if self.photo_manager and hasattr(self.photo_manager, "activate_recent_mode"):
+                    self.photo_manager.activate_recent_mode(
+                        duration_sec,
+                        on_ready_callback=lambda: self._web_action_queue.append(("recent_ready", None)),
+                    )
+            elif action == "recent_ready":
+                self.is_night_mode = False
+                self.advance_slide()
+                if hasattr(self, "web_frame") and self.web_frame and hasattr(self.web_frame, "notify_source_pool_changed"):
+                    self.web_frame.notify_source_pool_changed(reset_to_start=True)
+            elif action == "recent_stop":
+                if self.photo_manager and hasattr(self.photo_manager, "stop_recent_mode"):
+                    self.photo_manager.stop_recent_mode()
+                if not self.is_night_mode:
+                    self.advance_slide()
+                if hasattr(self, "web_frame") and self.web_frame and hasattr(self.web_frame, "notify_source_pool_changed"):
+                    self.web_frame.notify_source_pool_changed(reset_to_start=False)
             elif action == "apply_settings" and isinstance(payload, dict):
                 old_norm = PhotoManager.normalize_gphotos_url(self.args.album)
                 old_mode = getattr(self.args, "landscape_mode", "collage")
@@ -2075,6 +2110,10 @@ class SlideshowApp:
             self.handle_events()
             self._process_web_actions()
             self.check_night_mode_schedule()
+            if self.photo_manager and hasattr(self.photo_manager, "consume_recent_expiry_notification"):
+                if self.photo_manager.consume_recent_expiry_notification():
+                    if hasattr(self, "web_frame") and self.web_frame and hasattr(self.web_frame, "notify_source_pool_changed"):
+                        self.web_frame.notify_source_pool_changed(reset_to_start=False)
 
             if self.is_night_mode:
                 self.render_frame()

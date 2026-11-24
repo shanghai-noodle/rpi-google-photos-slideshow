@@ -335,6 +335,20 @@ class TestWebFrameUnit(unittest.TestCase):
         self.assertEqual(wf._get_source_snapshot(), ["a.jpg"])
         self.app.photo_manager = saved_pm
 
+        # notify_source_pool_changed resets client cursors to 0 and increments remote_cmd_seq
+        wf.enabled = True
+        wf.is_paused = False
+        wf.night_mode_override = False
+        sess = wf._touch_session("recent_viewer")
+        sess.cursor = 7
+        sess.history.append(b"old")
+        prev_seq = wf.remote_cmd_seq
+        wf.notify_source_pool_changed(reset_to_start=True)
+        self.assertEqual(sess.cursor, 0)
+        self.assertEqual(len(sess.history), 0)
+        self.assertEqual(wf.remote_cmd_seq, prev_seq + 1)
+        self.assertEqual(wf.remote_cmd_action, "next")
+
         # set_enabled edge cases: port < 0, port change while running, config_store save error, bind error
         wf.set_enabled(False)
         wf.port = -1

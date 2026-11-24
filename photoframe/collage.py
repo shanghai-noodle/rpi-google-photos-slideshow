@@ -99,6 +99,15 @@ class PhotoManager(GooglePhotosMixin):
         self.current_index = 0
         self.ssl_ctx = ssl._create_unverified_context()
 
+        # Stream Recent Uploads mode state (user-activated 5m/10m priority playback)
+        self._item_added_ts: Dict[str, int] = {}
+        self._recent_sources: List[str] = []
+        self._recent_index = 0
+        self._recent_mode_until = 0.0
+        self._recent_refreshing = False
+        self._recent_activation_seq = 0
+        self._recent_expiry_notify_pending = False
+
         self._sources_lock = threading.Lock()
         self._is_syncing_album = False
         self._album_generation = 0
@@ -1145,6 +1154,9 @@ class PhotoManager(GooglePhotosMixin):
         return None, []
 
     def advance_slide(self) -> Tuple[Optional[Any], List[Dict[str, Any]]]:
+        if hasattr(self, "check_recent_mode_expiry"):
+            self.check_recent_mode_expiry()
+
         if self.gphotos_url and self._resync_interval > 0:
             if time.time() - self._last_resync_time > self._resync_interval and not self._is_syncing_album:
                 self._start_background_sync(self.gphotos_url)

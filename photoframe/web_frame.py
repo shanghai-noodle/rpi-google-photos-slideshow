@@ -2548,6 +2548,11 @@ class WebFrameController:
         pm = getattr(self.app, "photo_manager", None)
         if pm is None:
             return []
+        if hasattr(pm, "get_active_sources_snapshot"):
+            try:
+                return list(pm.get_active_sources_snapshot() or [])
+            except Exception:
+                pass
         lock = getattr(pm, "_sources_lock", None)
         if lock is not None:
             with lock:
@@ -2555,6 +2560,24 @@ class WebFrameController:
         else:
             sources = list(getattr(pm, "photo_sources", []) or [])
         return sources
+
+    def notify_source_pool_changed(self, reset_to_start: bool = True) -> None:
+        """
+        Resets connected Web Frame browser cursors when Recent Photos mode starts (or
+        clears history/advances on revert) and signals active `/frame` clients to fetch
+        a fresh slide immediately via `remote_cmd_seq`.
+        """
+        with self._sessions_lock:
+            if reset_to_start:
+                for sess in self._sessions.values():
+                    sess.cursor = 0
+                    sess.history.clear()
+            else:
+                for sess in self._sessions.values():
+                    sess.history.clear()
+        if self.enabled and not self.is_effective_night_mode() and not self.is_paused:
+            self.remote_cmd_seq += 1
+            self.remote_cmd_action = "next"
 
     def _load_pil_image(self, source: str, max_edge: int = 1280) -> Optional[Any]:
         """Loads and caches a downscaled RGB PIL image from `source` via `photo_manager`."""

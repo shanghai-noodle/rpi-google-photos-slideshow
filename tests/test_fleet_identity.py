@@ -216,6 +216,12 @@ class TestRemovalSticks(FleetTestBase):
         self.assertNotIn("dev-collage", self.store.get_settings().get("removed_peers", []))
 
 
+class TestBroadcastAllowedActions(unittest.TestCase):
+    def test_recent_stream_actions_allowed_for_broadcast(self):
+        for act in ("recent_5", "recent_10", "recent_stop"):
+            self.assertIn(act, F.BROADCAST_ALLOWED_ACTIONS)
+
+
 class TestPortalRemoveButton(unittest.TestCase):
     def test_remove_button_is_offered_for_every_non_self_frame(self):
         self.assertIn("const removeBtn = (!node.is_self)", WEB_PORTAL_HTML)
