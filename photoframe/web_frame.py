@@ -1288,6 +1288,11 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
   var activeSlot = "a";
   var slideCount = 0;
   var isFetchingSlide = false;
+  var fetchStartedAt = 0;
+  var fetchSeq = 0;
+  var fetchTimeoutTimer = null;
+  var SLIDE_FETCH_TIMEOUT_MS = 35000;
+  var loadedAppVersion = "";
   var lastSlideShownAt = 0;
   var lastLoadedVp = { w: 0, h: 0 };
   var slideTimer = null;
@@ -1902,13 +1907,14 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
     return fresh;
   }
 
-  function loadSlide(dir) {
-    if (isFetchingSlide || !isEnabled || isNightMode) return;
-    var imgA = document.getElementById("slide-a");
-    var imgB = document.getElementById("slide-b");
-    if (!imgA) return;
-
-    isFetchingSlide = true;
+  function abortSlideFetch(clearImages) {
+    fetchSeq += 1;
+    isFetchingSlide = false;
+    fetchStartedAt = 0;
+    if (fetchTimeoutTimer) {
+      clearTimeout(fetchTimeoutTimer);
+      fetchTimeoutTimer = null;
+    }
     if (slideTimer) {
       clearTimeout(slideTimer);
       slideTimer = null;
@@ -1916,6 +1922,66 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
     if (cleanupTimer) {
       clearTimeout(cleanupTimer);
       cleanupTimer = null;
+    }
+    if (clearImages) {
+      var imgA = document.getElementById("slide-a");
+      var imgB = document.getElementById("slide-b");
+      if (imgA) { imgA.onload = null; imgA.onerror = null; if (imgA.src !== BLANK_GIF) imgA.src = BLANK_GIF; }
+      if (imgB) { imgB.onload = null; imgB.onerror = null; if (imgB.src !== BLANK_GIF) imgB.src = BLANK_GIF; }
+    }
+  }
+
+  function loadSlide(dir) {
+    if (!isEnabled || isNightMode) return;
+    var nowMs = new Date().getTime();
+    if (isFetchingSlide) {
+      if (fetchStartedAt > 0 && (nowMs - fetchStartedAt) >= SLIDE_FETCH_TIMEOUT_MS) {
+        abortSlideFetch(false);
+      } else {
+        return;
+      }
+    }
+    var imgA = document.getElementById("slide-a");
+    var imgB = document.getElementById("slide-b");
+    if (!imgA) return;
+
+    fetchSeq += 1;
+    var mySeq = fetchSeq;
+    isFetchingSlide = true;
+    fetchStartedAt = nowMs;
+    if (fetchTimeoutTimer) {
+      clearTimeout(fetchTimeoutTimer);
+      fetchTimeoutTimer = null;
+    }
+    if (slideTimer) {
+      clearTimeout(slideTimer);
+      slideTimer = null;
+    }
+    if (cleanupTimer) {
+      clearTimeout(cleanupTimer);
+      cleanupTimer = null;
+    }
+    function clearFetchState() {
+      isFetchingSlide = false;
+      fetchStartedAt = 0;
+      if (fetchTimeoutTimer) {
+        clearTimeout(fetchTimeoutTimer);
+        fetchTimeoutTimer = null;
+      }
+    }
+    function armFetchTimeout(imgEl) {
+      fetchTimeoutTimer = setTimeout(function() {
+        if (fetchSeq !== mySeq) return;
+        fetchTimeoutTimer = null;
+        if (imgEl) {
+          imgEl.onload = null;
+          imgEl.onerror = null;
+          imgEl.src = BLANK_GIF;
+        }
+        isFetchingSlide = false;
+        fetchStartedAt = 0;
+        scheduleNextSlide(3000);
+      }, SLIDE_FETCH_TIMEOUT_MS);
     }
 
     var vp = getViewportSize();
@@ -1941,9 +2007,11 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       imgA.className = "slide-img";
       imgA.style.display = "block";
       imgA.onload = function() {
+        if (fetchSeq !== mySeq) return;
         imgA.onload = null;
         imgA.onerror = null;
-        isFetchingSlide = false;
+        clearFetchState();
+        if (!isEnabled || isNightMode) return;
         slideCount += 1;
         lastSlideShownAt = new Date().getTime();
         lastLoadedVp = { w: vp.w, h: vp.h };
@@ -1952,11 +2020,13 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
         scheduleNextSlide();
       };
       imgA.onerror = function() {
+        if (fetchSeq !== mySeq) return;
         imgA.onload = null;
         imgA.onerror = null;
-        isFetchingSlide = false;
-        scheduleNextSlide();
+        clearFetchState();
+        scheduleNextSlide(Math.min(slideDurationMs, 5000));
       };
+      armFetchTimeout(imgA);
       imgA.src = url;
       return;
     }
@@ -1975,9 +2045,11 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
     targetImg.style.opacity = "0";
     targetImg.style.display = "block";
     targetImg.onload = function() {
+      if (fetchSeq !== mySeq) return;
       targetImg.onload = null;
       targetImg.onerror = null;
-      isFetchingSlide = false;
+      clearFetchState();
+      if (!isEnabled || isNightMode) return;
       slideCount += 1;
       lastSlideShownAt = new Date().getTime();
       lastLoadedVp = { w: vp.w, h: vp.h };
@@ -1995,11 +2067,13 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       scheduleNextSlide();
     };
     targetImg.onerror = function() {
+      if (fetchSeq !== mySeq) return;
       targetImg.onload = null;
       targetImg.onerror = null;
-      isFetchingSlide = false;
-      scheduleNextSlide();
+      clearFetchState();
+      scheduleNextSlide(Math.min(slideDurationMs, 5000));
     };
+    armFetchTimeout(targetImg);
     targetImg.src = url;
   }
   window.loadSlide = loadSlide;
@@ -2029,12 +2103,28 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
       + "&t=" + (new Date().getTime());
 
     xhr.open("GET", url, true);
+    try { xhr.timeout = 10000; } catch (e) {}
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== 4) return;
       if (xhr.status === 200 || xhr.status === 403) {
         try {
           var data = JSON.parse(xhr.responseText || "{}");
           lastStateData = data;
+          if (data.app_version) {
+            if (!loadedAppVersion) {
+              loadedAppVersion = data.app_version;
+            } else if (data.app_version !== loadedAppVersion) {
+              var reloadKey = "wf_reloaded_ver";
+              var alreadyReloaded = "";
+              try { alreadyReloaded = sessionStorage.getItem(reloadKey) || ""; } catch (e) {}
+              if (alreadyReloaded !== data.app_version) {
+                try { sessionStorage.setItem(reloadKey, data.app_version); } catch (e) {}
+                try { window.location.reload(); } catch (e) {}
+                return;
+              }
+              loadedAppVersion = data.app_version;
+            }
+          }
           var wasNightOrDisabled = (isNightMode || !isEnabled);
           var prevServerPaused = serverPaused;
           isEnabled = !!data.enabled;
@@ -2112,27 +2202,33 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
               overlay.style.display = "block";
             }
             if (nClockWrap) nClockWrap.style.display = "none";
-            var imgA = document.getElementById("slide-a");
-            var imgB = document.getElementById("slide-b");
-            if (imgA) { imgA.onload = null; imgA.onerror = null; imgA.src = BLANK_GIF; }
-            if (imgB) { imgB.onload = null; imgB.onerror = null; imgB.src = BLANK_GIF; }
+            abortSlideFetch(true);
           } else if (isNightMode) {
             if (overlay) {
               overlay.className = "active";
               overlay.style.display = "";
             }
             if (nClockWrap) nClockWrap.style.display = "";
-            var imgA2 = document.getElementById("slide-a");
-            var imgB2 = document.getElementById("slide-b");
-            if (imgA2) { imgA2.onload = null; imgA2.onerror = null; imgA2.src = BLANK_GIF; }
-            if (imgB2) { imgB2.onload = null; imgB2.onerror = null; imgB2.src = BLANK_GIF; }
+            abortSlideFetch(true);
           } else {
             if (overlay) {
               overlay.className = "";
               overlay.style.display = "none";
             }
-            if (wasNightOrDisabled && slideCount > 0) {
-              loadSlide("next");
+            var nowPoll = new Date().getTime();
+            if (isFetchingSlide && fetchStartedAt > 0 && (nowPoll - fetchStartedAt) >= SLIDE_FETCH_TIMEOUT_MS) {
+              abortSlideFetch(false);
+            }
+            if (wasNightOrDisabled) {
+              if (!localPaused && !serverPaused) {
+                loadSlide("next");
+              }
+            } else if (!localPaused && !serverPaused && !isFetchingSlide && !slideTimer) {
+              if (slideCount === 0 || lastSlideShownAt === 0 || (nowPoll - lastSlideShownAt) >= slideDurationMs) {
+                loadSlide("next");
+              } else {
+                scheduleNextSlide(Math.max(1000, slideDurationMs - (nowPoll - lastSlideShownAt)));
+              }
             }
           }
         } catch (e) {}
