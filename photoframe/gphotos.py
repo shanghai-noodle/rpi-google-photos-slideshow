@@ -90,8 +90,8 @@ class GooglePhotosMixin:
     @staticmethod
     def _extract_item_metadata(it: Any) -> Tuple[Optional[str], bool, int]:
         """
-        Extracts `(base_url, is_video, added_ts_ms)` from a Google Photos RPC item array.
-        Prefers `it[5]` (added-to-album / upload epoch ms), falling back to `it[2]` (capture ms).
+        Extracts `(base_url, is_video, taken_ts_ms)` from a Google Photos RPC item array.
+        Prioritizes `it[2]` (EXIF capture / photo-taken epoch ms), falling back to `it[5]` (added-to-album ms).
         """
         if not isinstance(it, list) or len(it) <= 1 or not isinstance(it[1], list) or not it[1]:
             return None, False, 0
@@ -100,14 +100,14 @@ class GooglePhotosMixin:
             return None, False, 0
         base = u.split("=")[0]
         is_vid = any(isinstance(el, dict) and "76647426" in el for el in it)
-        added_ts = 0
-        for idx in (5, 2):
+        taken_ts = 0
+        for idx in (2, 5):
             if len(it) > idx:
                 val = it[idx]
                 if isinstance(val, (int, float)) and not isinstance(val, bool) and val > 0:
-                    added_ts = int(val)
+                    taken_ts = int(val)
                     break
-        return base, is_vid, added_ts
+        return base, is_vid, taken_ts
 
     @classmethod
     def _extract_item_url_and_is_video(cls, it: Any) -> Tuple[Optional[str], bool]:
@@ -171,7 +171,7 @@ class GooglePhotosMixin:
                 raw_urls = data.get("urls", [])
                 has_videos_key = "videos" in data
                 raw_videos = data.get("videos", []) if has_videos_key else []
-                raw_recent = data.get("recent_items", [])
+                raw_recent = data.get("recent_items", []) if data.get("recent_ts_mode") == "taken" else []
                 updated_at = float(data.get("updated_at", 0.0))
                 cached_title = str(data.get("album_title") or "").strip()
                 if cached_title:
@@ -240,6 +240,7 @@ class GooglePhotosMixin:
                 "album_title": getattr(self, "album_title", "") or "",
                 "urls": clean_urls,
                 "videos": clean_videos,
+                "recent_ts_mode": "taken",
                 "recent_items": [[u, ts] for u, ts in recent_pairs],
                 "count": len(clean_urls),
                 "video_count": len(clean_videos),
@@ -287,13 +288,13 @@ class GooglePhotosMixin:
                 album_info = ds1[3] if len(ds1) > 3 and isinstance(ds1[3], list) else []
                 album_key = album_info[0] if album_info else None
                 for it in items:
-                    base, is_vid, added_ts = self._extract_item_metadata(it)
+                    base, is_vid, taken_ts = self._extract_item_metadata(it)
                     if base:
                         photos.append(base)
                         if is_vid:
                             videos.add(base)
-                        if added_ts > timestamps.get(base, 0):
-                            timestamps[base] = added_ts
+                        if taken_ts > 0:
+                            timestamps[base] = taken_ts
             except Exception as e:
                 logger.debug("Failed parsing structured ds:1 callback: %s", e)
 
@@ -398,7 +399,7 @@ class GooglePhotosMixin:
         with self._sources_lock:
             if ts_map:
                 for base_u, ts in ts_map.items():
-                    if base_u and ts > self._item_added_ts.get(base_u, 0):
+                    if base_u and ts > 0:
                         self._item_added_ts[base_u] = int(ts)
 
             candidates: List[str] = []
@@ -596,11 +597,11 @@ class GooglePhotosMixin:
 
                 batch_urls = []
                 batch_videos = set()
-                for base, is_vid, added_ts in rpc_items:
+                for base, is_vid, taken_ts in rpc_items:
                     if is_vid:
                         batch_videos.add(base)
-                    if added_ts > discovered_ts.get(base, 0):
-                        discovered_ts[base] = added_ts
+                    if taken_ts > 0:
+                        discovered_ts[base] = taken_ts
                     if base not in seen_bases:
                         seen_bases.add(base)
                         batch_urls.append(f"{base}{cdn_params}")
@@ -823,8 +824,8 @@ class GooglePhotosMixin:
 
     def quick_refresh_recent(self, max_items: int = 40) -> List[str]:
         """
-        Fetches the newest uploaded/added items without waiting for a full resync,
-        updates `self._recent_sources` (newest-first, up to `max_items`), and merges
+        Fetches the newest photos taken without waiting for a full resync,
+        updates `self._recent_sources` (newest-taken-first, up to `max_items`), and merges
         newly discovered media into `self.photo_sources`.
         """
         limit = max(1, int(max_items or self.RECENT_MAX_ITEMS))
@@ -857,23 +858,23 @@ class GooglePhotosMixin:
             discovered_ts = dict(ts1)
 
             # Oldest-first album safeguard: if Page 1 ascends chronologically and has a next_token,
-            # follow RPC pagination (up to 20 pages) to reach the newest end of the album.
+            # follow RPC pagination (up to 60 pages) to reach the newest end of the album.
             nonzero_p1 = [ts1.get(b, 0) for b in p1 if ts1.get(b, 0) > 0]
             if next_token and album_key and len(nonzero_p1) >= 2 and nonzero_p1[0] < nonzero_p1[-1]:
                 token: Optional[str] = next_token
                 seen_bases = set(discovered_bases)
-                for _ in range(20):
+                for _ in range(60):
                     if not token:
                         break
                     try:
                         new_token, rpc_items = self._fetch_rpc_page(album_key, token, auth_key, wiz_data)
                         if not rpc_items:
                             break
-                        for base, is_vid, added_ts in rpc_items:
+                        for base, is_vid, taken_ts in rpc_items:
                             if is_vid:
                                 discovered_videos.add(base)
-                            if added_ts > discovered_ts.get(base, 0):
-                                discovered_ts[base] = added_ts
+                            if taken_ts > 0:
+                                discovered_ts[base] = taken_ts
                             if base not in seen_bases:
                                 seen_bases.add(base)
                                 discovered_bases.append(base)

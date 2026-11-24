@@ -1851,8 +1851,8 @@ class SlideshowApp:
             "resync": "Syncing Google Photos album now...",
             "demo": "Switched to built-in Demo Showcase Pack!",
             "test_videos": "Queued video tile test sequence.",
-            "recent_5": "Checking latest uploads and streaming recent photos for 5 minutes...",
-            "recent_10": "Checking latest uploads and streaming recent photos for 10 minutes...",
+            "recent_5": "Checking latest photos and streaming recent photos for 5 minutes...",
+            "recent_10": "Checking latest photos and streaming recent photos for 10 minutes...",
             "recent_stop": "Stopped recent photos stream; resuming full album.",
             "exit_app": "Closing Photo Frame...",
         }

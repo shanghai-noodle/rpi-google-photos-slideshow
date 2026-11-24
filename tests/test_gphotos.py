@@ -149,17 +149,19 @@ class TestGooglePhotosScraperAndCache(unittest.TestCase):
         self.assertNotIn(broken_portrait, pm_demo.photo_sources)
         self.assertNotIn(broken_landscape, pm_demo.photo_sources)
 
-    def test_extract_item_metadata_prefers_added_timestamp(self):
-        u_new = "https://lh3.googleusercontent.com/pw/AP1GczAddedTsItem_1234567890"
-        u_cap = "https://lh3.googleusercontent.com/pw/AP1GczCaptureTsItem_1234567890"
+    def test_extract_item_metadata_prefers_taken_timestamp(self):
+        u_taken = "https://lh3.googleusercontent.com/pw/AP1GczTakenTsItem_1234567890"
+        u_added_only = "https://lh3.googleusercontent.com/pw/AP1GczAddedOnlyItem_1234567890"
         u_none = "https://lh3.googleusercontent.com/pw/AP1GczNoTsItem_1234567890"
+        # Capture timestamp it[2] wins over later album-added timestamp it[5]
         self.assertEqual(
-            PhotoManager._extract_item_metadata(["id1", [u_new, 1000, 800], 1700000000000, None, None, 1795400000000]),
-            (u_new, False, 1795400000000),
+            PhotoManager._extract_item_metadata(["id1", [u_taken, 1000, 800], 1700000000000, None, None, 1795400000000]),
+            (u_taken, False, 1700000000000),
         )
+        # Falls back to it[5] when it[2] is 0 or None
         self.assertEqual(
-            PhotoManager._extract_item_metadata(["id2", [u_cap, 1000, 800], 1712345000000, None, {"76647426": [1]}]),
-            (u_cap, True, 1712345000000),
+            PhotoManager._extract_item_metadata(["id2", [u_added_only, 1000, 800], 0, None, {"76647426": [1]}, 1712345000000]),
+            (u_added_only, True, 1712345000000),
         )
         self.assertEqual(
             PhotoManager._extract_item_metadata(["id3", [u_none, 1000, 800]]),
@@ -168,20 +170,22 @@ class TestGooglePhotosScraperAndCache(unittest.TestCase):
 
     def test_quick_refresh_recent_and_expiry_lifecycle(self):
         """
-        Verifies quick_refresh_recent collects newest uploaded items (even on oldest-first
-        multi-page albums via RPC tail fetch), flushes prefetched queues, cycles newest-first
-        when active, persists recent_items in RAM cache, and reverts cleanly on stop or expiry.
+        Verifies quick_refresh_recent ranks by photo taken time it[2] (so newly uploaded
+        old photos rank below recently taken photos), follows oldest-first RPC pages,
+        ignores legacy upload-time caches without recent_ts_mode="taken", persists new
+        recent_items, and reverts cleanly on stop or expiry.
         """
-        u_old = "https://lh3.googleusercontent.com/pw/AP1GczOldItem_123456789012345"
-        u_mid = "https://lh3.googleusercontent.com/pw/AP1GczMidItem_123456789012345"
-        u_newest = "https://lh3.googleusercontent.com/pw/AP1GczNewestItem_123456789012345"
+        u_old_newly_uploaded = "https://lh3.googleusercontent.com/pw/AP1GczOldBackfill_1234567890"
+        u_mid = "https://lh3.googleusercontent.com/pw/AP1GczMidTaken_123456789012345"
+        u_newest = "https://lh3.googleusercontent.com/pw/AP1GczNewestTaken_12345678901"
         album_id = "AF1QipN_RecentAlbum_123456"
 
         ds1_obj = [
             None,
             [
-                ["i1", [u_old, 1000, 800], 1600000000000, None, None, 1700000000000],
-                ["i2", [u_mid, 1000, 800], 1600000000000, None, None, 1750000000000],
+                # Old photo (taken 2020) freshly uploaded in 2026: must rank BELOW 2025/2026 shots
+                ["i1", [u_old_newly_uploaded, 1000, 800], 1600000000000, None, None, 1795500000000],
+                ["i2", [u_mid, 1000, 800], 1750000000000, None, None, 1750000100000],
             ],
             "PAGE_TOKEN_2",
             [album_id],
@@ -193,7 +197,7 @@ class TestGooglePhotosScraperAndCache(unittest.TestCase):
         rpc_inner = json.dumps([
             None,
             [
-                ["i3", [u_newest, 1000, 800], 1600000000000, None, {"76647426": [5000]}, 1795499999000],
+                ["i3", [u_newest, 1000, 800], 1795400000000, None, {"76647426": [5000]}, 1795400500000],
             ],
             None,
         ])
@@ -218,8 +222,20 @@ class TestGooglePhotosScraperAndCache(unittest.TestCase):
                 return _FakeResp(rpc_body, req_url)
             return _FakeResp(html_page1, f"https://photos.google.com/share/{album_id}?key=AuthK")
 
+        # Legacy cache without recent_ts_mode="taken" must not restore upload timestamps
+        with open(self.cache_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "album_url": self.pm.gphotos_url,
+                "urls": [u_old_newly_uploaded, u_mid],
+                "videos": [],
+                "recent_items": [[u_old_newly_uploaded, 1795500000000]],
+                "updated_at": time.time(),
+            }, f)
+        self.pm._load_cached_photos()
+        self.assertEqual(self.pm._item_added_ts, {})
+
         cdn_suffix = f"=w{self.pm.cdn_w}-h{self.pm.cdn_h}"
-        self.pm.photo_sources = [f"{u_old}{cdn_suffix}", f"{u_mid}{cdn_suffix}"]
+        self.pm.photo_sources = [f"{u_old_newly_uploaded}{cdn_suffix}", f"{u_mid}{cdn_suffix}"]
         self.pm.prefetched_surface = object()
 
         with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
@@ -227,12 +243,12 @@ class TestGooglePhotosScraperAndCache(unittest.TestCase):
 
         self.assertEqual(
             [u.split("=")[0] for u in recent],
-            [u_newest, u_mid, u_old],
+            [u_newest, u_mid, u_old_newly_uploaded],
         )
         self.assertTrue(self.pm.is_video_source(f"{u_newest}{cdn_suffix}"))
         self.assertIn(f"{u_newest}{cdn_suffix}", self.pm.photo_sources)
 
-        # Cache reload preserves recent_items
+        # Cache reload preserves recent_items when recent_ts_mode == "taken"
         pm_reloaded = PhotoManager(
             1920, 1080,
             album_url="https://photos.app.goo.gl/TestAlbum999",
@@ -240,9 +256,12 @@ class TestGooglePhotosScraperAndCache(unittest.TestCase):
             auto_refresh=False,
         )
         pm_reloaded._load_cached_photos()
-        self.assertEqual([u.split("=")[0] for u in pm_reloaded._recent_sources], [u_newest, u_mid, u_old])
+        self.assertEqual(
+            [u.split("=")[0] for u in pm_reloaded._recent_sources],
+            [u_newest, u_mid, u_old_newly_uploaded],
+        )
 
-        # Activation -> pops newest-first, Stop -> reverts to full album & flushes prefetch
+        # Activation -> pops newest-taken first, Stop -> reverts to full album & flushes prefetch
         with self.pm._sources_lock:
             self.pm._recent_mode_until = time.time() + 300.0
             self.pm._recent_index = 0
