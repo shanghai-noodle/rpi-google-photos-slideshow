@@ -258,6 +258,32 @@ class FrameConfigStore:
             items.sort(key=lambda x: float(x.get("connected_at", 0)), reverse=True)
             return items
 
+    @staticmethod
+    def _is_placeholder_album_name(candidate: str, album_url: str = "") -> bool:
+        cand = (candidate or "").strip()
+        if not cand:
+            return True
+        clean_url = (album_url or "").strip()
+        short_url = clean_url.split("://", 1)[1] if clean_url.lower().startswith(("http://", "https://")) else clean_url
+        if clean_url and (cand == clean_url or cand == short_url):
+            return True
+        low = cand.lower()
+        if low.startswith(("http://", "https://", "photos.app.goo.gl/", "photos.google.com/", "pan.baidu.com/")):
+            return True
+        return low in (
+            "google photos",
+            "shared album",
+            "google photo album",
+            "baidu pan",
+            "baidu photo album",
+            "百度网盘",
+            "百度网盘-分享文件",
+            "分享文件",
+            "demo",
+            "none",
+            "default",
+        )
+
     def record_connected_album(
         self,
         album_url: str,
@@ -269,7 +295,7 @@ class FrameConfigStore:
         clean_url = (album_url or "").strip()
         if not clean_url or clean_url.lower() in ("demo", "none", "default"):
             return None
-        clean_name = (name or "").strip() or clean_url
+        clean_name = (name or "").strip()
         clean_pwd = (pwd or "").strip()
         clean_ed = (edition or "gphotos").strip()
 
@@ -295,14 +321,20 @@ class FrameConfigStore:
             prev_pwd = ""
             for it in existing:
                 if it.get("id") == entry_id or (it.get("album") == clean_url and it.get("edition", clean_ed) == clean_ed):
-                    if not prev_name and it.get("name") and it.get("name") != clean_url:
-                        prev_name = str(it["name"])
+                    cand_prev = str(it.get("name") or "").strip()
+                    if not prev_name and not self._is_placeholder_album_name(cand_prev, clean_url):
+                        prev_name = cand_prev
                     if not prev_pwd and it.get("pwd"):
                         prev_pwd = str(it["pwd"])
                     continue
                 filtered.append(it)
 
-            final_name = clean_name if (clean_name and clean_name != clean_url) else (prev_name or clean_url)
+            if not self._is_placeholder_album_name(clean_name, clean_url):
+                final_name = clean_name
+            elif not self._is_placeholder_album_name(prev_name, clean_url):
+                final_name = prev_name
+            else:
+                final_name = ""
             final_pwd = clean_pwd or prev_pwd
             new_entry = {
                 "id": entry_id,

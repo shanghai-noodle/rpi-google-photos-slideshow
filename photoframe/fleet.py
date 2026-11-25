@@ -54,6 +54,8 @@ SHARED_SETTINGS_KEYS = (
     "transition",
     "videos",
     "max_video_seconds",
+    "video_audio",
+    "video_volume",
     "fit",
     "refresh_hours",
     "shuffle",

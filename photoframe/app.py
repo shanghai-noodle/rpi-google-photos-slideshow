@@ -95,6 +95,10 @@ class SlideshowApp:
             self.args.web_frame_overlay_scale = "medium"
         if not hasattr(self.args, "vpn_only_admin"):
             self.args.vpn_only_admin = False
+        if not hasattr(self.args, "video_audio"):
+            self.args.video_audio = False
+        if not hasattr(self.args, "video_volume"):
+            self.args.video_volume = 30
 
         saved = self.config_store.get_settings()
         if saved:
@@ -134,6 +138,8 @@ class SlideshowApp:
 
         self.slide_duration = float(args.duration)
         self.max_video_seconds = float(args.max_video_seconds)
+        self.video_audio = bool(getattr(self.args, "video_audio", False))
+        self.video_volume = max(0, min(100, int(getattr(self.args, "video_volume", 30))))
         raw_trans = str(getattr(args, "transition", "none") or "none").strip().lower()
         self.transition = raw_trans if raw_trans in self.VALID_TRANSITIONS else "none"
         self.last_slide_switch = time.time()
@@ -144,6 +150,7 @@ class SlideshowApp:
 
         # Active FFmpeg video playback state (streams directly from /dev/shm)
         self._video_proc: Optional[subprocess.Popen] = None
+        self._video_audio_proc: Optional[subprocess.Popen] = None
         self._video_playing = False
         self._video_gen = 0
         self._video_screen_rect: Tuple[int, int, int, int] = (0, 0, 0, 0)
@@ -673,6 +680,7 @@ class SlideshowApp:
         self._video_playing = False
         if clear_queue:
             self._pending_slide_videos.clear()
+        self._stop_video_audio_proc()
         proc = self._video_proc
         self._video_proc = None
         if proc is not None:
@@ -689,6 +697,47 @@ class SlideshowApp:
         self._video_tile_surf = None
         self._video_eof = False
         self._video_corner_stamps = []
+
+    @staticmethod
+    def compute_video_volume_gain(volume_pct: int, audio_enabled: bool = True) -> float:
+        if not audio_enabled:
+            return 0.0
+        vol = max(0, min(100, int(volume_pct)))
+        if vol <= 0:
+            return 0.0
+        return round(pow(vol / 100.0, 1.8), 4)
+
+    @staticmethod
+    def _build_ffplay_audio_cmd(
+        mp4_path: str,
+        play_sec: float,
+        volume_pct: int,
+        audio_enabled: bool = True,
+    ) -> Optional[List[str]]:
+        gain = SlideshowApp.compute_video_volume_gain(volume_pct, audio_enabled=audio_enabled)
+        if gain <= 0.0 or not shutil.which("ffplay"):
+            return None
+        sdl_vol = max(1, min(100, int(round(gain * 100.0))))
+        return [
+            "ffplay",
+            "-nodisp",
+            "-autoexit",
+            "-loglevel", "error",
+            "-vn",
+            "-t", f"{play_sec:.1f}",
+            "-volume", str(sdl_vol),
+            "-i", mp4_path,
+        ]
+
+    def _stop_video_audio_proc(self):
+        aproc = getattr(self, "_video_audio_proc", None)
+        self._video_audio_proc = None
+        if aproc is not None:
+            try:
+                aproc.kill()
+                aproc.wait(timeout=1.0)
+            except Exception:
+                pass
 
     def start_slide_videos(self, video_list: Optional[List[Dict[str, Any]]]):
         self.stop_video_playback(clear_queue=True)
@@ -778,6 +827,19 @@ class SlideshowApp:
             self._video_proc = proc
             self._video_playing = True
             self._video_eof = False
+            if not self.is_paused:
+                audio_cmd = self._build_ffplay_audio_cmd(
+                    mp4_path, play_sec, self.video_volume, audio_enabled=self.video_audio
+                )
+                if audio_cmd:
+                    try:
+                        self._video_audio_proc = subprocess.Popen(
+                            audio_cmd,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
+                    except Exception as ae:
+                        logger.debug("Optional ffplay audio start skipped: %s", ae)
             logger.info(
                 "▶️  Playing video in tile %d/%d (%dx%d -> %dx%d pipe at (%d,%d) @ %d FPS, fmt=%s, dec=%s, max %.0fs)",
                 tile_idx, total_tiles, vw, vh, fw, fh, vx, vy, self._video_fps, pix_fmt, hw_dec or "sw-mt", play_sec
@@ -805,6 +867,7 @@ class SlideshowApp:
                 try:
                     while self._video_playing and self._video_gen == expected_gen and p.stdout:
                         if self.is_paused:
+                            self._stop_video_audio_proc()
                             time.sleep(0.05)
                             next_frame_t = time.perf_counter() + frame_interval
                             clip_deadline += 0.05
@@ -868,6 +931,7 @@ class SlideshowApp:
                     except Exception:
                         pass
                     if self._video_proc is p and self._video_gen == expected_gen:
+                        self._stop_video_audio_proc()
                         self._video_eof = True
 
             threading.Thread(
@@ -894,6 +958,8 @@ class SlideshowApp:
                     self.full_redraw_needed = True
                 elif event.key == pygame.K_SPACE:
                     self.is_paused = not self.is_paused
+                    if self.is_paused:
+                        self._stop_video_audio_proc()
                     if not self.is_paused:
                         self._startup_overlay_expired = True
                     self.last_slide_switch = time.time()
@@ -929,6 +995,8 @@ class SlideshowApp:
                     self.full_redraw_needed = True
                 else:
                     self.is_paused = not self.is_paused
+                    if self.is_paused:
+                        self._stop_video_audio_proc()
                     if not self.is_paused:
                         self._startup_overlay_expired = True
                     self.last_slide_switch = now_ts
@@ -1672,6 +1740,8 @@ class SlideshowApp:
             "landscape_mode": self.args.landscape_mode,
             "transition": self.transition,
             "slide_duration": self.slide_duration,
+            "video_audio": bool(self.video_audio),
+            "video_volume": int(self.video_volume),
             "night_start": self.args.night_start,
             "night_end": self.args.night_end,
             "canvas_w": self.canvas_w,
@@ -1702,6 +1772,8 @@ class SlideshowApp:
             "duration": self.slide_duration,
             "videos": self.args.videos,
             "max_video_seconds": self.max_video_seconds,
+            "video_audio": bool(self.video_audio),
+            "video_volume": int(self.video_volume),
             "fit": self.args.fit,
             "rotate": self.rotation,
             "refresh_hours": self.args.refresh_hours,
@@ -1756,6 +1828,13 @@ class SlideshowApp:
         if "max_video_seconds" in data:
             try:
                 clean["max_video_seconds"] = max(3.0, min(300.0, float(data["max_video_seconds"])))
+            except Exception:
+                pass
+        if "video_audio" in data:
+            clean["video_audio"] = bool(data["video_audio"])
+        if "video_volume" in data:
+            try:
+                clean["video_volume"] = max(0, min(100, int(round(float(data["video_volume"])))))
             except Exception:
                 pass
         if "fit" in data and str(data["fit"]) in ("contain-blur", "contain", "cover"):
@@ -1900,6 +1979,8 @@ class SlideshowApp:
                     self.is_paused = False
                 else:
                     self.is_paused = not self.is_paused
+                if self.is_paused:
+                    self._stop_video_audio_proc()
                 if not self.is_paused:
                     self._startup_overlay_expired = True
                 self.last_slide_switch = time.time()
@@ -1969,6 +2050,10 @@ class SlideshowApp:
                 self.transition = raw_trans if raw_trans in self.VALID_TRANSITIONS else "none"
                 self.slide_duration = float(self.args.duration)
                 self.max_video_seconds = float(self.args.max_video_seconds)
+                self.video_audio = bool(getattr(self.args, "video_audio", False))
+                self.video_volume = max(0, min(100, int(getattr(self.args, "video_volume", 30))))
+                if not self.video_audio or self.video_volume <= 0:
+                    self._stop_video_audio_proc()
                 if "timezone" in payload and payload["timezone"]:
                     self._apply_timezone(str(payload["timezone"]))
                 if "night_mode_enabled" in payload:
@@ -2227,6 +2312,18 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         type=float,
         default=20.0,
         help="Maximum seconds to play a video clip before advancing (default: 20)"
+    )
+    parser.add_argument(
+        "--video-audio",
+        action="store_true",
+        default=False,
+        help="Enable video audio playback via companion ffplay (muted by default)"
+    )
+    parser.add_argument(
+        "--video-volume",
+        type=int,
+        default=30,
+        help="Video playback volume percentage 0-100 when audio is enabled (default: 30)"
     )
     parser.add_argument(
         "--fit",

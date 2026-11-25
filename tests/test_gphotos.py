@@ -285,6 +285,59 @@ class TestGooglePhotosScraperAndCache(unittest.TestCase):
         self.assertTrue(self.pm.consume_recent_expiry_notification())
         self.assertFalse(self.pm.consume_recent_expiry_notification())
 
+    def test_ds1_structured_title_and_quick_refresh_backfill(self):
+        pic_url = "https://lh3.googleusercontent.com/pw/DS1TITLE_PIC1"
+        payload = json.dumps([
+            "tok",
+            [[
+                "id1",
+                [pic_url, 1080, 1080],
+                1795000000000,
+                "",
+                0,
+                [],
+                0,
+                [],
+                [],
+                [],
+                [],
+                0,
+            ]],
+            None,
+            ["key0", "美兔窝"],
+        ])
+        html = (
+            "<title>Google Photos</title>"
+            f"<script>AF_initDataCallback({{key: 'ds:1', hash: '1', data:{payload}, sideChannel: {{}}}});</script>"
+        )
+        self.pm._parse_initial_page_with_timestamps(html)
+        self.assertEqual(self.pm.album_title, "美兔窝")
+
+        class _FakeResp:
+            def __init__(self, body_str, final_u):
+                self._b = body_str.encode("utf-8")
+                self._u = final_u
+
+            def read(self):
+                return self._b
+
+            def geturl(self):
+                return self._u
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        self.pm.album_title = ""
+        connected = []
+        self.pm.on_album_connected = lambda u, t, p="": connected.append((u, t, p))
+        with mock.patch("urllib.request.urlopen", return_value=_FakeResp(html, self.pm.gphotos_url)):
+            self.pm.quick_refresh_recent(max_items=10)
+        self.assertTrue(connected)
+        self.assertEqual(connected[-1][1], "美兔窝")
+
 
 if __name__ == "__main__":
     unittest.main()

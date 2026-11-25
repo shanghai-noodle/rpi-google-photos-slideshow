@@ -748,7 +748,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     border-top: 7px solid var(--active-frame-border);
   }
   .saved-albums-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 10px; margin-top: 4px;
   }
   .saved-album-pill {
@@ -766,15 +766,23 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     border-color: var(--md-sys-color-success);
     background: var(--md-sys-color-surface-container-high);
   }
-  .saved-album-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+  .saved-album-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
   .saved-album-title {
-    display: flex; align-items: center; gap: 6px;
-    font-weight: 600; font-size: 0.88rem; color: var(--md-sys-color-on-surface);
+    display: flex; align-items: flex-start; gap: 8px;
+    font-weight: 600; font-size: 0.9rem; line-height: 1.3; color: var(--md-sys-color-on-surface);
   }
-  .saved-album-title-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .saved-album-service-icon {
+    width: 20px; height: 20px; flex-shrink: 0; display: inline-flex;
+    align-items: center; justify-content: center; margin-top: 1px;
+  }
+  .saved-album-title-text {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; overflow-wrap: anywhere; min-width: 0;
+  }
   .saved-album-meta {
-    font-size: 0.75rem; color: var(--md-sys-color-on-surface-variant);
+    font-size: 0.74rem; color: var(--md-sys-color-on-surface-variant);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    padding-left: 28px;
   }
   .saved-album-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
   .saved-use-btn { min-height: 36px; padding: 6px 12px; font-size: 0.78rem; }
@@ -944,6 +952,10 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   }
   @media (max-width: 680px) {
     .fleet-grid { grid-template-columns: 1fr; }
+    .saved-albums-grid { grid-template-columns: 1fr; }
+    .saved-album-pill { flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+    .saved-album-info { flex: 1 1 100%; }
+    .saved-album-actions { width: 100%; justify-content: flex-end; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition: none !important; animation: none !important; }
@@ -1253,6 +1265,21 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
                   <div class="form-group">
                     <label for="cfg-max-vid" data-i18n="lbl_max_vid">Max Video Duration (seconds)</label>
                     <input type="number" id="cfg-max-vid" min="3" max="120" step="1" value="20" required>
+                  </div>
+
+                  <div class="form-group full" id="group-video-audio">
+                    <div class="switch-field-row">
+                      <label for="cfg-video-audio" data-i18n="lbl_video_audio">Play Video Audio</label>
+                      <input type="checkbox" id="cfg-video-audio" class="m3-toggle" role="switch" onchange="syncVideoAudioFieldsVisibility()">
+                    </div>
+                  </div>
+
+                  <div class="form-group full" id="group-video-volume">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                      <label for="cfg-video-volume" data-i18n="lbl_video_volume" style="margin:0;">Video Audio Volume</label>
+                      <span id="cfg-video-volume-val" class="badge" style="font-size:0.78rem; padding:3px 10px;">30%</span>
+                    </div>
+                    <input type="range" id="cfg-video-volume" min="0" max="100" step="5" value="30" oninput="syncVideoVolumeLabel(this.value)" style="width:100%; accent-color:var(--md-sys-color-primary); cursor:pointer;">
                   </div>
 
                   <div class="form-group">
@@ -1617,6 +1644,8 @@ const I18N = {
     opt_vid_skip: "Skip Videos",
     opt_vid_still: "Show Static Video Thumbnail",
     lbl_max_vid: "Max Video Duration (seconds)",
+    lbl_video_audio: "Play Video Audio",
+    lbl_video_volume: "Video Audio Volume",
     lbl_fit: "Single-Photo Fit Mode",
     opt_fit_blur: "Contain over Dark Bokeh Backdrop",
     opt_fit_contain: "Contain with Black Bars",
@@ -1799,6 +1828,8 @@ const I18N = {
     opt_vid_skip: "跳过所有视频",
     opt_vid_still: "仅显示视频静态封面",
     lbl_max_vid: "最长视频播放时间（秒）",
+    lbl_video_audio: "播放视频声音",
+    lbl_video_volume: "视频音量",
     lbl_fit: "单张照片缩放模式",
     opt_fit_blur: "完整显示 + 暗色散景背景",
     opt_fit_contain: "完整显示（黑边填充）",
@@ -1981,6 +2012,8 @@ const I18N = {
     opt_vid_skip: "動画をスキップ",
     opt_vid_still: "静止画サムネイルのみ表示",
     lbl_max_vid: "最大動画再生時間（秒）",
+    lbl_video_audio: "動画の音声を再生",
+    lbl_video_volume: "動画の音量",
     lbl_fit: "シングル写真のフィットモード",
     opt_fit_blur: "ダークボケ背景 + 全体表示",
     opt_fit_contain: "黒帯付き全体表示",
@@ -2163,6 +2196,8 @@ const I18N = {
     opt_vid_skip: "동영상 건너뛰기",
     opt_vid_still: "정지 썸네일만 표시",
     lbl_max_vid: "최대 동영상 재생 시간 (초)",
+    lbl_video_audio: "동영상 오디오 재생",
+    lbl_video_volume: "동영상 음량",
     lbl_fit: "단일 사진 맞춤 모드",
     opt_fit_blur: "다크 보케 배경 위 전체 표시",
     opt_fit_contain: "검은 여백과 함께 전체 표시",
@@ -2345,6 +2380,8 @@ const I18N = {
     opt_vid_skip: "Omitir Videos",
     opt_vid_still: "Mostrar Miniatura Estática",
     lbl_max_vid: "Duración Máxima de Video (segundos)",
+    lbl_video_audio: "Reproducir Audio de Video",
+    lbl_video_volume: "Volumen del Video",
     lbl_fit: "Ajuste de Foto Individual",
     opt_fit_blur: "Contener sobre Fondo Bokeh Oscuro",
     opt_fit_contain: "Contener con Barras Negras",
@@ -2527,6 +2564,8 @@ const I18N = {
     opt_vid_skip: "Videos überspringen",
     opt_vid_still: "Statisches Vorschaubild anzeigen",
     lbl_max_vid: "Maximale Videodauer (Sekunden)",
+    lbl_video_audio: "Videoton abspielen",
+    lbl_video_volume: "Videolautstärke",
     lbl_fit: "Einzelbild-Anpassung",
     opt_fit_blur: "Einpassen über Bokeh-Hintergrund",
     opt_fit_contain: "Einpassen mit schwarzen Balken",
@@ -3039,7 +3078,53 @@ function syncNightFieldsVisibility() {
   });
 }
 
+function syncVideoVolumeLabel(val) {
+  const lbl = document.getElementById('cfg-video-volume-val');
+  const v = Math.max(0, Math.min(100, Math.round(Number(val) || 0)));
+  if (lbl) lbl.textContent = `${v}%`;
+}
+
+function syncVideoAudioFieldsVisibility() {
+  const mode = document.getElementById('cfg-videos')?.value || 'play';
+  const audioChecked = Boolean(document.getElementById('cfg-video-audio')?.checked);
+  const audioGrp = document.getElementById('group-video-audio');
+  const volGrp = document.getElementById('group-video-volume');
+  const volInput = document.getElementById('cfg-video-volume');
+  if (audioGrp) audioGrp.style.opacity = (mode === 'play') ? '1' : '0.5';
+  if (volGrp) volGrp.style.opacity = (mode === 'play' && audioChecked) ? '1' : '0.5';
+  if (volInput) volInput.disabled = (mode !== 'play' || !audioChecked);
+}
+document.getElementById('cfg-videos')?.addEventListener('change', syncVideoAudioFieldsVisibility);
+
 /* -------- SAVED ALBUMS -------- */
+const googlePhotosSvg = `<svg width="18" height="18" aria-label="Google Photos" role="img" viewBox="0 0 24 24"><path fill="#EA4335" d="M12 2A5 5 0 0 1 12 12Z"/><path fill="#4285F4" d="M22 12A5 5 0 0 1 12 12Z"/><path fill="#34A853" d="M12 22A5 5 0 0 1 12 12Z"/><path fill="#FBBC04" d="M2 12A5 5 0 0 1 12 12Z"/></svg>`;
+const baiduPanSvg = `<svg width="18" height="18" aria-label="Baidu Pan" role="img" viewBox="0 0 24 24"><path fill="#06A7FF" d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/><circle cx="9.2" cy="14.6" r="1.4" fill="#FFFFFF"/><circle cx="14.8" cy="14.6" r="1.4" fill="#FFFFFF"/><circle cx="12" cy="11.4" r="1.5" fill="#FFFFFF"/></svg>`;
+
+function isGenericOrUrlAlbumName(val, url) {
+  const s = String(val || '').trim();
+  if (!s) return true;
+  const rawUrl = String(url || '').trim();
+  const shortUrl = rawUrl.replace(/^https?:\\/\\//i, '');
+  if (rawUrl && (s === rawUrl || s === shortUrl)) return true;
+  if (/^https?:\\/\\//i.test(s) || /^(?:photos\\.app\\.goo\\.gl|photos\\.google\\.com|pan\\.baidu\\.com)\\//i.test(s)) return true;
+  return /^(?:google\\s*photos?(?:\\s*album)?|shared\\s*album|google\\/baidu(?:\\s*photo)?\\s*album|baidu\\s*pan(?:\\s*album)?|baidu\\s*photo\\s*album|百度网盘(?:-分享文件)?|分享文件|demo|none|default)$/i.test(s);
+}
+
+function formatSavedAlbumTitle(item, isCurrent, activeTitle) {
+  const url = String(item.album || '').trim();
+  const rawName = String(item.name || '').trim();
+  if (isCurrent && !isGenericOrUrlAlbumName(activeTitle, url)) {
+    return { title: String(activeTitle).trim(), hasNamedTitle: true };
+  }
+  if (!isGenericOrUrlAlbumName(rawName, url)) {
+    return { title: rawName, hasNamedTitle: true };
+  }
+  const urlPath = url.split('?')[0].replace(/\\/+$/, '');
+  const slug = urlPath.split('/').filter(Boolean).pop() || '';
+  const shortUrl = url.replace(/^https?:\\/\\//i, '');
+  return { title: slug || shortUrl, hasNamedTitle: false };
+}
+
 function renderSavedAlbums(list, currentAlbum, currentTitle) {
   savedAlbumsList = Array.isArray(list) ? list : [];
   if (typeof currentAlbum === 'string') lastActiveAlbumUrl = currentAlbum;
@@ -3047,8 +3132,10 @@ function renderSavedAlbums(list, currentAlbum, currentTitle) {
 
   const badgeEl = document.getElementById('active-album-title-badge');
   if (badgeEl) {
-    if (lastActiveAlbumTitle && lastActiveAlbumUrl && lastActiveAlbumUrl !== 'demo') {
-      badgeEl.textContent = lastActiveAlbumTitle;
+    if (lastActiveAlbumTitle && lastActiveAlbumUrl && lastActiveAlbumUrl !== 'demo' && !isGenericOrUrlAlbumName(lastActiveAlbumTitle, lastActiveAlbumUrl)) {
+      const activeIsBaidu = lastActiveAlbumUrl.toLowerCase().includes('pan.baidu.com');
+      const activeSvg = activeIsBaidu ? baiduPanSvg : googlePhotosSvg;
+      badgeEl.innerHTML = `<span style="display:inline-flex;align-items:center;gap:5px;"><span class="saved-album-service-icon" style="width:16px;height:16px;margin-top:0;">${activeSvg}</span><span>${escapeHtml(lastActiveAlbumTitle)}</span></span>`;
       badgeEl.classList.remove('hidden');
     } else {
       badgeEl.classList.add('hidden');
@@ -3063,8 +3150,6 @@ function renderSavedAlbums(list, currentAlbum, currentTitle) {
   }
 
   const normCur = String(lastActiveAlbumUrl || '').trim();
-  const folderSvg = `<svg class="m3-icon-sm" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>`;
-  const cloudSvg = `<svg class="m3-icon-sm" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>`;
   const closeSvg = `<svg class="m3-icon-sm" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`;
 
   container.innerHTML = savedAlbumsList.map(item => {
@@ -3072,19 +3157,20 @@ function renderSavedAlbums(list, currentAlbum, currentTitle) {
     const url = String(item.album || '');
     const pwd = String(item.pwd || '');
     const isBaidu = item.edition === 'baidupan' || url.toLowerCase().includes('pan.baidu.com');
-    const iconSvg = isBaidu ? cloudSvg : folderSvg;
-    const rawName = String(item.name || '').trim();
+    const svcLabel = isBaidu ? 'Baidu Pan' : 'Google Photos';
+    const iconSvg = `<span class="saved-album-service-icon" title="${svcLabel}">${isBaidu ? baiduPanSvg : googlePhotosSvg}</span>`;
     const shortUrl = url.replace(/^https?:\\/\\//i, '');
-    const displayTitle = rawName || shortUrl;
     const isCurrent = normCur && normCur !== 'demo' && (url === normCur || shortUrl === normCur.replace(/^https?:\\/\\//i, ''));
+    const titleInfo = formatSavedAlbumTitle(item, isCurrent, lastActiveAlbumTitle);
+    const displayTitle = titleInfo.title;
     const pwdTag = pwd ? ` • pwd: ${escapeHtml(pwd)}` : '';
-    const subLine = rawName ? `${escapeHtml(shortUrl)}${pwdTag}` : (pwd ? `pwd: ${escapeHtml(pwd)}` : (isBaidu ? 'Baidu Pan' : 'Google Photos'));
+    const subLine = titleInfo.hasNamedTitle ? `${escapeHtml(shortUrl)}${pwdTag}` : `${svcLabel} • ${escapeHtml(shortUrl)}${pwdTag}`;
     const activeBadge = isCurrent
       ? `<span class="badge active" style="font-size:0.72rem; padding:3px 9px;"><span class="status-dot" aria-hidden="true"></span>${escapeHtml(t('badge_saved_active'))}</span>`
       : `<button type="button" class="tonal saved-use-btn" onclick="applySavedAlbum(event, '${id}')">${escapeHtml(t('btn_use_saved_album'))}</button>`;
     return `<div class="saved-album-pill ${isCurrent ? 'active' : ''}" role="button" tabindex="0" onclick="applySavedAlbum(event, '${id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();applySavedAlbum(event, '${id}');}">
       <div class="saved-album-info">
-        <div class="saved-album-title" title="${escapeHtml(displayTitle)}">${iconSvg}<span class="saved-album-title-text">${escapeHtml(displayTitle)}</span></div>
+        <div class="saved-album-title" title="${escapeHtml(svcLabel + ': ' + displayTitle)}">${iconSvg}<span class="saved-album-title-text">${escapeHtml(displayTitle)}</span></div>
         <div class="saved-album-meta" title="${escapeHtml(url)}">${subLine}</div>
       </div>
       <div class="saved-album-actions">
@@ -3416,6 +3502,17 @@ function applySettingsToForm(cfg) {
   if (vidEl) vidEl.value = cfg.videos || 'play';
   const maxVidEl = document.getElementById('cfg-max-vid');
   if (maxVidEl) maxVidEl.value = cfg.max_video_seconds ?? 20;
+  const vidAudioEl = document.getElementById('cfg-video-audio');
+  if (vidAudioEl) {
+    vidAudioEl.checked = (cfg.video_audio !== undefined)
+      ? Boolean(cfg.video_audio)
+      : (activeTargetPlatform === 'android_tv');
+  }
+  const vidVolEl = document.getElementById('cfg-video-volume');
+  const vidVol = (cfg.video_volume !== undefined && cfg.video_volume !== null) ? Number(cfg.video_volume) : 30;
+  if (vidVolEl) vidVolEl.value = String(Math.max(0, Math.min(100, isNaN(vidVol) ? 30 : Math.round(vidVol))));
+  syncVideoVolumeLabel(vidVolEl ? vidVolEl.value : 30);
+  syncVideoAudioFieldsVisibility();
   const fitEl = document.getElementById('cfg-fit');
   if (fitEl) fitEl.value = cfg.fit || 'contain-blur';
   const rotEl = document.getElementById('cfg-rotate');
@@ -3503,6 +3600,17 @@ function selectFleetTarget(target) {
       syncNightFieldsVisibility();
       const wfProfEl = document.getElementById('cfg-webframe-profile');
       if (wfProfEl && node.web_frame_profile) wfProfEl.value = node.web_frame_profile;
+      const vidAudioEl = document.getElementById('cfg-video-audio');
+      if (vidAudioEl) {
+        vidAudioEl.checked = (node.video_audio !== undefined)
+          ? Boolean(node.video_audio)
+          : (node.platform === 'android_tv');
+      }
+      const vidVolEl = document.getElementById('cfg-video-volume');
+      const nodeVol = (node.video_volume !== undefined && node.video_volume !== null) ? Number(node.video_volume) : 30;
+      if (vidVolEl) vidVolEl.value = String(Math.max(0, Math.min(100, isNaN(nodeVol) ? 30 : Math.round(nodeVol))));
+      syncVideoVolumeLabel(vidVolEl ? vidVolEl.value : 30);
+      syncVideoAudioFieldsVisibility();
       renderSavedAlbums([], '', '');
     }
     const logBox = document.getElementById('log-box');
@@ -4258,6 +4366,8 @@ async function saveSettings(e) {
     transition: document.getElementById('cfg-transition').value,
     videos: document.getElementById('cfg-videos').value,
     max_video_seconds: parseFloat(document.getElementById('cfg-max-vid').value),
+    video_audio: Boolean(document.getElementById('cfg-video-audio')?.checked),
+    video_volume: Math.max(0, Math.min(100, parseInt(document.getElementById('cfg-video-volume')?.value || '30', 10) || 0)),
     fit: document.getElementById('cfg-fit').value,
     refresh_hours: parseFloat(document.getElementById('cfg-refresh').value),
     shuffle: document.getElementById('cfg-shuffle').checked,

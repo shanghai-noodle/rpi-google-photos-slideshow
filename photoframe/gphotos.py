@@ -126,7 +126,18 @@ class GooglePhotosMixin:
             return base in self.video_bases
 
     @staticmethod
-    def extract_gphotos_album_title(page_html: str) -> str:
+    def _is_generic_album_title(raw: str) -> bool:
+        low = (raw or "").strip().lower()
+        return (
+            not low
+            or low in ("google photos", "shared album", "google photo album", "photos", "album")
+            or low.startswith(("google photos", "shared album", "http://", "https://"))
+            or "sign in" in low
+            or "google accounts" in low
+        )
+
+    @classmethod
+    def extract_gphotos_album_title(cls, page_html: str) -> str:
         if not page_html:
             return ""
         og_m = re.search(
@@ -138,19 +149,18 @@ class GooglePhotosMixin:
             page_html,
             re.IGNORECASE | re.DOTALL,
         )
-        raw = ""
         if og_m:
             raw = html_lib.unescape(og_m.group(1)).strip()
             raw = re.sub(r"\s*·\s*.*$", "", raw).strip()
-        if not raw:
-            t_m = re.search(r"<title[^>]*>(.*?)</title>", page_html, re.IGNORECASE | re.DOTALL)
-            if t_m:
-                raw = html_lib.unescape(t_m.group(1)).strip()
-                raw = re.sub(r"\s*-\s*Google\s+Photos\s*$", "", raw, flags=re.IGNORECASE).strip()
-        low = raw.lower()
-        if low in ("google photos", "shared album", "") or "sign in" in low or "google accounts" in low:
-            return ""
-        return raw
+            if not cls._is_generic_album_title(raw):
+                return raw
+        t_m = re.search(r"<title[^>]*>(.*?)</title>", page_html, re.IGNORECASE | re.DOTALL)
+        if t_m:
+            raw = html_lib.unescape(t_m.group(1)).strip()
+            raw = re.sub(r"\s*-\s*Google\s+Photos\s*$", "", raw, flags=re.IGNORECASE).strip()
+            if not cls._is_generic_album_title(raw):
+                return raw
+        return ""
 
     def _load_cached_photos(self) -> Tuple[List[str], float, bool]:
         """Returns `(formatted_urls, updated_at, has_video_metadata)`."""
@@ -279,6 +289,7 @@ class GooglePhotosMixin:
         timestamps: Dict[str, int] = {}
         page_token = None
         album_key = None
+        structured_title = ""
 
         if cb_m:
             try:
@@ -287,6 +298,10 @@ class GooglePhotosMixin:
                 page_token = ds1[2] if len(ds1) > 2 and isinstance(ds1[2], str) else None
                 album_info = ds1[3] if len(ds1) > 3 and isinstance(ds1[3], list) else []
                 album_key = album_info[0] if album_info else None
+                if len(album_info) > 1 and isinstance(album_info[1], str):
+                    cand_title = album_info[1].strip()
+                    if not self._is_generic_album_title(cand_title):
+                        structured_title = cand_title
                 for it in items:
                     base, is_vid, taken_ts = self._extract_item_metadata(it)
                     if base:
@@ -318,8 +333,9 @@ class GooglePhotosMixin:
                 auth_key = auth_req_m.group(1)
 
         extracted_title = self.extract_gphotos_album_title(html)
-        if extracted_title:
-            self.album_title = extracted_title
+        best_title = structured_title or extracted_title
+        if best_title:
+            self.album_title = best_title
         return photos, videos, page_token, album_key, auth_key, wiz_data, timestamps
 
     def _parse_initial_page(self, html: str, final_url: str = "") -> Tuple[List[str], Set[str], Optional[str], Optional[str], Optional[str], dict]:
@@ -900,6 +916,11 @@ class GooglePhotosMixin:
                     ts_map=discovered_ts, ordered_fallback=formatted_discovered, max_items=limit
                 )
                 self._save_cached_photos(all_urls, all_vids)
+                if getattr(self, "album_title", "") and callable(getattr(self, "on_album_connected", None)):
+                    try:
+                        self.on_album_connected(self.gphotos_url, self.album_title, "")
+                    except Exception:
+                        pass
                 logger.info("⚡ Quick-refresh indexed %d recent Google Photos item(s).", len(recent))
                 return recent
         except Exception as e:

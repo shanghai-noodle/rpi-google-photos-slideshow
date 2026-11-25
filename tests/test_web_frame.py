@@ -731,6 +731,39 @@ class TestWebFrameUnit(unittest.TestCase):
             portal_srv.shutdown()
             portal_srv.server_close()
 
+    def test_album_chip_icons_placeholder_guard_and_video_audio_i18n(self):
+        from photoframe.collage import PhotoManager
+        from photoframe import web_portal as wp_mod
+
+        html_generic_og = (
+            '<meta property="og:title" content="Shared album · Nov 24">'
+            '<title>美兔窝 - Google Photos</title>'
+        )
+        self.assertEqual(PhotoManager.extract_gphotos_album_title(html_generic_og), "美兔窝")
+
+        url = "https://photos.app.goo.gl/PreserveTitleTest123"
+        self.store.record_connected_album(url, name="Hawaii Sunset")
+        for bad_name in ("Google Photos", "Shared album", url, ""):
+            self.store.record_connected_album(url, name=bad_name)
+        hist = self.store.get_album_history()
+        matched = [x for x in hist if x.get("album") == url]
+        self.assertEqual(len(matched), 1)
+        self.assertEqual(matched[0]["name"], "Hawaii Sunset")
+
+        anon_url = "https://photos.app.goo.gl/NoTitleYet456"
+        entry = self.store.record_connected_album(anon_url, name="Google Photos")
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry["name"], "")
+
+        html = wp_mod.WEB_PORTAL_HTML
+        self.assertIn("googlePhotosSvg", html)
+        self.assertIn("baiduPanSvg", html)
+        self.assertIn("formatSavedAlbumTitle", html)
+        self.assertIn('id="cfg-video-audio"', html)
+        self.assertIn('id="cfg-video-volume"', html)
+        self.assertEqual(html.count("lbl_video_audio:"), 6)
+        self.assertEqual(html.count("lbl_video_volume:"), 6)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -664,6 +664,29 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
         self.assertFalse(st2["recent_mode_active"])
         self.assertEqual(st2["recent_mode_remaining_sec"], 0)
 
+    def test_video_audio_and_volume_settings_persistence(self):
+        args = parse_args(["--album", "demo", "--log-file", "none"])
+        app = SlideshowApp(args, hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
+        st0 = app.get_status_snapshot()
+        self.assertFalse(st0["video_audio"])
+        self.assertEqual(st0["video_volume"], 30)
+
+        app.update_and_persist_settings({"video_audio": True, "video_volume": 45})
+        app._process_web_actions()
+        st1 = app.get_status_snapshot()
+        cfg1 = app.get_current_settings_dict()
+        self.assertTrue(st1["video_audio"])
+        self.assertEqual(st1["video_volume"], 45)
+        self.assertTrue(cfg1["video_audio"])
+        self.assertEqual(cfg1["video_volume"], 45)
+
+        app.update_and_persist_settings({"video_volume": 250})
+        app._process_web_actions()
+        self.assertEqual(app.get_status_snapshot()["video_volume"], 100)
+        app.update_and_persist_settings({"video_volume": -10})
+        app._process_web_actions()
+        self.assertEqual(app.get_status_snapshot()["video_volume"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

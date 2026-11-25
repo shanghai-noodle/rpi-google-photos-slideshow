@@ -524,6 +524,23 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         self.assertEqual(len(prefetch_calls), 1)
         pygame.display.quit()
 
+    def test_video_volume_gain_and_ffplay_audio_cmd(self):
+        self.assertEqual(SlideshowApp.compute_video_volume_gain(30, audio_enabled=False), 0.0)
+        self.assertEqual(SlideshowApp.compute_video_volume_gain(0, audio_enabled=True), 0.0)
+        self.assertAlmostEqual(SlideshowApp.compute_video_volume_gain(30, audio_enabled=True), 0.1144, places=3)
+        self.assertEqual(SlideshowApp.compute_video_volume_gain(100, audio_enabled=True), 1.0)
+
+        with unittest.mock.patch("shutil.which", return_value="/usr/bin/ffplay"):
+            self.assertIsNone(SlideshowApp._build_ffplay_audio_cmd("/tmp/v.mp4", 15.0, 30, audio_enabled=False))
+            cmd = SlideshowApp._build_ffplay_audio_cmd("/tmp/v.mp4", 15.0, 30, audio_enabled=True)
+            self.assertIsNotNone(cmd)
+            self.assertIn("-nodisp", cmd)
+            self.assertIn("-vn", cmd)
+            self.assertIn("-volume", cmd)
+            vol_idx = cmd.index("-volume")
+            self.assertEqual(cmd[vol_idx + 1], "11")
+            self.assertIn("/tmp/v.mp4", cmd)
+
 
 if __name__ == "__main__":
     unittest.main()
