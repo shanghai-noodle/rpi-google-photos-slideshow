@@ -338,6 +338,119 @@ class TestGooglePhotosScraperAndCache(unittest.TestCase):
         self.assertTrue(connected)
         self.assertEqual(connected[-1][1], "美兔窝")
 
+    def test_normalize_gphotos_albums_and_format_multi_title(self):
+        self.assertEqual(PhotoManager.normalize_gphotos_albums(None), [])
+        self.assertEqual(PhotoManager.normalize_gphotos_albums("demo"), [])
+        self.assertEqual(
+            PhotoManager.normalize_gphotos_albums(
+                "https://photos.app.goo.gl/AlbumA1\nhttps://photos.app.goo.gl/AlbumB2, AlbumA1"
+            ),
+            [
+                "https://photos.app.goo.gl/AlbumA1",
+                "https://photos.app.goo.gl/AlbumB2",
+            ],
+        )
+        self.assertEqual(
+            PhotoManager.format_multi_album_title(
+                ["https://photos.app.goo.gl/A1", "https://photos.app.goo.gl/B2"],
+                {"https://photos.app.goo.gl/A1": "Family", "https://photos.app.goo.gl/B2": "Travel"},
+            ),
+            "Family + Travel",
+        )
+        self.assertEqual(
+            PhotoManager.format_multi_album_title(
+                ["https://photos.app.goo.gl/A1", "https://photos.app.goo.gl/B2", "https://photos.app.goo.gl/C3"],
+                {"https://photos.app.goo.gl/A1": "Family", "https://photos.app.goo.gl/B2": "Travel", "https://photos.app.goo.gl/C3": "Pets"},
+            ),
+            "Family, Travel + 1",
+        )
+
+    def test_multi_album_fetch_combined_pool_cache_and_recent_mode(self):
+        url_a = "https://photos.app.goo.gl/MultiAlbumA111"
+        url_b = "https://photos.app.goo.gl/MultiAlbumB222"
+        pm = PhotoManager(
+            1920,
+            1080,
+            album_url=url_a,
+            album_urls=[url_a, url_b],
+            shuffle=False,
+            cache_file=self.cache_path,
+            auto_refresh=False,
+        )
+
+        p_a = "https://lh3.googleusercontent.com/pw/AP1GczMultiPhotoA1_1234567890"
+        p_shared = "https://lh3.googleusercontent.com/pw/AP1GczMultiShared_1234567890"
+        p_b = "https://lh3.googleusercontent.com/pw/AP1GczMultiPhotoB2_1234567890"
+
+        def _make_html(title: str, items: list) -> str:
+            ds1_obj = [None, items, None, [f"KEY_{title}", title]]
+            return (
+                f"<html><head><title>{title} - Google Photos</title></head><body>"
+                'window.WIZ_global_data = {"FdrFJe": "1"};\n'
+                f"AF_initDataCallback({{key: 'ds:1', data: {json.dumps(ds1_obj)}, sideChannel: {{}}}});"
+                "</body></html>"
+            )
+
+        html_a = _make_html("Family", [
+            ["id1", [p_a, 1920, 1080], 1780000000000, None, 1790000000000],
+            ["id_s", [p_shared, 1920, 1080], 1785000000000, None, 1790000000000],
+        ])
+        html_b = _make_html("Travel", [
+            ["id_s2", [p_shared, 1920, 1080], 1785000000000, None, 1791000000000],
+            ["id2", [p_b, 1920, 1080], 1796000000000, None, 1796000000000],
+        ])
+
+        class _Resp:
+            def __init__(self, body: str, final_u: str):
+                self._b = body.encode("utf-8")
+                self._u = final_u
+
+            def read(self):
+                return self._b
+
+            def geturl(self):
+                return self._u
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def fake_urlopen(req, *args, **kwargs):
+            u = req.full_url if hasattr(req, "full_url") else str(req)
+            if "MultiAlbumA111" in u:
+                return _Resp(html_a, url_a)
+            return _Resp(html_b, url_b)
+
+        connected = []
+        pm.on_album_connected = lambda u, t, p="": connected.append((u, t, p))
+        with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            pm.refresh_sources()
+
+        # Combined deduplicated pool: p_a, p_shared, p_b (3 unique items, not 4)
+        self.assertEqual(len(pm.photo_sources), 3)
+        bases = [u.split("=")[0] for u in pm.photo_sources]
+        self.assertEqual(bases, [p_a, p_shared, p_b])
+        self.assertEqual(pm.album_title, "Family + Travel")
+        self.assertEqual(pm.album_titles.get(url_a), "Family")
+        self.assertEqual(pm.album_titles.get(url_b), "Travel")
+        self.assertEqual({u: t for u, t, _ in connected}, {url_a: "Family", url_b: "Travel"})
+
+        # Cache hits with matching album_urls and invalidates when set changes
+        cached_urls, _, _ = pm._load_cached_photos()
+        self.assertEqual(len(cached_urls), 3)
+        pm_changed = PhotoManager(
+            1920, 1080, album_url=url_a, album_urls=[url_a], cache_file=self.cache_path, auto_refresh=False
+        )
+        invalidated_urls, _, _ = pm_changed._load_cached_photos()
+        self.assertEqual(invalidated_urls, [])
+
+        # Global newest-taken ranking in quick_refresh_recent across both albums
+        with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            recent = pm.quick_refresh_recent(max_items=10)
+        self.assertEqual([u.split("=")[0] for u in recent], [p_b, p_shared, p_a])
+
 
 if __name__ == "__main__":
     unittest.main()

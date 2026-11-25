@@ -99,18 +99,28 @@ class SlideshowApp:
             self.args.video_audio = False
         if not hasattr(self.args, "video_volume"):
             self.args.video_volume = 30
+        if not hasattr(self.args, "albums"):
+            self.args.albums = PhotoManager.normalize_gphotos_albums(getattr(self.args, "album", "demo"))
 
         saved = self.config_store.get_settings()
         if saved:
             for k, v in saved.items():
                 if hasattr(self.args, k) and v is not None:
                     setattr(self.args, k, v)
+            if "albums" in saved and isinstance(saved.get("albums"), list):
+                self.args.albums = PhotoManager.normalize_gphotos_albums(saved["albums"])
+            else:
+                self.args.albums = PhotoManager.normalize_gphotos_albums(getattr(self.args, "album", "demo"))
+            self.args.album = self.args.albums[0] if self.args.albums else "demo"
             if "night_mode_enabled" in saved:
                 self.args.disable_night_mode = not bool(saved["night_mode_enabled"])
             if saved.get("web_frame_port") == 8081:
                 self.args.web_frame_port = DEFAULT_WEB_FRAME_PORT
             if saved.get("timezone"):
                 self._apply_timezone(str(saved["timezone"]))
+        else:
+            self.args.albums = PhotoManager.normalize_gphotos_albums(getattr(self.args, "album", "demo"))
+            self.args.album = self.args.albums[0] if self.args.albums else "demo"
 
         set_mdns_base_name(getattr(self.args, "device_name", "") or "photoframe")
         self.web_frame = WebFrameController(
@@ -1734,6 +1744,9 @@ class SlideshowApp:
             "video_playing": self._video_playing,
             "is_demo_mode": is_demo,
             "album_title": str(getattr(self.photo_manager, "album_title", "") or "") if self.photo_manager else "",
+            "album_titles": dict(getattr(self.photo_manager, "album_titles", {}) or {}) if self.photo_manager else {},
+            "active_albums": list(getattr(self.photo_manager, "gphotos_urls", []) or []) if self.photo_manager else [],
+            "album_count": len(getattr(self.photo_manager, "gphotos_urls", []) or []) if self.photo_manager else 0,
             "photo_count": items_count,
             "media_count": items_count,
             "video_count": videos_count,
@@ -1761,9 +1774,14 @@ class SlideshowApp:
 
     def get_current_settings_dict(self) -> Dict[str, Any]:
         wf_status = self.web_frame.get_status_dict() if hasattr(self, "web_frame") and self.web_frame else {}
+        albums_list = list(getattr(self.args, "albums", []) or [])
+        if not albums_list and getattr(self.args, "album", ""):
+            albums_list = PhotoManager.normalize_gphotos_albums(self.args.album)
         return {
             "album": self.args.album,
+            "albums": albums_list,
             "album_title": str(getattr(self.photo_manager, "album_title", "") or "") if self.photo_manager else "",
+            "album_titles": dict(getattr(self.photo_manager, "album_titles", {}) or {}) if self.photo_manager else {},
             "saved_albums": self.config_store.get_album_history(),
             "device_name": getattr(self.args, "device_name", ""),
             "language": getattr(self.args, "language", "en"),
@@ -1803,9 +1821,16 @@ class SlideshowApp:
 
     def update_and_persist_settings(self, data: Dict[str, Any]) -> str:
         clean: Dict[str, Any] = {}
-        if "album" in data:
+        if "albums" in data:
+            raw_albums = data.get("albums")
+            norm_albums = PhotoManager.normalize_gphotos_albums(raw_albums if isinstance(raw_albums, (list, tuple, str)) else [])
+            clean["albums"] = norm_albums
+            clean["album"] = norm_albums[0] if norm_albums else "demo"
+        elif "album" in data:
             raw_album = str(data["album"]).strip()
-            clean["album"] = raw_album if raw_album else "demo"
+            norm_albums = PhotoManager.normalize_gphotos_albums(raw_album)
+            clean["albums"] = norm_albums
+            clean["album"] = norm_albums[0] if norm_albums else "demo"
         if "device_name" in data:
             raw_dev = str(data["device_name"]).strip()
             clean["device_name"] = normalize_mdns_base_name(raw_dev) if raw_dev else ""
@@ -1938,9 +1963,13 @@ class SlideshowApp:
         if action not in valid:
             return f"Unknown action: {action}"
         if action == "resync" and album_arg:
-            self.config_store.save_settings({"album": album_arg})
+            norm_albums = PhotoManager.normalize_gphotos_albums(album_arg)
+            self.config_store.save_settings({
+                "albums": norm_albums,
+                "album": norm_albums[0] if norm_albums else "demo",
+            })
         elif action == "demo":
-            self.config_store.save_settings({"album": "demo"})
+            self.config_store.save_settings({"albums": [], "album": "demo"})
         self._web_action_queue.append((action, album_arg if action == "resync" else None))
         return valid[action]
 
@@ -1987,21 +2016,28 @@ class SlideshowApp:
                 self.full_redraw_needed = True
             elif action == "demo":
                 self.is_night_mode = False
+                self.args.albums = []
                 self.args.album = "demo"
                 if self.photo_manager:
                     threading.Thread(
                         target=self.photo_manager.switch_album,
                         args=("demo", lambda: self._web_action_queue.append(("next", None))),
+                        kwargs={"new_albums": []},
                         name="WebDemoModeSwitch",
                         daemon=True,
                     ).start()
             elif action == "resync":
                 if self.photo_manager:
-                    target_album = str(payload).strip() if payload else self.args.album
-                    self.args.album = target_album
+                    if payload:
+                        target_albums = PhotoManager.normalize_gphotos_albums(str(payload).strip())
+                        self.args.albums = target_albums
+                        self.args.album = target_albums[0] if target_albums else "demo"
+                    else:
+                        target_albums = list(getattr(self.args, "albums", []) or []) or PhotoManager.normalize_gphotos_albums(self.args.album)
                     threading.Thread(
                         target=self.photo_manager.switch_album,
-                        args=(target_album, lambda: self._web_action_queue.append(("next", None))),
+                        args=(self.args.album, lambda: self._web_action_queue.append(("next", None))),
+                        kwargs={"new_albums": target_albums},
                         name="WebManualAlbumSync",
                         daemon=True,
                     ).start()
@@ -2034,11 +2070,20 @@ class SlideshowApp:
                 if hasattr(self, "web_frame") and self.web_frame and hasattr(self.web_frame, "notify_source_pool_changed"):
                     self.web_frame.notify_source_pool_changed(reset_to_start=False)
             elif action == "apply_settings" and isinstance(payload, dict):
-                old_norm = PhotoManager.normalize_gphotos_url(self.args.album)
+                old_albums = list(
+                    getattr(self.args, "albums", None)
+                    or PhotoManager.normalize_gphotos_albums(getattr(self.args, "album", ""))
+                )
                 old_mode = getattr(self.args, "landscape_mode", "collage")
                 old_fit = getattr(self.args, "fit", "contain-blur")
                 for k, v in payload.items():
                     setattr(self.args, k, v)
+                if "albums" in payload:
+                    self.args.albums = PhotoManager.normalize_gphotos_albums(payload["albums"])
+                    self.args.album = self.args.albums[0] if self.args.albums else "demo"
+                elif "album" in payload:
+                    self.args.albums = PhotoManager.normalize_gphotos_albums(payload["album"])
+                    self.args.album = self.args.albums[0] if self.args.albums else "demo"
                 if "device_name" in payload:
                     set_mdns_base_name(getattr(self.args, "device_name", "") or "photoframe")
                     self._cached_demo_pill = None
@@ -2101,12 +2146,13 @@ class SlideshowApp:
                     self.photo_manager.photo_fit = self.args.fit
                     self.photo_manager.shuffle = bool(self.args.shuffle)
                     self.photo_manager._resync_interval = float(self.args.refresh_hours) * 3600.0
-                    new_norm = PhotoManager.normalize_gphotos_url(payload.get("album", self.args.album))
-                    if new_norm != old_norm:
+                    new_albums = list(getattr(self.args, "albums", []) or [])
+                    if new_albums != old_albums:
                         logger.info("🌐 Album source changed via Web Portal -> switching slide deck...")
                         threading.Thread(
                             target=self.photo_manager.switch_album,
-                            args=(new_norm or "demo", lambda: self._web_action_queue.append(("next", None))),
+                            args=(new_albums[0] if new_albums else "demo", lambda: self._web_action_queue.append(("next", None))),
+                            kwargs={"new_albums": new_albums},
                             name="WebAlbumChangeSync",
                             daemon=True,
                         ).start()
@@ -2155,6 +2201,7 @@ class SlideshowApp:
             target_w=self.canvas_w,
             target_h=self.canvas_h,
             album_url=self.args.album,
+            album_urls=getattr(self.args, "albums", None),
             local_dir=self.args.local_dir,
             shuffle=self.args.shuffle,
             photo_fit=self.args.fit,

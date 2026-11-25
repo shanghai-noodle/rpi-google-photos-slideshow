@@ -70,6 +70,7 @@ class PhotoManager(GooglePhotosMixin):
         hw_profile: Optional[Dict[str, Any]] = None,
         auto_refresh: bool = True,
         on_album_connected: Optional[Any] = None,
+        album_urls: Optional[List[str]] = None,
     ):
         self.target_w = target_w
         self.target_h = target_h
@@ -83,7 +84,10 @@ class PhotoManager(GooglePhotosMixin):
         self.sync_sleep_sec = float(self.hw_profile.get("sync_sleep_sec", 0.05))
         self.video_fps = int(self.hw_profile.get("video_fps", 18))
 
-        self.gphotos_url = self.normalize_gphotos_url(album_url)
+        self.gphotos_urls: List[str] = self.normalize_gphotos_albums(
+            album_urls if album_urls is not None else album_url
+        )
+        self.album_titles: Dict[str, str] = {}
         self.album_title = ""
         self.local_dir = os.path.abspath(local_dir) if local_dir else None
         self.shuffle = shuffle

@@ -747,6 +747,36 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
   #app-view[data-fleet-tied="true"] section[role="tabpanel"] > .m3-card {
     border-top: 7px solid var(--active-frame-border);
   }
+  .album-input-row {
+    display: flex; align-items: stretch; gap: 8px;
+  }
+  .album-input-row input { flex: 1; min-width: 0; }
+  .album-input-row button { flex-shrink: 0; white-space: nowrap; }
+  .active-albums-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    margin-bottom: 10px;
+  }
+  .active-albums-count {
+    font-size: 0.76rem; font-weight: 600;
+    color: var(--md-sys-color-on-surface-variant);
+    margin-right: 2px;
+  }
+  .active-album-chip {
+    display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+    padding: 5px 8px 5px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 600;
+    background: var(--md-sys-color-surface-container-high);
+    border: 1.5px solid var(--md-sys-color-success);
+    color: var(--md-sys-color-on-surface);
+  }
+  .active-album-chip-text {
+    max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .chip-remove-btn {
+    border: none; background: transparent; color: var(--md-sys-color-on-surface-variant);
+    cursor: pointer; padding: 2px; border-radius: 999px; display: inline-flex; align-items: center;
+    justify-content: center; width: 22px; height: 22px;
+  }
+  .chip-remove-btn:hover { background: var(--md-sys-color-subtle-hover); color: var(--md-sys-color-on-surface); }
   .saved-albums-grid {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 10px; margin-top: 4px;
@@ -1150,7 +1180,11 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
             <div class="form-grid">
               <div class="form-group full" id="group-album">
                 <label for="cfg-album" id="lbl-album-dynamic" data-i18n="lbl_album">Google Photos Shared Album URL (leave blank or 'demo' for Demo Showcase Pack)</label>
-                <input type="text" id="cfg-album" oninput="autoExtractBaiduPwd()" data-i18n-placeholder="ph_album" placeholder="https://photos.app.goo.gl/... (or leave blank for Demo Showcase)">
+                <div id="active-albums-bar" class="active-albums-bar hidden"></div>
+                <div id="cfg-album-row" class="album-input-row">
+                  <input type="text" id="cfg-album" oninput="autoExtractBaiduPwd()" onkeydown="if(event.key==='Enter'){event.preventDefault();addAlbumFromInput();}" data-i18n-placeholder="ph_album" placeholder="https://photos.app.goo.gl/... (or leave blank for Demo Showcase)">
+                  <button type="button" id="btn-add-album" class="tonal" onclick="addAlbumFromInput()" data-i18n="btn_add_album">+ Add Album</button>
+                </div>
               </div>
 
               <div class="form-group hidden" id="group-pwd">
@@ -1746,6 +1780,14 @@ const I18N = {
     saved_albums_empty: "No connected links saved yet. Successfully connected albums and folders are automatically encrypted and stored here.",
     btn_use_saved_album: "Switch",
     badge_saved_active: "Active",
+    lbl_active_albums: "Active Albums ({count})",
+    btn_add_album: "+ Add Album",
+    btn_add_saved_album: "+ Add",
+    badge_multi_active: "{count} albums active",
+    msg_album_added: "Album added ({count} active)",
+    msg_album_removed: "Album removed ({count} active)",
+    msg_same_service_only: "Only {service} links are supported on this frame (cannot mix Google Photos & Baidu Pan).",
+    msg_enter_album_url: "Enter an album or folder share URL first.",
     broadcast_settings_note: "Broadcast Mode: Showing shared slideshow, collage, video, and schedule settings. Select an individual frame to edit its Album URL, Hostname, Rotation, or APK Update.",
     broadcast_pw_note: "Broadcast Mode: Password changes are disabled when managing all frames. Select an individual frame above to update its password.",
     lbl_frame_picker: "Frame being controlled",
@@ -1930,6 +1972,14 @@ const I18N = {
     saved_albums_empty: "暂无已保存的历史链接。成功连接的相册或网盘分享将自动加密保存在此处。",
     btn_use_saved_album: "切换",
     badge_saved_active: "当前使用",
+    lbl_active_albums: "当前播放 ({count})",
+    btn_add_album: "+ 添加相册",
+    btn_add_saved_album: "+ 添加",
+    badge_multi_active: "已启用 {count} 个相册",
+    msg_album_added: "已添加相册（当前共 {count} 个）",
+    msg_album_removed: "已移除相册（当前共 {count} 个）",
+    msg_same_service_only: "此相框仅支持同一服务（{service}），不能混用 Google Photos 和百度网盘。",
+    msg_enter_album_url: "请先输入相册或网盘共享链接。",
     broadcast_settings_note: "群控广播模式：当前仅显示可同步广播的通用设置。如需修改相册链接、主机名、屏幕旋转或 APK 更新，请选择单个相框。",
     broadcast_pw_note: "全局广播模式：群控全部相框时不支持修改密码。请在上方选择单个相框以更新其管理密码。",
     lbl_frame_picker: "当前控制的相框",
@@ -2114,6 +2164,14 @@ const I18N = {
     saved_albums_empty: "保存されたリンクはまだありません。接続に成功したアルバムやフォルダは自動的に暗号化されて保存されます。",
     btn_use_saved_album: "切替",
     badge_saved_active: "使用中",
+    lbl_active_albums: "再生中のアルバム ({count})",
+    btn_add_album: "+ アルバム追加",
+    btn_add_saved_album: "+ 追加",
+    badge_multi_active: "{count} 件のアルバムが有効",
+    msg_album_added: "アルバムを追加しました（有効 {count} 件）",
+    msg_album_removed: "アルバムを削除しました（有効 {count} 件）",
+    msg_same_service_only: "このフレームは {service} リンクのみ対応しています（Google フォトと Baidu ネットディスクの混在不可）。",
+    msg_enter_album_url: "先に共有アルバム URL を入力してください。",
     broadcast_settings_note: "一括配信モード：すべてのフレームに適用できる共通設定のみ表示しています。個別の設定変更は上でフレームを選択してください。",
     broadcast_pw_note: "一括配信モード：全フレーム一括管理中はパスワードを変更できません。上のリストから個別のフレームを選択してください。",
     lbl_frame_picker: "操作中のフレーム",
@@ -2298,6 +2356,14 @@ const I18N = {
     saved_albums_empty: "저장된 링크가 없습니다. 성공적으로 연결된 앨범 및 폴더가 자동으로 암호화되어 저장됩니다.",
     btn_use_saved_album: "전환",
     badge_saved_active: "사용 중",
+    lbl_active_albums: "재생 중인 앨범 ({count})",
+    btn_add_album: "+ 앨범 추가",
+    btn_add_saved_album: "+ 추가",
+    badge_multi_active: "{count}개 앨범 활성",
+    msg_album_added: "앨범이 추가되었습니다 (활성 {count}개)",
+    msg_album_removed: "앨범이 제거되었습니다 (활성 {count}개)",
+    msg_same_service_only: "이 액자는 {service} 링크만 지원합니다 (Google 포토와 바이두 클라우드 혼합 불가).",
+    msg_enter_album_url: "먼저 공유 앨범 URL을 입력하세요.",
     broadcast_settings_note: "전체 브로드캐스트 모드: 모든 액자에 적용 가능한 공통 설정만 표시됩니다. 개별 설정은 위에서 액자를 선택하세요.",
     broadcast_pw_note: "전체 브로드캐스트 모드: 모든 액자를 동시 제어할 때는 비밀번호를 변경할 수 없습니다. 위에서 개별 액자를 선택하세요.",
     lbl_frame_picker: "제어 중인 액자",
@@ -2482,6 +2548,14 @@ const I18N = {
     saved_albums_empty: "Aún no hay enlaces guardados. Los álbumes y carpetas conectados con éxito se cifran y guardan aquí.",
     btn_use_saved_album: "Cambiar",
     badge_saved_active: "Activo",
+    lbl_active_albums: "Álbumes activos ({count})",
+    btn_add_album: "+ Añadir álbum",
+    btn_add_saved_album: "+ Añadir",
+    badge_multi_active: "{count} álbumes activos",
+    msg_album_added: "Álbum añadido ({count} activos)",
+    msg_album_removed: "Álbum quitado ({count} activos)",
+    msg_same_service_only: "Este marco solo admite enlaces de {service} (no se pueden mezclar Google Photos y Baidu Pan).",
+    msg_enter_album_url: "Introduce primero un enlace compartido de álbum o carpeta.",
     broadcast_settings_note: "Modo Difusión: Solo se muestran los ajustes compartidos. Selecciona un marco individual para cambiar su URL, Hostname, Rotación o APK.",
     broadcast_pw_note: "Modo Difusión: El cambio de contraseña está desactivado al gestionar todos los marcos. Selecciona un marco individual arriba para actualizar su contraseña.",
     lbl_frame_picker: "Marco bajo control",
@@ -2666,6 +2740,14 @@ const I18N = {
     saved_albums_empty: "Noch keine Links gespeichert. Erfolgreich verbundene Alben und Ordner werden hier verschlüsselt abgelegt.",
     btn_use_saved_album: "Wechseln",
     badge_saved_active: "Aktiv",
+    lbl_active_albums: "Aktive Alben ({count})",
+    btn_add_album: "+ Album hinzufügen",
+    btn_add_saved_album: "+ Hinzufügen",
+    badge_multi_active: "{count} Alben aktiv",
+    msg_album_added: "Album hinzugefügt ({count} aktiv)",
+    msg_album_removed: "Album entfernt ({count} aktiv)",
+    msg_same_service_only: "Dieser Rahmen unterstützt nur {service}-Links (Google Fotos und Baidu Pan nicht mischbar).",
+    msg_enter_album_url: "Bitte zuerst eine freigegebene Album-URL eingeben.",
     broadcast_settings_note: "Broadcast-Modus: Nur gemeinsame Einstellungen werden angezeigt. Wählen Sie oben einen einzelnen Rahmen für Album-URL, Hostname oder Drehung.",
     broadcast_pw_note: "Broadcast-Modus: Passwortänderungen sind bei der Verwaltung aller Rahmen deaktiviert. Wählen Sie oben einen einzelnen Rahmen aus, um sein Passwort zu ändern.",
     lbl_frame_picker: "Gesteuerter Rahmen",
@@ -2708,6 +2790,9 @@ let fleetNodes = [];
 let activeTargetEdition = 'gphotos';
 let activeTargetPlatform = 'linux';
 let savedAlbumsList = [];
+let activeAlbumsSelection = [];
+let activeAlbumTitlesMap = {};
+let activeAlbumsLocalDirty = false;
 let lastActiveAlbumUrl = '';
 let lastActiveAlbumTitle = '';
 let portalExitedOffline = false;
@@ -3125,14 +3210,257 @@ function formatSavedAlbumTitle(item, isCurrent, activeTitle) {
   return { title: slug || shortUrl, hasNamedTitle: false };
 }
 
-function renderSavedAlbums(list, currentAlbum, currentTitle) {
+function normalizeAlbumCompareKey(rawUrl) {
+  const s = String(rawUrl || '').trim();
+  if (!s || s.toLowerCase() === 'demo') return '';
+  return s
+    .replace(/^https?:\\/\\//i, '')
+    .replace(/[\\?&]pwd=[^&#]+/i, '')
+    .replace(/[\\?&]+$/, '')
+    .replace(/\\/+$/, '');
+}
+
+function detectServiceFromUrl(rawUrl) {
+  const lower = String(rawUrl || '').trim().toLowerCase();
+  if (lower.includes('pan.baidu.com')) return 'baidupan';
+  if (lower.includes('photos.app.goo.gl') || lower.includes('photos.google.com')) return 'gphotos';
+  return activeTargetEdition || 'gphotos';
+}
+
+function isAlbumCompatibleWithTarget(rawUrl, entryEdition) {
+  const targetEd = (activeTargetEdition === 'baidupan') ? 'baidupan' : 'gphotos';
+  const url = String(rawUrl || '').trim().toLowerCase();
+  if (url.includes('pan.baidu.com')) return targetEd === 'baidupan';
+  if (url.includes('photos.app.goo.gl') || url.includes('photos.google.com')) return targetEd === 'gphotos';
+  if (entryEdition === 'baidupan' || entryEdition === 'gphotos') return entryEdition === targetEd;
+  return true;
+}
+
+function parseAlbumEntriesFromText(rawText, fallbackPwd) {
+  const text = String(rawText || '').trim();
+  if (!text || text.toLowerCase() === 'demo') return [];
+  const urls = text.match(/https?:\\/\\/[^\\s"'<>]+/gi) || [];
+  let sharedPwd = String(fallbackPwd || '').trim();
+  if (!sharedPwd) {
+    const pm = text.match(/(?:提取码|密码|pwd)\\s*[:：=]?\\s*([a-zA-Z0-9]{4})/i);
+    if (pm) sharedPwd = pm[1];
+  }
+  const candidates = urls.length ? urls : [text];
+  const out = [];
+  const seen = new Set();
+  for (const cand of candidates) {
+    let u = String(cand || '').trim().replace(/[),.;'"，。；》」』]+$/g, '');
+    if (!u || u.toLowerCase() === 'demo') continue;
+    let itemPwd = sharedPwd;
+    const qp = u.match(/[\\?&]pwd=([a-zA-Z0-9]{4})/i);
+    if (qp) itemPwd = qp[1];
+    if (u.toLowerCase().includes('pan.baidu.com')) {
+      u = u.replace(/[\\?&]pwd=[^&#]*/gi, '').replace(/[\\?&]+$/, '');
+    }
+    const key = normalizeAlbumCompareKey(u);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ album: u, pwd: itemPwd || '' });
+  }
+  return out;
+}
+
+function normalizeActiveAlbumsSelectionList(rawAlbums, fallbackAlbum, fallbackPwd) {
+  const out = [];
+  const seen = new Set();
+  const pushItem = (u, p) => {
+    const cleanUrl = String(u || '').trim();
+    if (!cleanUrl || cleanUrl.toLowerCase() === 'demo') return;
+    let cleanPwd = String(p || '').trim();
+    const qp = cleanUrl.match(/[\\?&]pwd=([a-zA-Z0-9]{4})/i);
+    let finalUrl = cleanUrl;
+    if (!cleanPwd && qp) cleanPwd = qp[1];
+    if (finalUrl.toLowerCase().includes('pan.baidu.com')) {
+      finalUrl = finalUrl.replace(/[\\?&]pwd=[^&#]*/gi, '').replace(/[\\?&]+$/, '');
+    }
+    const key = normalizeAlbumCompareKey(finalUrl);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push({ album: finalUrl, pwd: cleanPwd });
+  };
+  if (Array.isArray(rawAlbums)) {
+    for (const entry of rawAlbums) {
+      if (typeof entry === 'string') {
+        parseAlbumEntriesFromText(entry, '').forEach(x => pushItem(x.album, x.pwd));
+      } else if (entry && typeof entry === 'object') {
+        pushItem(entry.album || entry.url || '', entry.pwd || '');
+      }
+    }
+  }
+  if (!out.length && fallbackAlbum && String(fallbackAlbum).trim().toLowerCase() !== 'demo') {
+    parseAlbumEntriesFromText(String(fallbackAlbum), String(fallbackPwd || '')).forEach(x => pushItem(x.album, x.pwd));
+  }
+  return out;
+}
+
+function resolveDisplayTitleForUrl(url, pwd) {
+  const key = normalizeAlbumCompareKey(url);
+  if (activeAlbumTitlesMap && typeof activeAlbumTitlesMap === 'object') {
+    for (const [k, v] of Object.entries(activeAlbumTitlesMap)) {
+      if (normalizeAlbumCompareKey(k) === key && !isGenericOrUrlAlbumName(v, url)) {
+        return String(v).trim();
+      }
+    }
+  }
+  const saved = (savedAlbumsList || []).find(x => normalizeAlbumCompareKey(x.album) === key);
+  if (saved && !isGenericOrUrlAlbumName(saved.name, url)) {
+    return String(saved.name).trim();
+  }
+  const urlPath = String(url || '').split('?')[0].replace(/\\/+$/, '');
+  const slug = urlPath.split('/').filter(Boolean).pop() || '';
+  const shortUrl = String(url || '').replace(/^https?:\\/\\//i, '');
+  return slug || shortUrl || 'Album';
+}
+
+function renderActiveAlbumsBar() {
+  const bar = document.getElementById('active-albums-bar');
+  if (!bar) return;
+  if (!activeAlbumsSelection.length) {
+    bar.innerHTML = '';
+    bar.classList.add('hidden');
+    return;
+  }
+  bar.classList.remove('hidden');
+  const closeSvg = `<svg class="m3-icon-sm" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`;
+  const countBadge = `<span class="active-albums-count">${escapeHtml(t('lbl_active_albums', {count: activeAlbumsSelection.length}))}</span>`;
+  const chipsHtml = activeAlbumsSelection.map((entry, idx) => {
+    const isBaidu = detectServiceFromUrl(entry.album) === 'baidupan';
+    const iconSvg = `<span class="saved-album-service-icon" style="width:16px;height:16px;margin-top:0;">${isBaidu ? baiduPanSvg : googlePhotosSvg}</span>`;
+    const title = resolveDisplayTitleForUrl(entry.album, entry.pwd);
+    const pwdSuffix = (isBaidu && entry.pwd) ? ` (${escapeHtml(entry.pwd)})` : '';
+    return `<span class="active-album-chip" title="${escapeHtml(entry.album)}">${iconSvg}<span class="active-album-chip-text">${escapeHtml(title)}${pwdSuffix}</span><button type="button" class="chip-remove-btn" aria-label="Remove" onclick="removeActiveAlbumChip(${idx})">${closeSvg}</button></span>`;
+  }).join('');
+  bar.innerHTML = countBadge + chipsHtml;
+}
+
+function buildAlbumsSettingsPayload() {
+  const isBaidu = (activeTargetEdition === 'baidupan');
+  const albums = isBaidu
+    ? activeAlbumsSelection.map(x => ({ album: x.album, pwd: x.pwd || '' }))
+    : activeAlbumsSelection.map(x => x.album);
+  const first = activeAlbumsSelection[0] || null;
+  return {
+    albums,
+    album: first ? first.album : '',
+    pwd: (isBaidu && first) ? (first.pwd || '') : ''
+  };
+}
+
+async function persistActiveAlbumsSelection(toastMessage) {
+  if (selectedTarget === 'all') return;
+  const ap = buildAlbumsSettingsPayload();
+  const payload = {
+    target: selectedTarget,
+    albums: ap.albums,
+    album: ap.albums.length ? ap.album : 'demo',
+    pwd: ap.pwd
+  };
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    activeAlbumsLocalDirty = false;
+    if (res.ok && data.ok) {
+      if (toastMessage) showToast(toastMessage);
+      setTimeout(() => fetchStatus(false), 500);
+      setTimeout(() => fetchStatus(false), 2000);
+    } else if (res.status === 403 && data.locked) {
+      const lockedTarget = data.target || selectedTarget;
+      fetchStatus(false, false);
+      if (lockedTarget && lockedTarget !== 'self' && lockedTarget !== 'all') {
+        openPeerAuthModal(lockedTarget, true);
+      }
+    } else {
+      showToast((data && data.error) || 'Failed to update albums', true);
+    }
+  } catch (err) {
+    activeAlbumsLocalDirty = false;
+    showToast('Network error updating albums', true);
+  }
+}
+
+async function addAlbumFromInput() {
+  if (selectedTarget === 'all') return;
+  autoExtractBaiduPwd();
+  const albumEl = document.getElementById('cfg-album');
+  const pwdEl = document.getElementById('cfg-pwd');
+  const rawAlbum = albumEl ? albumEl.value.trim() : '';
+  const rawPwd = pwdEl ? pwdEl.value.trim() : '';
+  if (!rawAlbum) {
+    showToast(t('msg_enter_album_url'), true);
+    if (albumEl && typeof albumEl.focus === 'function') albumEl.focus();
+    return;
+  }
+  const entries = parseAlbumEntriesFromText(rawAlbum, rawPwd);
+  if (!entries.length) {
+    showToast(t('msg_enter_album_url'), true);
+    return;
+  }
+  const targetSvcLabel = (activeTargetEdition === 'baidupan') ? 'Baidu Pan' : 'Google Photos';
+  for (const item of entries) {
+    if (!isAlbumCompatibleWithTarget(item.album, '')) {
+      showToast(t('msg_same_service_only', {service: targetSvcLabel}), true);
+      return;
+    }
+    const key = normalizeAlbumCompareKey(item.album);
+    const existingIdx = activeAlbumsSelection.findIndex(x => normalizeAlbumCompareKey(x.album) === key);
+    if (existingIdx >= 0) {
+      if (item.pwd && !activeAlbumsSelection[existingIdx].pwd) {
+        activeAlbumsSelection[existingIdx].pwd = item.pwd;
+      }
+    } else {
+      activeAlbumsSelection.push({ album: item.album, pwd: item.pwd || '' });
+    }
+  }
+  activeAlbumsLocalDirty = true;
+  if (albumEl) albumEl.value = '';
+  if (pwdEl) pwdEl.value = '';
+  renderActiveAlbumsBar();
+  renderSavedAlbums(savedAlbumsList, lastActiveAlbumUrl, lastActiveAlbumTitle, activeAlbumsSelection, activeAlbumTitlesMap);
+  await persistActiveAlbumsSelection(t('msg_album_added', {count: activeAlbumsSelection.length}));
+}
+
+async function removeActiveAlbumChip(idx) {
+  if (idx < 0 || idx >= activeAlbumsSelection.length) return;
+  activeAlbumsSelection.splice(idx, 1);
+  activeAlbumsLocalDirty = true;
+  renderActiveAlbumsBar();
+  renderSavedAlbums(savedAlbumsList, lastActiveAlbumUrl, lastActiveAlbumTitle, activeAlbumsSelection, activeAlbumTitlesMap);
+  await persistActiveAlbumsSelection(t('msg_album_removed', {count: activeAlbumsSelection.length}));
+}
+
+function renderSavedAlbums(list, currentAlbum, currentTitle, activeAlbumsList, titlesMap) {
   savedAlbumsList = Array.isArray(list) ? list : [];
   if (typeof currentAlbum === 'string') lastActiveAlbumUrl = currentAlbum;
   if (typeof currentTitle === 'string') lastActiveAlbumTitle = currentTitle;
+  if (titlesMap && typeof titlesMap === 'object') {
+    activeAlbumTitlesMap = Object.assign({}, activeAlbumTitlesMap, titlesMap);
+  }
+  if (Array.isArray(activeAlbumsList)) {
+    activeAlbumsSelection = normalizeActiveAlbumsSelectionList(activeAlbumsList, '', '');
+  } else if (!activeAlbumsSelection.length && lastActiveAlbumUrl && lastActiveAlbumUrl !== 'demo') {
+    activeAlbumsSelection = normalizeActiveAlbumsSelectionList(null, lastActiveAlbumUrl, '');
+  }
 
   const badgeEl = document.getElementById('active-album-title-badge');
   if (badgeEl) {
-    if (lastActiveAlbumTitle && lastActiveAlbumUrl && lastActiveAlbumUrl !== 'demo' && !isGenericOrUrlAlbumName(lastActiveAlbumTitle, lastActiveAlbumUrl)) {
+    if (activeAlbumsSelection.length > 1) {
+      const activeIsBaidu = (activeTargetEdition === 'baidupan');
+      const activeSvg = activeIsBaidu ? baiduPanSvg : googlePhotosSvg;
+      const multiLabel = (lastActiveAlbumTitle && !isGenericOrUrlAlbumName(lastActiveAlbumTitle, lastActiveAlbumUrl))
+        ? lastActiveAlbumTitle
+        : t('badge_multi_active', {count: activeAlbumsSelection.length});
+      badgeEl.innerHTML = `<span style="display:inline-flex;align-items:center;gap:5px;"><span class="saved-album-service-icon" style="width:16px;height:16px;margin-top:0;">${activeSvg}</span><span>${escapeHtml(multiLabel)}</span></span>`;
+      badgeEl.classList.remove('hidden');
+    } else if (lastActiveAlbumTitle && lastActiveAlbumUrl && lastActiveAlbumUrl !== 'demo' && !isGenericOrUrlAlbumName(lastActiveAlbumTitle, lastActiveAlbumUrl)) {
       const activeIsBaidu = lastActiveAlbumUrl.toLowerCase().includes('pan.baidu.com');
       const activeSvg = activeIsBaidu ? baiduPanSvg : googlePhotosSvg;
       badgeEl.innerHTML = `<span style="display:inline-flex;align-items:center;gap:5px;"><span class="saved-album-service-icon" style="width:16px;height:16px;margin-top:0;">${activeSvg}</span><span>${escapeHtml(lastActiveAlbumTitle)}</span></span>`;
@@ -3149,7 +3477,8 @@ function renderSavedAlbums(list, currentAlbum, currentTitle) {
     return;
   }
 
-  const normCur = String(lastActiveAlbumUrl || '').trim();
+  const activeKeys = new Set(activeAlbumsSelection.map(x => normalizeAlbumCompareKey(x.album)).filter(Boolean));
+  const normCurKey = normalizeAlbumCompareKey(lastActiveAlbumUrl || '');
   const closeSvg = `<svg class="m3-icon-sm" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`;
 
   container.innerHTML = savedAlbumsList.map(item => {
@@ -3160,15 +3489,18 @@ function renderSavedAlbums(list, currentAlbum, currentTitle) {
     const svcLabel = isBaidu ? 'Baidu Pan' : 'Google Photos';
     const iconSvg = `<span class="saved-album-service-icon" title="${svcLabel}">${isBaidu ? baiduPanSvg : googlePhotosSvg}</span>`;
     const shortUrl = url.replace(/^https?:\\/\\//i, '');
-    const isCurrent = normCur && normCur !== 'demo' && (url === normCur || shortUrl === normCur.replace(/^https?:\\/\\//i, ''));
-    const titleInfo = formatSavedAlbumTitle(item, isCurrent, lastActiveAlbumTitle);
+    const itemKey = normalizeAlbumCompareKey(url);
+    const isCurrent = Boolean(itemKey && (activeKeys.has(itemKey) || (normCurKey && itemKey === normCurKey)));
+    const resolvedTitle = resolveDisplayTitleForUrl(url, pwd);
+    const titleFromMap = (activeAlbumTitlesMap && Object.entries(activeAlbumTitlesMap).find(([k, v]) => normalizeAlbumCompareKey(k) === itemKey && !isGenericOrUrlAlbumName(v, url)))?.[1] || '';
+    const titleInfo = formatSavedAlbumTitle(item, isCurrent, titleFromMap || (activeAlbumsSelection.length <= 1 ? lastActiveAlbumTitle : resolvedTitle));
     const displayTitle = titleInfo.title;
     const pwdTag = pwd ? ` • pwd: ${escapeHtml(pwd)}` : '';
     const subLine = titleInfo.hasNamedTitle ? `${escapeHtml(shortUrl)}${pwdTag}` : `${svcLabel} • ${escapeHtml(shortUrl)}${pwdTag}`;
     const activeBadge = isCurrent
       ? `<span class="badge active" style="font-size:0.72rem; padding:3px 9px;"><span class="status-dot" aria-hidden="true"></span>${escapeHtml(t('badge_saved_active'))}</span>`
-      : `<button type="button" class="tonal saved-use-btn" onclick="applySavedAlbum(event, '${id}')">${escapeHtml(t('btn_use_saved_album'))}</button>`;
-    return `<div class="saved-album-pill ${isCurrent ? 'active' : ''}" role="button" tabindex="0" onclick="applySavedAlbum(event, '${id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();applySavedAlbum(event, '${id}');}">
+      : `<button type="button" class="tonal saved-use-btn" onclick="toggleSavedAlbum(event, '${id}')">${escapeHtml(t('btn_add_saved_album'))}</button>`;
+    return `<div class="saved-album-pill ${isCurrent ? 'active' : ''}" role="button" tabindex="0" onclick="toggleSavedAlbum(event, '${id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleSavedAlbum(event, '${id}');}">
       <div class="saved-album-info">
         <div class="saved-album-title" title="${escapeHtml(svcLabel + ': ' + displayTitle)}">${iconSvg}<span class="saved-album-title-text">${escapeHtml(displayTitle)}</span></div>
         <div class="saved-album-meta" title="${escapeHtml(url)}">${subLine}</div>
@@ -3181,15 +3513,35 @@ function renderSavedAlbums(list, currentAlbum, currentTitle) {
   }).join('');
 }
 
-async function applySavedAlbum(ev, entryId) {
+async function toggleSavedAlbum(ev, entryId) {
   if (ev) ev.stopPropagation();
+  if (selectedTarget === 'all') return;
   const entry = savedAlbumsList.find(x => (x.id || x.album) === entryId);
   if (!entry) return;
-  const albumEl = document.getElementById('cfg-album');
-  const pwdEl = document.getElementById('cfg-pwd');
-  if (albumEl) albumEl.value = entry.album || '';
-  if (pwdEl) pwdEl.value = entry.pwd || '';
-  await sendAction('resync');
+  const targetSvcLabel = (activeTargetEdition === 'baidupan') ? 'Baidu Pan' : 'Google Photos';
+  if (!isAlbumCompatibleWithTarget(entry.album, entry.edition)) {
+    showToast(t('msg_same_service_only', {service: targetSvcLabel}), true);
+    return;
+  }
+  const parsed = parseAlbumEntriesFromText(entry.album || '', entry.pwd || '')[0] || { album: entry.album || '', pwd: entry.pwd || '' };
+  const key = normalizeAlbumCompareKey(parsed.album);
+  const idx = activeAlbumsSelection.findIndex(x => normalizeAlbumCompareKey(x.album) === key);
+  let msg = '';
+  if (idx >= 0) {
+    activeAlbumsSelection.splice(idx, 1);
+    msg = t('msg_album_removed', {count: activeAlbumsSelection.length});
+  } else {
+    activeAlbumsSelection.push({ album: parsed.album, pwd: parsed.pwd || '' });
+    msg = t('msg_album_added', {count: activeAlbumsSelection.length});
+  }
+  activeAlbumsLocalDirty = true;
+  renderActiveAlbumsBar();
+  renderSavedAlbums(savedAlbumsList, lastActiveAlbumUrl, lastActiveAlbumTitle, activeAlbumsSelection, activeAlbumTitlesMap);
+  await persistActiveAlbumsSelection(msg);
+}
+
+async function applySavedAlbum(ev, entryId) {
+  return toggleSavedAlbum(ev, entryId);
 }
 
 async function deleteSavedAlbum(ev, entryId) {
@@ -3266,7 +3618,8 @@ function setLanguage(lang, syncSelectors = true, userPicked = false) {
   } else {
     updateFleetCardVisibility();
   }
-  renderSavedAlbums(savedAlbumsList, lastActiveAlbumUrl, lastActiveAlbumTitle);
+  renderActiveAlbumsBar();
+  renderSavedAlbums(savedAlbumsList, lastActiveAlbumUrl, lastActiveAlbumTitle, activeAlbumsSelection, activeAlbumTitlesMap);
 }
 
 function renderFleetBar(nodes) {
@@ -3412,6 +3765,8 @@ function updateDynamicFormVisibility() {
   if (albumGroup) albumGroup.classList.toggle('hidden', isAll);
   const albumInput = document.getElementById('cfg-album');
   if (albumInput) albumInput.disabled = isAll;
+  const addAlbumBtn = document.getElementById('btn-add-album');
+  if (addAlbumBtn) addAlbumBtn.disabled = isAll;
 
   const pwdGroup = document.getElementById('group-pwd');
   if (pwdGroup) pwdGroup.classList.toggle('hidden', !showBaiduPwd);
@@ -3482,10 +3837,16 @@ function updateDynamicFormVisibility() {
 
 function applySettingsToForm(cfg) {
   if (!cfg || typeof cfg !== 'object') return;
+  if (cfg.album_titles && typeof cfg.album_titles === 'object') {
+    activeAlbumTitlesMap = Object.assign({}, activeAlbumTitlesMap, cfg.album_titles);
+  }
+  activeAlbumsSelection = normalizeActiveAlbumsSelectionList(cfg.albums, cfg.album || '', cfg.pwd || '');
+  activeAlbumsLocalDirty = false;
+  renderActiveAlbumsBar();
   const albumEl = document.getElementById('cfg-album');
-  if (albumEl) albumEl.value = (cfg.album && cfg.album !== 'demo') ? cfg.album : '';
+  if (albumEl) albumEl.value = '';
   const pwdEl = document.getElementById('cfg-pwd');
-  if (pwdEl) pwdEl.value = cfg.pwd || '';
+  if (pwdEl) pwdEl.value = '';
   const devEl = document.getElementById('cfg-device-name');
   if (devEl) devEl.value = cfg.device_name || '';
   const langEl = document.getElementById('cfg-language');
@@ -4028,11 +4389,29 @@ async function fetchStatus(populateForm = false, triggerScan = false) {
       renderStatusSnapshot(data.status);
     }
     document.getElementById('log-box').textContent = data.log_tail || '(No log entries)';
+    const incomingTitles = data.status?.album_titles || data.settings?.album_titles;
+    if (incomingTitles && typeof incomingTitles === 'object') {
+      activeAlbumTitlesMap = Object.assign({}, activeAlbumTitlesMap, incomingTitles);
+    }
+    const rawServerAlbums = (data.settings && Array.isArray(data.settings.albums))
+      ? data.settings.albums
+      : (Array.isArray(data.status?.active_albums) ? data.status.active_albums : null);
+    const serverActiveAlbums = normalizeActiveAlbumsSelectionList(
+      rawServerAlbums,
+      data.settings?.album || '',
+      data.settings?.pwd || ''
+    );
+    if (!activeAlbumsLocalDirty && (data.settings || data.status)) {
+      activeAlbumsSelection = serverActiveAlbums;
+    }
+    renderActiveAlbumsBar();
     if (data.settings && Array.isArray(data.settings.saved_albums)) {
       renderSavedAlbums(
         data.settings.saved_albums,
         data.settings.album || '',
-        data.status?.album_title || data.settings?.album_title || ''
+        data.status?.album_title || data.settings?.album_title || '',
+        activeAlbumsSelection,
+        activeAlbumTitlesMap
       );
     }
 
@@ -4160,10 +4539,14 @@ async function sendAction(action) {
 }
 
 function playDemoShowcase() {
+  activeAlbumsSelection = [];
+  activeAlbumsLocalDirty = false;
   const albumEl = document.getElementById('cfg-album');
   const pwdEl = document.getElementById('cfg-pwd');
   if (albumEl) albumEl.value = '';
   if (pwdEl) pwdEl.value = '';
+  renderActiveAlbumsBar();
+  renderSavedAlbums(savedAlbumsList, 'demo', '', [], activeAlbumTitlesMap);
   sendAction('demo');
 }
 
@@ -4381,8 +4764,42 @@ async function saveSettings(e) {
     vpn_only_admin: Boolean(document.getElementById('cfg-vpn-only-admin')?.checked),
   };
   if (!isAll) {
-    payload.album = document.getElementById('cfg-album').value.trim();
-    payload.pwd = (document.getElementById('cfg-pwd')?.value || '').trim();
+    const albumEl = document.getElementById('cfg-album');
+    const pwdEl = document.getElementById('cfg-pwd');
+    const rawAlbumInput = albumEl ? albumEl.value.trim() : '';
+    const rawPwdInput = pwdEl ? pwdEl.value.trim() : '';
+    if (rawAlbumInput) {
+      const targetSvcLabel = (activeTargetEdition === 'baidupan') ? 'Baidu Pan' : 'Google Photos';
+      if (rawAlbumInput.toLowerCase() === 'demo') {
+        activeAlbumsSelection = [];
+      } else {
+        const pendingEntries = parseAlbumEntriesFromText(rawAlbumInput, rawPwdInput);
+        for (const item of pendingEntries) {
+          if (!isAlbumCompatibleWithTarget(item.album, '')) {
+            if (btn) { setBtnLabel(btn, t('btn_save_settings')); btn.disabled = false; }
+            showToast(t('msg_same_service_only', {service: targetSvcLabel}), true);
+            return;
+          }
+          const key = normalizeAlbumCompareKey(item.album);
+          const existingIdx = activeAlbumsSelection.findIndex(x => normalizeAlbumCompareKey(x.album) === key);
+          if (existingIdx >= 0) {
+            if (item.pwd && !activeAlbumsSelection[existingIdx].pwd) {
+              activeAlbumsSelection[existingIdx].pwd = item.pwd;
+            }
+          } else {
+            activeAlbumsSelection.push({ album: item.album, pwd: item.pwd || '' });
+          }
+        }
+      }
+      if (albumEl) albumEl.value = '';
+      if (pwdEl) pwdEl.value = '';
+      renderActiveAlbumsBar();
+      renderSavedAlbums(savedAlbumsList, lastActiveAlbumUrl, lastActiveAlbumTitle, activeAlbumsSelection, activeAlbumTitlesMap);
+    }
+    const ap = buildAlbumsSettingsPayload();
+    payload.albums = ap.albums;
+    payload.album = ap.albums.length ? ap.album : 'demo';
+    payload.pwd = ap.pwd;
     payload.device_name = (document.getElementById('cfg-device-name')?.value || '').trim();
     payload.rotate = parseInt(document.getElementById('cfg-rotate').value, 10);
     payload.update_url = (document.getElementById('cfg-update-url')?.value || '').trim();
@@ -4394,11 +4811,14 @@ async function saveSettings(e) {
       body: JSON.stringify(payload)
     });
     const data = await res.json();
+    activeAlbumsLocalDirty = false;
     if (res.ok && data.ok) {
       const nowStr = new Date().toLocaleTimeString();
-      const albumDesc = payload.album
-        ? t('msg_source_album', {album: payload.album})
-        : t('msg_source_demo');
+      const albumDesc = (payload.albums && payload.albums.length > 1)
+        ? t('badge_multi_active', {count: payload.albums.length})
+        : ((payload.album && payload.album !== 'demo')
+            ? t('msg_source_album', {album: payload.album})
+            : t('msg_source_demo'));
       const confirmMsg = data.message && selectedTarget === 'all'
         ? data.message
         : t('msg_settings_saved_banner', {

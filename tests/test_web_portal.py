@@ -687,6 +687,54 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
         app._process_web_actions()
         self.assertEqual(app.get_status_snapshot()["video_volume"], 0)
 
+    def test_multi_album_settings_precedence_and_portal_ui(self):
+        from photoframe import web_portal as wp_mod
+        from photoframe.collage import PhotoManager
+
+        html = wp_mod.WEB_PORTAL_HTML
+        for marker in (
+            'id="active-albums-bar"',
+            'id="btn-add-album"',
+            "addAlbumFromInput",
+            "removeActiveAlbumChip",
+            "toggleSavedAlbum",
+            "buildAlbumsSettingsPayload",
+        ):
+            self.assertIn(marker, html)
+
+        args = parse_args(["--album", "demo", "--log-file", "none"])
+        app = SlideshowApp(args, hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
+        app.photo_manager = PhotoManager(1920, 1080, album_url="demo", auto_refresh=False)
+
+        with unittest.mock.patch.object(app.photo_manager, "switch_album") as mock_switch:
+            app.update_and_persist_settings({
+                "albums": [
+                    "https://photos.app.goo.gl/AlbumOne111",
+                    "https://photos.app.goo.gl/AlbumTwo222",
+                    "https://photos.app.goo.gl/AlbumOne111",
+                ],
+                "album": "https://photos.app.goo.gl/IgnoredLegacy",
+            })
+            app._process_web_actions()
+            mock_switch.assert_called()
+            saved = self.store.get_settings()
+            self.assertEqual(
+                saved["albums"],
+                ["https://photos.app.goo.gl/AlbumOne111", "https://photos.app.goo.gl/AlbumTwo222"],
+            )
+            self.assertEqual(saved["album"], "https://photos.app.goo.gl/AlbumOne111")
+
+            app.update_and_persist_settings({"albums": []})
+            app._process_web_actions()
+            saved_demo = self.store.get_settings()
+            self.assertEqual(saved_demo["albums"], [])
+            self.assertEqual(saved_demo["album"], "demo")
+
+            app.update_and_persist_settings({"album": "https://photos.app.goo.gl/LegacySingle"})
+            app._process_web_actions()
+            saved_single = self.store.get_settings()
+            self.assertEqual(saved_single["albums"], ["https://photos.app.goo.gl/LegacySingle"])
+
 
 if __name__ == "__main__":
     unittest.main()

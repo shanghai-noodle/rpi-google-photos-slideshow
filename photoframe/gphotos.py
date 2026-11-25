@@ -8,6 +8,7 @@ built-in Demo Showcase (`demo_media/`) discovery.
 
 from __future__ import annotations
 
+import collections
 import glob
 import html as html_lib
 import io
@@ -83,9 +84,79 @@ class GooglePhotosMixin:
             return f"https://photos.google.com/{s}"
         return f"https://photos.app.goo.gl/{s}"
 
+    @classmethod
+    def normalize_gphotos_albums(cls, raw_albums: Any, fallback_album: str = "") -> List[str]:
+        """Normalizes a single string, multi-line/comma-separated string, or list of album URLs into a deduplicated list."""
+        tokens: List[str] = []
+        source = raw_albums if raw_albums is not None else fallback_album
+        if isinstance(source, (list, tuple)):
+            for entry in source:
+                if entry is None:
+                    continue
+                if isinstance(entry, dict):
+                    val = str(entry.get("album") or entry.get("url") or "").strip()
+                else:
+                    val = str(entry).strip()
+                if val:
+                    for part in re.split(r"[\r\n,;\s]+", val):
+                        if part.strip():
+                            tokens.append(part.strip())
+        elif isinstance(source, str):
+            for part in re.split(r"[\r\n,;\s]+", source.strip()):
+                if part.strip():
+                    tokens.append(part.strip())
+        elif source:
+            tokens.append(str(source).strip())
+
+        deduped: List[str] = []
+        seen: Set[str] = set()
+        for tok in tokens:
+            norm = cls.normalize_gphotos_url(tok)
+            if norm and norm not in seen:
+                seen.add(norm)
+                deduped.append(norm)
+        return deduped
+
+    @staticmethod
+    def format_multi_album_title(urls: List[str], titles_map: Dict[str, str]) -> str:
+        if not urls:
+            return ""
+        if len(urls) == 1:
+            return str(titles_map.get(urls[0], "") or "").strip()
+        resolved: List[str] = []
+        seen: Set[str] = set()
+        for u in urls:
+            t = str(titles_map.get(u, "") or "").strip()
+            if t and t not in seen:
+                seen.add(t)
+                resolved.append(t)
+        if not resolved:
+            return f"{len(urls)} Albums"
+        if len(resolved) == 1:
+            return f"{resolved[0]} + {len(urls) - 1}"
+        if len(urls) == 2:
+            return f"{resolved[0]} + {resolved[1]}"
+        remaining = max(0, len(urls) - 2)
+        if remaining > 0:
+            return f"{resolved[0]}, {resolved[1]} + {remaining}"
+        return f"{resolved[0]} + {resolved[1]}"
+
+    @property
+    def gphotos_url(self) -> str:
+        urls = getattr(self, "gphotos_urls", None)
+        if urls:
+            return urls[0]
+        return ""
+
+    @gphotos_url.setter
+    def gphotos_url(self, value: str) -> None:
+        norm = self.normalize_gphotos_url(value or "")
+        self.gphotos_urls = [norm] if norm else []
+
     @property
     def is_demo_mode(self) -> bool:
-        return not bool(self.gphotos_url)
+        urls = getattr(self, "gphotos_urls", None)
+        return not bool(urls)
 
     @staticmethod
     def _extract_item_metadata(it: Any) -> Tuple[Optional[str], bool, int]:
@@ -164,6 +235,9 @@ class GooglePhotosMixin:
 
     def _load_cached_photos(self) -> Tuple[List[str], float, bool]:
         """Returns `(formatted_urls, updated_at, has_video_metadata)`."""
+        active_urls = list(getattr(self, "gphotos_urls", []) or [])
+        if not active_urls:
+            return [], 0.0, False
         candidates = [self.cache_file]
         seed_cache = os.path.join(PROJECT_ROOT, ".gphotos_cache.json")
         if seed_cache not in candidates:
@@ -175,16 +249,34 @@ class GooglePhotosMixin:
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                cached_album = data.get("album_url")
-                if cached_album != self.gphotos_url:
+                cached_album_urls = data.get("album_urls")
+                if isinstance(cached_album_urls, list):
+                    norm_cached = self.normalize_gphotos_albums(cached_album_urls)
+                else:
+                    norm_single = self.normalize_gphotos_url(str(data.get("album_url") or ""))
+                    norm_cached = [norm_single] if norm_single else []
+                if set(norm_cached) != set(active_urls):
                     continue
                 raw_urls = data.get("urls", [])
                 has_videos_key = "videos" in data
                 raw_videos = data.get("videos", []) if has_videos_key else []
                 raw_recent = data.get("recent_items", []) if data.get("recent_ts_mode") == "taken" else []
                 updated_at = float(data.get("updated_at", 0.0))
+                if not hasattr(self, "album_titles"):
+                    self.album_titles = {}
+                raw_titles = data.get("album_titles")
+                if isinstance(raw_titles, dict):
+                    for tu, tt in raw_titles.items():
+                        norm_tu = self.normalize_gphotos_url(str(tu))
+                        if norm_tu in active_urls and isinstance(tt, str) and tt.strip():
+                            self.album_titles[norm_tu] = tt.strip()
                 cached_title = str(data.get("album_title") or "").strip()
-                if cached_title:
+                if len(active_urls) == 1 and cached_title and active_urls[0] not in self.album_titles:
+                    self.album_titles[active_urls[0]] = cached_title
+                formatted_title = self.format_multi_album_title(active_urls, self.album_titles)
+                if formatted_title:
+                    self.album_title = formatted_title
+                elif cached_title:
                     self.album_title = cached_title
                 if raw_urls:
                     ts_map: Dict[str, int] = {}
@@ -244,10 +336,13 @@ class GooglePhotosMixin:
                     ((u, int(ts)) for u, ts in self._item_added_ts.items() if u.startswith("http") and ts > 0),
                     key=lambda kv: kv[1],
                     reverse=True,
-                )[:60]
+                )[:max(60, min(300, 60 * max(1, len(getattr(self, "gphotos_urls", []) or []))))]
+            titles_snapshot = dict(getattr(self, "album_titles", {}) or {})
             payload = {
                 "album_url": self.gphotos_url,
+                "album_urls": list(getattr(self, "gphotos_urls", []) or []),
                 "album_title": getattr(self, "album_title", "") or "",
+                "album_titles": titles_snapshot,
                 "urls": clean_urls,
                 "videos": clean_videos,
                 "recent_ts_mode": "taken",
@@ -268,7 +363,7 @@ class GooglePhotosMixin:
             logger.warning("Failed to save RAM photo cache: %s", e)
 
     def _parse_initial_page_with_timestamps(
-        self, html: str, final_url: str = ""
+        self, html: str, final_url: str = "", source_album_url: str = ""
     ) -> Tuple[List[str], Set[str], Optional[str], Optional[str], Optional[str], dict, Dict[str, int]]:
         wiz_m = re.search(r'window\.WIZ_global_data\s*=\s*(\{.*?\});', html)
         wiz_data = {}
@@ -335,7 +430,16 @@ class GooglePhotosMixin:
         extracted_title = self.extract_gphotos_album_title(html)
         best_title = structured_title or extracted_title
         if best_title:
-            self.album_title = best_title
+            if not hasattr(self, "album_titles"):
+                self.album_titles = {}
+            target_album = source_album_url or self.gphotos_url
+            if target_album:
+                self.album_titles[target_album] = best_title
+            urls_list = getattr(self, "gphotos_urls", None) or []
+            if len(urls_list) > 1:
+                self.album_title = self.format_multi_album_title(urls_list, self.album_titles)
+            else:
+                self.album_title = best_title
         return photos, videos, page_token, album_key, auth_key, wiz_data, timestamps
 
     def _parse_initial_page(self, html: str, final_url: str = "") -> Tuple[List[str], Set[str], Optional[str], Optional[str], Optional[str], dict]:
@@ -451,9 +555,29 @@ class GooglePhotosMixin:
             self._recent_sources = recent_formatted
             return list(recent_formatted)
 
-    def fetch_google_photos(self, url: str) -> List[str]:
-        if not url:
+    def _notify_connected_albums(self, album_urls: Optional[List[str]] = None) -> None:
+        cb = getattr(self, "on_album_connected", None)
+        if not callable(cb):
+            return
+        urls = album_urls if album_urls is not None else (getattr(self, "gphotos_urls", None) or [])
+        titles = getattr(self, "album_titles", {}) or {}
+        for u in urls:
+            if not u:
+                continue
+            title = str(titles.get(u, "") or (getattr(self, "album_title", "") if len(urls) == 1 else "") or "").strip()
+            try:
+                cb(u, title, "")
+            except Exception as e:
+                logger.debug("on_album_connected callback error: %s", e)
+
+    def fetch_google_photos(self, url: Optional[Any] = None) -> List[str]:
+        target_urls = self.normalize_gphotos_albums(
+            url if url is not None else getattr(self, "gphotos_urls", None)
+        )
+        if not target_urls:
             return []
+        if url is not None and not getattr(self, "gphotos_urls", None):
+            self.gphotos_urls = list(target_urls)
 
         cached, updated_at, has_video_metadata = self._load_cached_photos()
         if cached:
@@ -468,54 +592,91 @@ class GooglePhotosMixin:
             now = time.time()
             if not has_video_metadata or (self._resync_interval > 0 and (now - updated_at > self._resync_interval)):
                 logger.info("Starting background album sync (video metadata indexed: %s)...", has_video_metadata)
-                self._start_background_sync(url)
+                self._start_background_sync(target_urls)
             return cached
 
-        logger.info("Discovering Google Photos in album: %s", url)
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "curl/7.68.0"})
-            with urllib.request.urlopen(req, context=self.ssl_ctx, timeout=15) as res:
-                final_url = getattr(res, "geturl", lambda: "")() or ""
-                html = res.read().decode("utf-8", errors="ignore")
+        if len(target_urls) > 1:
+            logger.info("Discovering Google Photos across %d shared albums (combined pool)...", len(target_urls))
+        else:
+            logger.info("Discovering Google Photos in album: %s", target_urls[0])
 
-            page1_photos, page1_videos, next_token, album_key, auth_key, wiz_data, page1_ts = (
-                self._parse_initial_page_with_timestamps(html, final_url)
-            )
-            cdn_params = f"=w{self.cdn_w}-h{self.cdn_h}"
-            result_urls = [f"{base.split('=')[0]}{cdn_params}" for base in page1_photos]
-            shuffled_page1 = list(result_urls)
-            if self.shuffle and len(shuffled_page1) > 1:
-                random.shuffle(shuffled_page1)
+        cdn_params = f"=w{self.cdn_w}-h{self.cdn_h}"
+        combined_urls: List[str] = []
+        seen_bases: Set[str] = set()
+        combined_videos: Set[str] = set()
+        combined_ts: Dict[str, int] = {}
+        pending_jobs: List[Dict[str, Any]] = []
+        succeeded_urls: List[str] = []
 
-            with self._sources_lock:
-                self.video_bases = set(page1_videos)
-                self.photo_sources = shuffled_page1
-                self.current_index = 0
-            self._rebuild_recent_sources(ts_map=page1_ts, ordered_fallback=result_urls)
+        for album_u in target_urls:
+            try:
+                req = urllib.request.Request(album_u, headers={"User-Agent": "curl/7.68.0"})
+                with urllib.request.urlopen(req, context=self.ssl_ctx, timeout=15) as res:
+                    final_url = getattr(res, "geturl", lambda: "")() or ""
+                    html = res.read().decode("utf-8", errors="ignore")
 
-            logger.info("Found %d items (%d videos) on page 1.", len(result_urls), len(page1_videos))
-
-            if next_token and album_key:
-                self._start_background_sync(
-                    url,
-                    initial_token=next_token,
-                    album_key=album_key,
-                    auth_key=auth_key,
-                    wiz_data=wiz_data,
-                    initial_photos=result_urls,
-                    initial_videos=page1_videos,
+                page1_photos, page1_videos, next_token, album_key, auth_key, wiz_data, page1_ts = (
+                    self._parse_initial_page_with_timestamps(html, final_url, source_album_url=album_u)
                 )
-            elif result_urls:
-                self._save_cached_photos(result_urls, list(page1_videos))
+                for base in page1_photos:
+                    clean_base = base.split("=")[0]
+                    if clean_base not in seen_bases:
+                        seen_bases.add(clean_base)
+                        combined_urls.append(f"{clean_base}{cdn_params}")
+                combined_videos.update(v.split("=")[0] for v in page1_videos)
+                for b, ts in page1_ts.items():
+                    clean_b = b.split("=")[0]
+                    if ts > combined_ts.get(clean_b, 0):
+                        combined_ts[clean_b] = ts
+                if page1_photos:
+                    succeeded_urls.append(album_u)
+                if next_token and album_key:
+                    pending_jobs.append({
+                        "url": album_u,
+                        "token": next_token,
+                        "album_key": album_key,
+                        "auth_key": auth_key,
+                        "wiz_data": wiz_data,
+                    })
+            except Exception as e:
+                logger.error("Failed to fetch Google Photos album (%s): %s", album_u, e)
 
-            return shuffled_page1
-        except Exception as e:
-            logger.error("Failed to fetch Google Photos album (%s): %s", url, e)
+        if not combined_urls and not pending_jobs:
             return []
+
+        shuffled_page1 = list(combined_urls)
+        if self.shuffle and len(shuffled_page1) > 1:
+            random.shuffle(shuffled_page1)
+
+        with self._sources_lock:
+            self.video_bases = set(combined_videos)
+            self.photo_sources = shuffled_page1
+            self.current_index = 0
+        self._rebuild_recent_sources(ts_map=combined_ts, ordered_fallback=combined_urls)
+
+        logger.info(
+            "Found %d item(s) (%d videos) on page 1 across %d album(s).",
+            len(combined_urls), len(combined_videos), max(1, len(succeeded_urls))
+        )
+
+        if succeeded_urls:
+            self._notify_connected_albums(succeeded_urls)
+
+        if pending_jobs:
+            self._start_background_sync(
+                target_urls,
+                pending_jobs=pending_jobs,
+                initial_photos=combined_urls,
+                initial_videos=combined_videos,
+            )
+        elif combined_urls:
+            self._save_cached_photos(combined_urls, list(combined_videos))
+
+        return shuffled_page1
 
     def _start_background_sync(
         self,
-        url: str,
+        url_or_urls: Any,
         initial_token: Optional[str] = None,
         album_key: Optional[str] = None,
         auth_key: Optional[str] = None,
@@ -523,6 +684,7 @@ class GooglePhotosMixin:
         initial_photos: Optional[List[str]] = None,
         initial_videos: Optional[Set[str]] = None,
         force: bool = False,
+        pending_jobs: Optional[List[Dict[str, Any]]] = None,
     ):
         if self._is_syncing_album and not force:
             return
@@ -533,7 +695,7 @@ class GooglePhotosMixin:
             try:
                 self._is_syncing_album = True
                 self._sync_album_in_background(
-                    url,
+                    url_or_urls,
                     initial_token=initial_token,
                     album_key=album_key,
                     auth_key=auth_key,
@@ -541,6 +703,7 @@ class GooglePhotosMixin:
                     initial_photos=initial_photos,
                     initial_videos=initial_videos,
                     expected_gen=gen,
+                    pending_jobs=pending_jobs,
                 )
             finally:
                 if self._album_generation == gen:
@@ -551,7 +714,7 @@ class GooglePhotosMixin:
 
     def _sync_album_in_background(
         self,
-        url: str,
+        url_or_urls: Any,
         initial_token: Optional[str] = None,
         album_key: Optional[str] = None,
         auth_key: Optional[str] = None,
@@ -559,55 +722,117 @@ class GooglePhotosMixin:
         initial_photos: Optional[List[str]] = None,
         initial_videos: Optional[Set[str]] = None,
         expected_gen: Optional[int] = None,
+        pending_jobs: Optional[List[Dict[str, Any]]] = None,
     ):
         if expected_gen is not None and self._album_generation != expected_gen:
             return
-        logger.info("Starting background Google Photos full album pagination...")
+        target_urls = self.normalize_gphotos_albums(url_or_urls)
+        if not target_urls and pending_jobs:
+            target_urls = [str(j.get("url") or "") for j in pending_jobs if j.get("url")]
+        if not target_urls:
+            return
+
+        logger.info("Starting background Google Photos full pagination across %d album(s)...", len(target_urls))
         discovered_urls: List[str] = list(initial_photos or [])
         discovered_videos: Set[str] = set(initial_videos or set())
         discovered_ts: Dict[str, int] = {}
-        token = initial_token
-        a_key = album_key
-        auth = auth_key
-        wiz = wiz_data or {}
-
-        if not token or not a_key:
-            try:
-                req = urllib.request.Request(url, headers={"User-Agent": "curl/7.68.0"})
-                with urllib.request.urlopen(req, context=self.ssl_ctx, timeout=15) as res:
-                    final_url = res.geturl()
-                    html = res.read().decode("utf-8", errors="ignore")
-                if expected_gen is not None and self._album_generation != expected_gen:
-                    return
-                p1, v1, token, a_key, auth, wiz, ts1 = self._parse_initial_page_with_timestamps(html, final_url)
-                cdn_params = f"=w{self.cdn_w}-h{self.cdn_h}"
-                discovered_urls = [f"{u.split('=')[0]}{cdn_params}" for u in p1]
-                discovered_videos.update(v1)
-                discovered_ts.update(ts1)
-                with self._sources_lock:
-                    self.video_bases.update(v1)
-            except Exception as e:
-                logger.error("Failed to fetch album root during background sync: %s", e)
-                return
-
         cdn_params = f"=w{self.cdn_w}-h{self.cdn_h}"
 
         with self._sources_lock:
             existing_bases = set(u.split("=")[0] for u in self.photo_sources)
             if not discovered_urls and self.photo_sources:
                 discovered_urls = list(self.photo_sources)
-
         seen_bases = set(u.split("=")[0] for u in discovered_urls) | existing_bases
-        page_num = 1
-        max_pages = 100
 
-        while token and page_num < max_pages:
+        jobs: List[Dict[str, Any]] = []
+        if pending_jobs is not None:
+            for j in pending_jobs:
+                jobs.append({
+                    "url": str(j.get("url") or ""),
+                    "token": j.get("token"),
+                    "album_key": j.get("album_key"),
+                    "auth_key": j.get("auth_key"),
+                    "wiz_data": j.get("wiz_data") or {},
+                    "page": 1,
+                })
+        elif len(target_urls) == 1 and initial_token and album_key:
+            jobs.append({
+                "url": target_urls[0],
+                "token": initial_token,
+                "album_key": album_key,
+                "auth_key": auth_key,
+                "wiz_data": wiz_data or {},
+                "page": 1,
+            })
+        else:
+            for album_u in target_urls:
+                if expected_gen is not None and self._album_generation != expected_gen:
+                    return
+                try:
+                    req = urllib.request.Request(album_u, headers={"User-Agent": "curl/7.68.0"})
+                    with urllib.request.urlopen(req, context=self.ssl_ctx, timeout=15) as res:
+                        final_url = res.geturl()
+                        html = res.read().decode("utf-8", errors="ignore")
+                    if expected_gen is not None and self._album_generation != expected_gen:
+                        return
+                    p1, v1, tok, akey, aauth, awiz, ts1 = self._parse_initial_page_with_timestamps(
+                        html, final_url, source_album_url=album_u
+                    )
+                    batch_p1 = []
+                    for u in p1:
+                        cb = u.split("=")[0]
+                        if cb not in seen_bases:
+                            seen_bases.add(cb)
+                            batch_p1.append(f"{cb}{cdn_params}")
+                    if v1:
+                        discovered_videos.update(v1)
+                        with self._sources_lock:
+                            self.video_bases.update(v1)
+                    for b, ts in ts1.items():
+                        if ts > discovered_ts.get(b, 0):
+                            discovered_ts[b] = ts
+                    if batch_p1:
+                        with self._sources_lock:
+                            if self.shuffle:
+                                for b_url in batch_p1:
+                                    insert_pos = (
+                                        random.randint(self.current_index + 1, len(self.photo_sources))
+                                        if len(self.photo_sources) > self.current_index + 1
+                                        else len(self.photo_sources)
+                                    )
+                                    self.photo_sources.insert(insert_pos, b_url)
+                            else:
+                                self.photo_sources.extend(batch_p1)
+                        discovered_urls.extend(batch_p1)
+                    if tok and akey:
+                        jobs.append({
+                            "url": album_u,
+                            "token": tok,
+                            "album_key": akey,
+                            "auth_key": aauth,
+                            "wiz_data": awiz or {},
+                            "page": 1,
+                        })
+                except Exception as e:
+                    logger.error("Failed to fetch album root during background sync (%s): %s", album_u, e)
+
+        max_pages = 100
+        active_jobs = collections.deque(jobs)
+        while active_jobs:
             if expected_gen is not None and self._album_generation != expected_gen:
                 logger.info("Aborting background sync for superseded album generation.")
                 return
-            page_num += 1
+            job = active_jobs.popleft()
+            tok = job.get("token")
+            akey = job.get("album_key")
+            page_num = int(job.get("page", 1))
+            if not tok or not akey or page_num >= max_pages:
+                continue
+            job["page"] = page_num + 1
             try:
-                new_token, rpc_items = self._fetch_rpc_page(a_key, token, auth, wiz)
+                new_token, rpc_items = self._fetch_rpc_page(
+                    akey, tok, job.get("auth_key"), job.get("wiz_data")
+                )
                 if expected_gen is not None and self._album_generation != expected_gen:
                     return
 
@@ -616,7 +841,7 @@ class GooglePhotosMixin:
                 for base, is_vid, taken_ts in rpc_items:
                     if is_vid:
                         batch_videos.add(base)
-                    if taken_ts > 0:
+                    if taken_ts > discovered_ts.get(base, 0):
                         discovered_ts[base] = taken_ts
                     if base not in seen_bases:
                         seen_bases.add(base)
@@ -641,13 +866,12 @@ class GooglePhotosMixin:
                             self.photo_sources.extend(batch_urls)
                     discovered_urls.extend(batch_urls)
 
-                if not new_token or not rpc_items:
-                    break
-                token = new_token
+                if new_token and rpc_items and job["page"] < max_pages:
+                    job["token"] = new_token
+                    active_jobs.append(job)
                 time.sleep(self.sync_sleep_sec)
             except Exception as e:
-                logger.warning("Error fetching album page %d: %s", page_num, e)
-                break
+                logger.warning("Error fetching album page %d (%s): %s", job["page"], job.get("url", ""), e)
 
         if expected_gen is not None and self._album_generation != expected_gen:
             return
@@ -664,11 +888,7 @@ class GooglePhotosMixin:
         )
         if all_urls:
             self._save_cached_photos(all_urls, all_vids)
-            if callable(getattr(self, "on_album_connected", None)):
-                try:
-                    self.on_album_connected(self.gphotos_url, getattr(self, "album_title", ""), "")
-                except Exception as e:
-                    logger.debug("on_album_connected callback error: %s", e)
+            self._notify_connected_albums(target_urls)
 
     def scan_local_directory(self, directory: Optional[str] = None) -> List[str]:
         target_dir = directory or self.local_dir
@@ -695,13 +915,11 @@ class GooglePhotosMixin:
 
     def refresh_sources(self):
         sources: List[str] = []
-        if self.gphotos_url:
-            sources = self.fetch_google_photos(self.gphotos_url)
-            if sources and callable(getattr(self, "on_album_connected", None)):
-                try:
-                    self.on_album_connected(self.gphotos_url, getattr(self, "album_title", ""), "")
-                except Exception as e:
-                    logger.debug("on_album_connected callback error: %s", e)
+        active_urls = list(getattr(self, "gphotos_urls", []) or [])
+        if active_urls:
+            sources = self.fetch_google_photos(active_urls)
+            if sources:
+                self._notify_connected_albums(active_urls)
         if not sources:
             with self._sources_lock:
                 self.video_bases = set()
@@ -716,23 +934,35 @@ class GooglePhotosMixin:
             with self._sources_lock:
                 self.photo_sources = sources
                 self.current_index = 0
-        mode_str = "DEMO SHOWCASE MODE" if self.is_demo_mode else "Google Photos Album"
+        mode_str = (
+            "DEMO SHOWCASE MODE"
+            if self.is_demo_mode
+            else (f"Google Photos ({len(active_urls)} Albums)" if len(active_urls) > 1 else "Google Photos Album")
+        )
         logger.info(
             "Initialized slideshow [%s] with %d item(s) (%d known videos, video mode: %s).",
             mode_str, len(self.photo_sources), len(self.video_bases), self.video_mode
         )
 
-    def switch_album(self, new_album_url: str, on_ready_callback: Optional[Any] = None):
+    def switch_album(
+        self,
+        new_album_url: Any,
+        on_ready_callback: Optional[Any] = None,
+        new_albums: Optional[Any] = None,
+    ):
         """
-        Atomically switches to a new Google Photos shared album (or Demo Showcase Mode
-        when `new_album_url` is empty or 'demo'), flushes all prefetched queues and stale
-        caches, and invokes `on_ready_callback` as soon as the new slide deck is ready.
+        Atomically switches to one or more Google Photos shared albums (or Demo Showcase Mode
+        when empty/'demo'), flushes all prefetched queues and stale caches, and invokes
+        `on_ready_callback` as soon as the new slide deck is ready.
         """
-        normalized = self.normalize_gphotos_url(new_album_url)
+        normalized_list = self.normalize_gphotos_albums(
+            new_albums if new_albums is not None else new_album_url
+        )
 
         self._album_generation += 1
         self._is_syncing_album = False
-        self.gphotos_url = normalized
+        self.gphotos_urls = normalized_list
+        self.album_titles = {}
         self.album_title = ""
 
         if self.cache_file and os.path.exists(self.cache_file):
@@ -758,6 +988,8 @@ class GooglePhotosMixin:
 
         if self.is_demo_mode:
             logger.info("✨ Switching slideshow to built-in Demo Showcase Mode...")
+        elif len(normalized_list) > 1:
+            logger.info("🔄 Switching Google Photos to %d albums (combined shuffle pool).", len(normalized_list))
         else:
             logger.info("🔄 Switching Google Photos album to: %s", self.gphotos_url)
         self.refresh_sources()
@@ -840,12 +1072,13 @@ class GooglePhotosMixin:
 
     def quick_refresh_recent(self, max_items: int = 40) -> List[str]:
         """
-        Fetches the newest photos taken without waiting for a full resync,
+        Fetches the newest photos taken across all active albums without waiting for a full resync,
         updates `self._recent_sources` (newest-taken-first, up to `max_items`), and merges
         newly discovered media into `self.photo_sources`.
         """
         limit = max(1, int(max_items or self.RECENT_MAX_ITEMS))
-        if self.is_demo_mode or not self.gphotos_url:
+        active_urls = list(getattr(self, "gphotos_urls", []) or [])
+        if self.is_demo_mode or not active_urls:
             with self._sources_lock:
                 cur_sources = list(self.photo_sources)
             if cur_sources and any(isinstance(s, str) and os.path.exists(s) for s in cur_sources):
@@ -860,71 +1093,88 @@ class GooglePhotosMixin:
                 self._recent_index = 0
             return list(top)
 
-        try:
-            req = urllib.request.Request(self.gphotos_url, headers={"User-Agent": "curl/7.68.0"})
-            with urllib.request.urlopen(req, context=self.ssl_ctx, timeout=15) as res:
-                final_url = getattr(res, "geturl", lambda: "")() or ""
-                html = res.read().decode("utf-8", errors="ignore")
+        discovered_bases: List[str] = []
+        seen_all_bases: Set[str] = set()
+        discovered_videos: Set[str] = set()
+        discovered_ts: Dict[str, int] = {}
+        refreshed_albums: List[str] = []
 
-            p1, v1, next_token, album_key, auth_key, wiz_data, ts1 = self._parse_initial_page_with_timestamps(
-                html, final_url
-            )
-            discovered_bases = list(p1)
-            discovered_videos = set(v1)
-            discovered_ts = dict(ts1)
+        for album_u in active_urls:
+            try:
+                req = urllib.request.Request(album_u, headers={"User-Agent": "curl/7.68.0"})
+                with urllib.request.urlopen(req, context=self.ssl_ctx, timeout=15) as res:
+                    final_url = getattr(res, "geturl", lambda: "")() or ""
+                    html = res.read().decode("utf-8", errors="ignore")
 
-            # Oldest-first album safeguard: if Page 1 ascends chronologically and has a next_token,
-            # follow RPC pagination (up to 60 pages) to reach the newest end of the album.
-            nonzero_p1 = [ts1.get(b, 0) for b in p1 if ts1.get(b, 0) > 0]
-            if next_token and album_key and len(nonzero_p1) >= 2 and nonzero_p1[0] < nonzero_p1[-1]:
-                token: Optional[str] = next_token
-                seen_bases = set(discovered_bases)
-                for _ in range(60):
-                    if not token:
-                        break
-                    try:
-                        new_token, rpc_items = self._fetch_rpc_page(album_key, token, auth_key, wiz_data)
-                        if not rpc_items:
-                            break
-                        for base, is_vid, taken_ts in rpc_items:
-                            if is_vid:
-                                discovered_videos.add(base)
-                            if taken_ts > 0:
-                                discovered_ts[base] = taken_ts
-                            if base not in seen_bases:
-                                seen_bases.add(base)
-                                discovered_bases.append(base)
-                        token = new_token
-                        time.sleep(0.05)
-                    except Exception as rpc_err:
-                        logger.debug("Quick-refresh RPC tail scan stopped: %s", rpc_err)
-                        break
-
-            cdn_params = f"=w{self.cdn_w}-h{self.cdn_h}"
-            formatted_discovered = [f"{b.split('=')[0]}{cdn_params}" for b in discovered_bases]
-            if formatted_discovered:
-                with self._sources_lock:
-                    self.video_bases.update(discovered_videos)
-                    existing_bases = set(u.split("=")[0] for u in self.photo_sources)
-                    new_urls = [u for u in formatted_discovered if u.split("=")[0] not in existing_bases]
-                    if new_urls:
-                        for new_u in reversed(new_urls):
-                            self.photo_sources.insert(self.current_index, new_u)
-                    all_urls = list(self.photo_sources)
-                    all_vids = list(self.video_bases)
-                recent = self._rebuild_recent_sources(
-                    ts_map=discovered_ts, ordered_fallback=formatted_discovered, max_items=limit
+                p1, v1, next_token, album_key, auth_key, wiz_data, ts1 = self._parse_initial_page_with_timestamps(
+                    html, final_url, source_album_url=album_u
                 )
-                self._save_cached_photos(all_urls, all_vids)
-                if getattr(self, "album_title", "") and callable(getattr(self, "on_album_connected", None)):
-                    try:
-                        self.on_album_connected(self.gphotos_url, self.album_title, "")
-                    except Exception:
-                        pass
-                logger.info("⚡ Quick-refresh indexed %d recent Google Photos item(s).", len(recent))
-                return recent
-        except Exception as e:
-            logger.warning("Quick-refresh recent photos failed (using cached list): %s", e)
+                album_bases = list(p1)
+                discovered_videos.update(v1)
+                for b, ts in ts1.items():
+                    if ts > discovered_ts.get(b, 0):
+                        discovered_ts[b] = ts
+
+                # Oldest-first album safeguard: if Page 1 ascends chronologically and has a next_token,
+                # follow RPC pagination (up to 60 pages) to reach the newest end of the album.
+                nonzero_p1 = [ts1.get(b, 0) for b in p1 if ts1.get(b, 0) > 0]
+                if next_token and album_key and len(nonzero_p1) >= 2 and nonzero_p1[0] < nonzero_p1[-1]:
+                    token: Optional[str] = next_token
+                    seen_album_bases = set(album_bases)
+                    for _ in range(60):
+                        if not token:
+                            break
+                        try:
+                            new_token, rpc_items = self._fetch_rpc_page(album_key, token, auth_key, wiz_data)
+                            if not rpc_items:
+                                break
+                            for base, is_vid, taken_ts in rpc_items:
+                                if is_vid:
+                                    discovered_videos.add(base)
+                                if taken_ts > discovered_ts.get(base, 0):
+                                    discovered_ts[base] = taken_ts
+                                if base not in seen_album_bases:
+                                    seen_album_bases.add(base)
+                                    album_bases.append(base)
+                            token = new_token
+                            time.sleep(0.05)
+                        except Exception as rpc_err:
+                            logger.debug("Quick-refresh RPC tail scan stopped (%s): %s", album_u, rpc_err)
+                            break
+
+                for base in album_bases:
+                    clean_b = base.split("=")[0]
+                    if clean_b not in seen_all_bases:
+                        seen_all_bases.add(clean_b)
+                        discovered_bases.append(clean_b)
+                if album_bases:
+                    refreshed_albums.append(album_u)
+            except Exception as e:
+                logger.warning("Quick-refresh recent photos failed for %s: %s", album_u, e)
+
+        cdn_params = f"=w{self.cdn_w}-h{self.cdn_h}"
+        formatted_discovered = [f"{b.split('=')[0]}{cdn_params}" for b in discovered_bases]
+        if formatted_discovered:
+            with self._sources_lock:
+                self.video_bases.update(discovered_videos)
+                existing_bases = set(u.split("=")[0] for u in self.photo_sources)
+                new_urls = [u for u in formatted_discovered if u.split("=")[0] not in existing_bases]
+                if new_urls:
+                    for new_u in reversed(new_urls):
+                        self.photo_sources.insert(self.current_index, new_u)
+                all_urls = list(self.photo_sources)
+                all_vids = list(self.video_bases)
+            recent = self._rebuild_recent_sources(
+                ts_map=discovered_ts, ordered_fallback=formatted_discovered, max_items=limit
+            )
+            self._save_cached_photos(all_urls, all_vids)
+            if refreshed_albums:
+                self._notify_connected_albums(refreshed_albums)
+            logger.info(
+                "⚡ Quick-refresh indexed %d recent Google Photos item(s) across %d album(s).",
+                len(recent), len(refreshed_albums)
+            )
+            return recent
 
         return self._rebuild_recent_sources(max_items=limit)
 
