@@ -44,6 +44,7 @@ BROADCAST_ALLOWED_ACTIONS = frozenset(
         "recent_5",
         "recent_10",
         "recent_stop",
+        "check_update",
     }
 )
 
@@ -939,8 +940,11 @@ class FleetManager:
                         payload["album"] = album_arg
                         if pwd_arg:
                             payload["pwd"] = pwd_arg
-                elif action in ("check_update", "delete_saved_album"):
-                    if album_arg and (action == "delete_saved_album" or node_edition == self.edition):
+                elif action == "check_update":
+                    if album_arg and node_edition == self.edition and node.get("platform") == "android_tv":
+                        payload["album"] = album_arg
+                elif action == "delete_saved_album":
+                    if album_arg:
                         payload["album"] = album_arg
                 body = json.dumps(payload).encode("utf-8")
                 code, resp = self._http_request_peer(ip, port, "POST", "/api/action", body_bytes=body, timeout=3.5)

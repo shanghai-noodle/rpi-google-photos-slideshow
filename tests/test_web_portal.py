@@ -747,6 +747,19 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
         self.assertIsNone(app._cached_demo_pill)
         self.assertEqual(app.args.language, "zh")
 
+    def test_check_update_action_and_broadcast_allowed(self):
+        from photoframe.fleet import BROADCAST_ALLOWED_ACTIONS
+
+        self.assertIn("check_update", BROADCAST_ALLOWED_ACTIONS)
+        args = parse_args(["--album", "demo", "--log-file", "none"])
+        app = SlideshowApp(args, hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
+        st = app.get_status_snapshot()
+        self.assertIn("update_status", st)
+        with unittest.mock.patch.object(app, "check_for_git_update_async") as mock_upd:
+            msg = app.queue_web_action("check_update")
+            self.assertIn("Checking GitHub", msg)
+            mock_upd.assert_called_once_with(manual=True)
+
 
 if __name__ == "__main__":
     unittest.main()

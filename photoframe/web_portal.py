@@ -1674,23 +1674,26 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
           </form>
         </div>
 
-        <div class="m3-card hidden" id="card-apk-update">
+        <div class="m3-card" id="card-apk-update">
           <div class="card-header">
             <h2><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14zm-1-6h-3V8h-2v5H8l4 4 4-4z"/></svg><span data-i18n="sec_update">App Auto-Update &amp; APK Installer</span></h2>
             <span id="stat-app-version" class="badge">v1.0.0</span>
           </div>
           <div class="form-grid">
-            <div class="form-group full">
-              <label for="cfg-update-url" data-i18n="lbl_update_url">APK Update Download Link (checked on startup &amp; every 6h)</label>
+            <div class="form-group full" id="group-update-url">
+              <label for="cfg-update-url" id="lbl-update-url" data-i18n="lbl_update_url">APK Update Download Link (checked on startup &amp; every 6h)</label>
               <div style="display:flex; gap:10px; flex-wrap:wrap;">
                 <input type="text" id="cfg-update-url" style="flex:1; min-width:220px;" placeholder="https://github.com/shanghai-noodle/androidTV-photo-slideshow-releases/releases/latest/download/...">
-                <button type="button" class="primary" onclick="checkUpdateNow()">
-                  <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg><span class="btn-label" data-i18n="btn_check_update">Save Link &amp; Check Update</span>
+                <button type="button" id="btn-check-update" class="primary" onclick="checkUpdateNow()">
+                  <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg><span class="btn-label" id="btn-check-update-label" data-i18n="btn_check_update">Save Link &amp; Check Update</span>
+                </button>
+                <button type="button" id="btn-push-update-all" class="tonal hidden" onclick="pushUpdateAllFrames()">
+                  <svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg><span class="btn-label" data-i18n="btn_push_update_all">Push Update to All Frames</span>
                 </button>
               </div>
               <div id="stat-update-status" style="font-size:0.82rem; color:var(--md-sys-color-on-surface-variant); margin-top:4px;">—</div>
             </div>
-            <div class="form-group full" style="margin-top:4px;">
+            <div class="form-group full" id="group-apk-upload" style="margin-top:4px;">
               <label for="apk-file-input" data-i18n="lbl_apk_upload">Or Upload &amp; Install APK File Directly</label>
               <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                 <input type="file" id="apk-file-input" accept=".apk,application/vnd.android.package-archive" style="flex:1; min-width:220px;">
@@ -1924,7 +1927,11 @@ const I18N = {
     ph_pwd: "4-char code (optional if ?pwd= is in URL)",
     sec_update: "App Auto-Update & APK Installer",
     lbl_update_url: "APK Update Download Link (checked on startup & every 6h)",
+    lbl_update_git: "Git Auto-Update (pulls origin/main & restarts service on startup & every 6h)",
+    lbl_update_broadcast: "Broadcast Auto-Update across all connected Raspberry Pi (Git) & Android TV (OTA APK) frames",
     btn_check_update: "Save Link & Check Update",
+    btn_check_update_git: "Check & Pull Update Now",
+    btn_push_update_all: "Push Update to All Frames",
     lbl_apk_upload: "Or Upload & Install APK File Directly",
     btn_upload_apk: "Upload & Install APK",
     msg_select_apk: "Please choose an .apk file first",
@@ -2131,7 +2138,11 @@ const I18N = {
     ph_pwd: "4 位提取码（若链接含 ?pwd= 可留空）",
     sec_update: "应用自动更新与 APK 安装",
     lbl_update_url: "APK 更新下载链接（启动时及每 6 小时自动检测）",
+    lbl_update_git: "Git 自动更新（启动时及每 6 小时自动拉取 origin/main 并重启服务）",
+    lbl_update_broadcast: "向局域网内所有树莓派 (Git) 与 Android TV (OTA APK) 相框推送自动更新",
     btn_check_update: "保存链接并检查更新",
+    btn_check_update_git: "立即检查并拉取更新",
+    btn_push_update_all: "向所有相框推送更新",
     lbl_apk_upload: "或直接上传并安装本地 .apk 安装包",
     btn_upload_apk: "上传并安装 APK",
     msg_select_apk: "请先选择一个 .apk 安装包文件",
@@ -2338,7 +2349,11 @@ const I18N = {
     ph_pwd: "4文字コード（URLに ?pwd= がある場合は省略可）",
     sec_update: "アプリ自動更新 & APK インストーラー",
     lbl_update_url: "APK 更新ダウンロードリンク",
+    lbl_update_git: "Git 自動更新（起動時および6時間ごとに origin/main を取得して再起動）",
+    lbl_update_broadcast: "接続されているすべての Raspberry Pi (Git) と Android TV (OTA APK) フレームに更新を一括配信",
     btn_check_update: "リンクを保存して更新確認",
+    btn_check_update_git: "今すぐ更新を確認・適用",
+    btn_push_update_all: "すべてのフレームに更新を配信",
     lbl_apk_upload: "または .apk ファイルを直接アップロードしてインストール",
     btn_upload_apk: "APK をアップロードしてインストール",
     msg_select_apk: "先に .apk ファイルを選択してください",
@@ -2545,7 +2560,11 @@ const I18N = {
     ph_pwd: "4자리 코드 (URL에 ?pwd= 포함 시 생략 가능)",
     sec_update: "앱 자동 업데이트 및 APK 설치",
     lbl_update_url: "APK 업데이트 다운로드 링크",
+    lbl_update_git: "Git 자동 업데이트 (시작 시 및 6시간마다 origin/main 가져오기 및 재시작)",
+    lbl_update_broadcast: "연결된 모든 Raspberry Pi (Git) 및 Android TV (OTA APK) 액자에 업데이트 일괄 푸시",
     btn_check_update: "링크 저장 및 업데이트 확인",
+    btn_check_update_git: "지금 업데이트 확인 및 적용",
+    btn_push_update_all: "모든 액자에 업데이트 푸시",
     lbl_apk_upload: "또는 브라우저에서 .apk 파일을 직접 업로드하여 설치",
     btn_upload_apk: "APK 업로드 및 설치",
     msg_select_apk: "먼저 .apk 파일을 선택하세요",
@@ -2752,7 +2771,11 @@ const I18N = {
     ph_pwd: "Código de 4 caracteres (opcional si ?pwd= está en la URL)",
     sec_update: "Actualización Automática e Instalador APK",
     lbl_update_url: "Enlace de Descarga de Actualización APK",
+    lbl_update_git: "Actualización Automática Git (sincroniza origin/main al iniciar y cada 6 h)",
+    lbl_update_broadcast: "Enviar actualización automática a todos los marcos Raspberry Pi (Git) y Android TV (OTA APK)",
     btn_check_update: "Guardar y Buscar Actualización",
+    btn_check_update_git: "Buscar y Aplicar Actualización",
+    btn_push_update_all: "Actualizar Todos los Marcos",
     lbl_apk_upload: "O Subir e Instalar Archivo .apk Directamente",
     btn_upload_apk: "Subir e Instalar APK",
     msg_select_apk: "Por favor selecciona un archivo .apk primero",
@@ -2959,7 +2982,11 @@ const I18N = {
     ph_pwd: "4-stelliger Code (optional wenn ?pwd= in URL)",
     sec_update: "App-Auto-Update & APK-Installation",
     lbl_update_url: "APK-Update-Download-Link",
+    lbl_update_git: "Git-Auto-Update (aktualisiert origin/main beim Start & alle 6 Std.)",
+    lbl_update_broadcast: "Auto-Update an alle verbundenen Raspberry Pi (Git) & Android TV (OTA APK) Rahmen senden",
     btn_check_update: "Speichern & Auf Update prüfen",
+    btn_check_update_git: "Jetzt auf Update prüfen",
+    btn_push_update_all: "Update an alle Rahmen senden",
     lbl_apk_upload: "Oder .apk-Datei direkt hochladen & installieren",
     btn_upload_apk: "APK hochladen & installieren",
     msg_select_apk: "Bitte wählen Sie zuerst eine .apk-Datei aus",
@@ -4022,7 +4049,9 @@ function renderFleetBar(nodes) {
 function updateDynamicFormVisibility() {
   const isAll = (selectedTarget === 'all');
   const showBaiduPwd = !isAll && (activeTargetEdition === 'baidupan');
-  const showTvApkCard = !isAll && (activeTargetPlatform === 'android_tv');
+  const isTvTarget = !isAll && (activeTargetPlatform === 'android_tv');
+  const hasTvInFleet = isTvTarget || (Array.isArray(fleetNodes) && fleetNodes.some(n => n.platform === 'android_tv'));
+  const multiFrame = Array.isArray(fleetNodes) && fleetNodes.length > 1;
 
   const bcastNote = document.getElementById('broadcast-settings-note');
   if (bcastNote) bcastNote.classList.toggle('hidden', !isAll);
@@ -4053,7 +4082,27 @@ function updateDynamicFormVisibility() {
   if (rotInput) rotInput.disabled = isAll;
 
   const apkCard = document.getElementById('card-apk-update');
-  if (apkCard) apkCard.classList.toggle('hidden', !showTvApkCard || manageMode);
+  if (apkCard) apkCard.classList.toggle('hidden', false);
+  const upUrlInput = document.getElementById('cfg-update-url');
+  if (upUrlInput) upUrlInput.classList.toggle('hidden', !isTvTarget);
+  const lblUpUrl = document.getElementById('lbl-update-url');
+  if (lblUpUrl) {
+    const lblKey = isAll ? 'lbl_update_broadcast' : (isTvTarget ? 'lbl_update_url' : 'lbl_update_git');
+    lblUpUrl.setAttribute('data-i18n', lblKey);
+    lblUpUrl.textContent = t(lblKey);
+  }
+  const btnCheckUp = document.getElementById('btn-check-update');
+  const btnCheckUpLbl = document.getElementById('btn-check-update-label');
+  if (btnCheckUpLbl) {
+    const btnKey = isAll ? 'btn_push_update_all' : (isTvTarget ? 'btn_check_update' : 'btn_check_update_git');
+    btnCheckUpLbl.setAttribute('data-i18n', btnKey);
+    btnCheckUpLbl.textContent = t(btnKey);
+  }
+  const btnPushAll = document.getElementById('btn-push-update-all');
+  if (btnPushAll) btnPushAll.classList.toggle('hidden', isAll || !multiFrame);
+  const apkUploadGrp = document.getElementById('group-apk-upload');
+  if (apkUploadGrp) apkUploadGrp.classList.toggle('hidden', !(isTvTarget || (isAll && hasTvInFleet)));
+
   const fleetCardEl = document.getElementById('fleet-card');
   if (fleetCardEl) fleetCardEl.classList.toggle('hidden', !manageMode);
   const pwCardEl = document.getElementById('card-password');
@@ -5357,12 +5406,14 @@ async function changePassword(e) {
   }
 }
 
-async function checkUpdateNow() {
-  const urlVal = (document.getElementById('cfg-update-url')?.value || '').trim();
+async function checkUpdateNow(forceTarget) {
+  const effTarget = forceTarget || selectedTarget;
+  const isTvTarget = (effTarget !== 'all') && (activeTargetPlatform === 'android_tv');
+  const urlVal = isTvTarget ? (document.getElementById('cfg-update-url')?.value || '').trim() : '';
   const res = await fetch('/api/action', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({target: selectedTarget, action: 'check_update', album: urlVal})
+    body: JSON.stringify({target: effTarget, action: 'check_update', album: urlVal})
   });
   const data = await res.json();
   if (res.ok && data.ok) {
@@ -5372,7 +5423,12 @@ async function checkUpdateNow() {
     setTimeout(() => fetchStatus(false), 3500);
   } else {
     showToast(data.error || 'Update check failed', true);
+    showInlineBanner('update-confirm-banner', data.error || 'Update check failed', true);
   }
+}
+
+async function pushUpdateAllFrames() {
+  return checkUpdateNow('all');
 }
 
 function uploadAndInstallApk() {

@@ -190,6 +190,137 @@ class SlideshowApp:
         self.current_photo_surf: Optional[Any] = None
         self.current_video_list: List[Dict[str, Any]] = []
         self._web_action_queue: Deque[Tuple[str, Any]] = collections.deque()
+        self._last_update_status: str = "Ready (checks GitHub on startup & every 6h)"
+        self._update_check_lock = threading.Lock()
+        self._git_commit_sha: str = self._detect_git_short_sha()
+
+    @staticmethod
+    def _repo_root_dir() -> str:
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    @classmethod
+    def _detect_git_short_sha(cls) -> str:
+        try:
+            res = subprocess.run(
+                ["git", "rev-parse", "--short=8", "HEAD"],
+                cwd=cls._repo_root_dir(),
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                return res.stdout.strip()[:8]
+        except Exception:
+            pass
+        return ""
+
+    def check_for_git_update_async(self, manual: bool = False) -> None:
+        def _worker():
+            if not self._update_check_lock.acquire(blocking=False):
+                return
+            try:
+                repo_dir = self._repo_root_dir()
+                if not os.path.isdir(os.path.join(repo_dir, ".git")):
+                    self._last_update_status = "Git repository not found in app directory."
+                    return
+                self._last_update_status = "Checking GitHub for updates..."
+                fetch_res = subprocess.run(
+                    ["git", "fetch", "origin", "main"],
+                    cwd=repo_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=25,
+                )
+                if fetch_res.returncode != 0:
+                    err = (fetch_res.stderr or fetch_res.stdout or "git fetch failed").strip().splitlines()[-1:]
+                    err_str = err[0] if err else "network error"
+                    self._last_update_status = f"Update check failed: {err_str}"
+                    logger.warning("Git auto-update fetch failed: %s", err_str)
+                    return
+
+                local_head = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=repo_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                ).stdout.strip()
+                remote_head = subprocess.run(
+                    ["git", "rev-parse", "origin/main"],
+                    cwd=repo_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                ).stdout.strip()
+
+                from . import _load_version_info
+                cur_ver, cur_build = _load_version_info()
+                now_str = datetime.datetime.now().strftime("%H:%M:%S")
+
+                if not remote_head or local_head == remote_head:
+                    self._git_commit_sha = (local_head[:8] if local_head else self._git_commit_sha)
+                    self._last_update_status = f"Up to date — v{cur_ver} (Build #{cur_build}, {self._git_commit_sha or 'latest'}) • Checked {now_str}"
+                    if manual:
+                        logger.info("✅ Git update check: already up to date (v%s, %s).", cur_ver, self._git_commit_sha)
+                    return
+
+                self._last_update_status = f"Applying update ({local_head[:7]} -> {remote_head[:7]})..."
+                logger.info("📦 New Git update detected (%s -> %s); pulling fast-forward...", local_head[:7], remote_head[:7])
+                pull_res = subprocess.run(
+                    ["git", "pull", "--ff-only", "origin", "main"],
+                    cwd=repo_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                if pull_res.returncode != 0:
+                    err = (pull_res.stderr or pull_res.stdout or "git pull --ff-only failed").strip().splitlines()[-1:]
+                    err_str = err[0] if err else "pull conflict"
+                    self._last_update_status = f"Update pull failed: {err_str}"
+                    logger.warning("Git auto-update pull failed: %s", err_str)
+                    return
+
+                self._git_commit_sha = remote_head[:8]
+                new_ver, new_build = _load_version_info()
+                self._last_update_status = f"Updated to v{new_ver} (Build #{new_build}, {self._git_commit_sha}) — restarting service..."
+                logger.info("🚀 Updated to v%s (Build #%d, %s); restarting slideshow service...", new_ver, new_build, self._git_commit_sha)
+
+                if not os.environ.get("GITHUB_ACTIONS"):
+                    time.sleep(0.8)
+                    if os.environ.get("INVOCATION_ID"):
+                        try:
+                            subprocess.Popen(
+                                ["sudo", "-n", "systemctl", "restart", "slideshow.service"],
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                start_new_session=True,
+                            )
+                        except Exception:
+                            pass
+                        time.sleep(0.4)
+                        self.is_running = False
+            except Exception as e:
+                self._last_update_status = f"Update check error: {e}"
+                logger.warning("Git auto-update error: %s", e)
+            finally:
+                self._update_check_lock.release()
+
+        threading.Thread(target=_worker, name="GitAutoUpdateThread", daemon=True).start()
+
+    def _start_auto_update_daemon(self) -> None:
+        def _loop():
+            time.sleep(20.0)
+            if self.is_running and not os.environ.get("GITHUB_ACTIONS"):
+                self.check_for_git_update_async(manual=False)
+            while self.is_running:
+                for _ in range(6 * 3600):
+                    if not self.is_running:
+                        return
+                    time.sleep(1.0)
+                if self.is_running and not os.environ.get("GITHUB_ACTIONS"):
+                    self.check_for_git_update_async(manual=False)
+
+        threading.Thread(target=_loop, name="GitAutoUpdateDaemon", daemon=True).start()
 
     @staticmethod
     def _is_valid_timezone(tz_name: str) -> bool:
@@ -1810,6 +1941,9 @@ class SlideshowApp:
             "profile": self.hw_profile.get("name", "Auto"),
             "app_version": ver_str,
             "app_version_code": build_num,
+            "app_sha256": getattr(self, "_git_commit_sha", ""),
+            "update_status": getattr(self, "_last_update_status", "Ready"),
+            "update_url": "origin/main (git pull --ff-only)",
             "mdns_hostname": get_active_mdns_hostname(),
             "lan_ip": self._get_local_ip(),
             "web_port": int(getattr(self.args, "web_port", 8080) or 8080),
@@ -2006,10 +2140,14 @@ class SlideshowApp:
             "recent_5": "Checking latest photos and streaming recent photos for 5 minutes...",
             "recent_10": "Checking latest photos and streaming recent photos for 10 minutes...",
             "recent_stop": "Stopped recent photos stream; resuming full album.",
+            "check_update": "Checking GitHub for updates in background...",
             "exit_app": "Closing Photo Frame...",
         }
         if action not in valid:
             return f"Unknown action: {action}"
+        if action == "check_update":
+            self.check_for_git_update_async(manual=True)
+            return valid[action]
         if action == "resync" and album_arg:
             norm_albums = PhotoManager.normalize_gphotos_albums(album_arg)
             self.config_store.save_settings({
@@ -2241,6 +2379,7 @@ class SlideshowApp:
         self.render_frame()
         splash_shown_at = time.time()
         self._start_wifi_keepalive_daemon()
+        self._start_auto_update_daemon()
         if getattr(self.args, "web_port", 8080) > 0:
             start_web_config_server(self, self.config_store, port=int(self.args.web_port))
         if hasattr(self, "web_frame") and self.web_frame and self.web_frame.enabled and self.web_frame.port > 0:
