@@ -105,6 +105,9 @@ class PhotoManager(GooglePhotosMixin):
 
         # Stream Recent Uploads mode state (user-activated 5m/10m priority playback)
         self._item_added_ts: Dict[str, int] = {}
+        self._shown_counts: Dict[str, int] = {}
+        self._total_play_events: int = 0
+        self._last_shown_save_ts: float = 0.0
         self._recent_sources: List[str] = []
         self._recent_index = 0
         self._recent_mode_until = 0.0
@@ -156,11 +159,19 @@ class PhotoManager(GooglePhotosMixin):
                 poster = self._download_raw_pil(url)
                 mp4_path = self._download_video_to_ram(url)
                 if poster and mp4_path:
+                    try:
+                        setattr(poster, "_source_url", url)
+                    except Exception:
+                        pass
                     return (poster, mp4_path)
                 return None
         img = self._download_raw_pil(url)
         if not img:
             return None
+        try:
+            setattr(img, "_source_url", url)
+        except Exception:
+            pass
         return (img, None)
 
     def _collect_oriented_items(
@@ -865,6 +876,164 @@ class PhotoManager(GooglePhotosMixin):
         gc.collect()
         return canvas, vids
 
+    def _normalize_media_key(self, source: str) -> str:
+        if not source or not isinstance(source, str):
+            return ""
+        if source.startswith("http"):
+            return source.split("=")[0]
+        return source
+
+    def record_media_shown(self, sources: List[str]) -> None:
+        if not sources:
+            return
+        should_save = False
+        all_urls: List[str] = []
+        all_vids: List[str] = []
+        now = time.time()
+        with self._sources_lock:
+            if not hasattr(self, "_shown_counts"):
+                self._shown_counts = {}
+            if not hasattr(self, "_total_play_events"):
+                self._total_play_events = 0
+            for src in sources:
+                k = self._normalize_media_key(src)
+                if not k:
+                    continue
+                self._shown_counts[k] = self._shown_counts.get(k, 0) + 1
+                self._total_play_events += 1
+            last_save = getattr(self, "_last_shown_save_ts", 0.0)
+            if not self.is_demo_mode and self.photo_sources and (now - last_save >= 45.0):
+                self._last_shown_save_ts = now
+                should_save = True
+                all_urls = list(self.photo_sources)
+                all_vids = list(self.video_bases)
+        if should_save and all_urls:
+            self._save_cached_photos(all_urls, all_vids)
+
+    def get_timeline_heatmap(self) -> Dict[str, Any]:
+        """
+        Aggregates the full photo library and displayed slideshow items across their
+        creation-date timeline into chronological buckets (`YYYY-MM` or `YYYY`) so the
+        Admin Portal can render a full-spectrum Creation-Date Timeline Heat Map.
+        """
+        import datetime as _dt
+
+        with self._sources_lock:
+            sources = list(self.photo_sources)
+            ts_map = dict(getattr(self, "_item_added_ts", {}) or {})
+            shown_map = dict(getattr(self, "_shown_counts", {}) or {})
+
+        seen_keys: Set[str] = set()
+        dated_items: List[Tuple[str, int, int]] = []
+        undated_total = 0
+        undated_shown_unique = 0
+        undated_plays = 0
+
+        for u in sources:
+            k = self._normalize_media_key(u)
+            if not k or k in seen_keys:
+                continue
+            seen_keys.add(k)
+            raw_ts = int(ts_map.get(k, 0) or 0)
+            if raw_ts > 100000000000:
+                ts_sec = raw_ts // 1000
+            else:
+                ts_sec = raw_ts
+            plays = int(shown_map.get(k, 0) or 0)
+            if ts_sec > 946684800:  # >= 2000-01-01 UTC
+                dated_items.append((k, ts_sec, plays))
+            else:
+                undated_total += 1
+                if plays > 0:
+                    undated_shown_unique += 1
+                    undated_plays += plays
+
+        total_library = len(seen_keys)
+        dated_count = len(dated_items)
+        shown_unique = sum(1 for _, _, p in dated_items if p > 0) + undated_shown_unique
+        total_plays = sum(p for _, _, p in dated_items) + undated_plays
+
+        if not dated_items:
+            return {
+                "granularity": "month",
+                "total_library": total_library,
+                "dated_count": 0,
+                "undated_count": undated_total,
+                "shown_unique": shown_unique,
+                "total_plays": total_plays,
+                "earliest_date": "",
+                "latest_date": "",
+                "buckets": [],
+            }
+
+        min_ts = min(ts for _, ts, _ in dated_items)
+        max_ts = max(ts for _, ts, _ in dated_items)
+        min_dt = _dt.datetime.fromtimestamp(min_ts, tz=_dt.timezone.utc)
+        max_dt = _dt.datetime.fromtimestamp(max_ts, tz=_dt.timezone.utc)
+        earliest_date = min_dt.strftime("%Y-%m-%d")
+        latest_date = max_dt.strftime("%Y-%m-%d")
+
+        total_months = (max_dt.year - min_dt.year) * 12 + (max_dt.month - min_dt.month) + 1
+        granularity = "year" if total_months > 180 else "month"
+
+        bucket_totals: Dict[str, int] = {}
+        bucket_shown: Dict[str, int] = {}
+        bucket_plays: Dict[str, int] = {}
+
+        if granularity == "year":
+            for y in range(min_dt.year, max_dt.year + 1):
+                lbl = f"{y:04d}"
+                bucket_totals[lbl] = 0
+                bucket_shown[lbl] = 0
+                bucket_plays[lbl] = 0
+            for _, ts_sec, plays in dated_items:
+                dt = _dt.datetime.fromtimestamp(ts_sec, tz=_dt.timezone.utc)
+                lbl = f"{dt.year:04d}"
+                bucket_totals[lbl] = bucket_totals.get(lbl, 0) + 1
+                if plays > 0:
+                    bucket_shown[lbl] = bucket_shown.get(lbl, 0) + 1
+                    bucket_plays[lbl] = bucket_plays.get(lbl, 0) + plays
+        else:
+            cy, cm = min_dt.year, min_dt.month
+            while (cy, cm) <= (max_dt.year, max_dt.month):
+                lbl = f"{cy:04d}-{cm:02d}"
+                bucket_totals[lbl] = 0
+                bucket_shown[lbl] = 0
+                bucket_plays[lbl] = 0
+                cm += 1
+                if cm > 12:
+                    cm = 1
+                    cy += 1
+            for _, ts_sec, plays in dated_items:
+                dt = _dt.datetime.fromtimestamp(ts_sec, tz=_dt.timezone.utc)
+                lbl = f"{dt.year:04d}-{dt.month:02d}"
+                bucket_totals[lbl] = bucket_totals.get(lbl, 0) + 1
+                if plays > 0:
+                    bucket_shown[lbl] = bucket_shown.get(lbl, 0) + 1
+                    bucket_plays[lbl] = bucket_plays.get(lbl, 0) + plays
+
+        buckets = [
+            {
+                "label": lbl,
+                "total": bucket_totals[lbl],
+                "shown": bucket_shown[lbl],
+                "plays": bucket_plays[lbl],
+            }
+            for lbl in bucket_totals
+        ]
+
+        return {
+            "granularity": granularity,
+            "total_library": total_library,
+            "dated_count": dated_count,
+            "undated_count": undated_total,
+            "shown_unique": shown_unique,
+            "total_plays": total_plays,
+            "earliest_date": earliest_date,
+            "latest_date": latest_date,
+            "buckets": buckets,
+        }
+
     def _extract_video_list_from_tiles(
         self,
         group: List[Tuple[Any, Optional[str]]],
@@ -873,6 +1042,13 @@ class PhotoManager(GooglePhotosMixin):
         max_seconds_override: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
         """Builds the list of video playback descriptors for any collage tiles that hold videos."""
+        shown_urls = [
+            str(getattr(pil_img, "_source_url", "") or "")
+            for (pil_img, _) in group
+            if pil_img is not None and getattr(pil_img, "_source_url", None)
+        ]
+        if shown_urls:
+            self.record_media_shown(shown_urls)
         video_list: List[Dict[str, Any]] = []
         total_tiles = len(group)
         for idx, (pil_img, mp4_path) in enumerate(group):

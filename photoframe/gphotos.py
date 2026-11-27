@@ -260,7 +260,10 @@ class GooglePhotosMixin:
                 raw_urls = data.get("urls", [])
                 has_videos_key = "videos" in data
                 raw_videos = data.get("videos", []) if has_videos_key else []
-                raw_recent = data.get("recent_items", []) if data.get("recent_ts_mode") == "taken" else []
+                is_taken_mode = data.get("recent_ts_mode") == "taken"
+                raw_recent = data.get("recent_items", []) if is_taken_mode else []
+                raw_item_ts = data.get("item_timestamps", {}) if is_taken_mode else {}
+                raw_shown_counts = data.get("shown_counts", {})
                 updated_at = float(data.get("updated_at", 0.0))
                 if not hasattr(self, "album_titles"):
                     self.album_titles = {}
@@ -280,6 +283,16 @@ class GooglePhotosMixin:
                     self.album_title = cached_title
                 if raw_urls:
                     ts_map: Dict[str, int] = {}
+                    if isinstance(raw_item_ts, dict):
+                        for raw_k, raw_v in raw_item_ts.items():
+                            if isinstance(raw_k, str) and raw_k:
+                                norm_k = raw_k.split("=")[0] if raw_k.startswith("http") else raw_k
+                                try:
+                                    iv = int(raw_v)
+                                    if iv > 0:
+                                        ts_map[norm_k] = iv
+                                except (TypeError, ValueError):
+                                    pass
                     if isinstance(raw_recent, list):
                         for entry in raw_recent:
                             if (
@@ -298,6 +311,18 @@ class GooglePhotosMixin:
                         )
                         if ts_map:
                             self._item_added_ts.update(ts_map)
+                        if not hasattr(self, "_shown_counts"):
+                            self._shown_counts = {}
+                        if isinstance(raw_shown_counts, dict):
+                            for sk, sc in raw_shown_counts.items():
+                                if isinstance(sk, str) and sk:
+                                    norm_sk = sk.split("=")[0] if sk.startswith("http") else sk
+                                    try:
+                                        ic = int(sc)
+                                        if ic > 0:
+                                            self._shown_counts[norm_sk] = max(self._shown_counts.get(norm_sk, 0), ic)
+                                    except (TypeError, ValueError):
+                                        pass
                     cdn_params = f"=w{self.cdn_w}-h{self.cdn_h}"
                     formatted = [
                         f"{u.split('=')[0]}{cdn_params}"
@@ -306,13 +331,14 @@ class GooglePhotosMixin:
                     ]
                     if ts_map:
                         self._rebuild_recent_sources(ordered_fallback=formatted)
+                    has_full_timestamps = "item_timestamps" in data
                     logger.info(
                         "Loaded %d items (%d videos) from cache (%s, CDN size: %dx%d)",
                         len(formatted), len(self.video_bases), path, self.cdn_w, self.cdn_h
                     )
                     if path != self.cache_file:
                         self._save_cached_photos(raw_urls, list(self.video_bases))
-                    return formatted, updated_at, has_videos_key
+                    return formatted, updated_at, (has_videos_key and has_full_timestamps)
             except Exception as e:
                 logger.warning("Failed to read photo cache (%s): %s", path, e)
         return [], 0.0, False
@@ -332,11 +358,21 @@ class GooglePhotosMixin:
                     v.split("=")[0] for v in video_urls if isinstance(v, str) and v.startswith("http")
                 )))
             with self._sources_lock:
+                all_item_ts = {
+                    u.split("=")[0]: int(ts)
+                    for u, ts in self._item_added_ts.items()
+                    if isinstance(u, str) and u.startswith("http") and int(ts) > 0
+                }
                 recent_pairs = sorted(
-                    ((u, int(ts)) for u, ts in self._item_added_ts.items() if u.startswith("http") and ts > 0),
+                    all_item_ts.items(),
                     key=lambda kv: kv[1],
                     reverse=True,
                 )[:max(60, min(300, 60 * max(1, len(getattr(self, "gphotos_urls", []) or []))))]
+                shown_snap = {
+                    k: int(c)
+                    for k, c in getattr(self, "_shown_counts", {}).items()
+                    if isinstance(k, str) and int(c) > 0
+                }
             titles_snapshot = dict(getattr(self, "album_titles", {}) or {})
             payload = {
                 "album_url": self.gphotos_url,
@@ -345,6 +381,8 @@ class GooglePhotosMixin:
                 "album_titles": titles_snapshot,
                 "urls": clean_urls,
                 "videos": clean_videos,
+                "item_timestamps": all_item_ts,
+                "shown_counts": shown_snap,
                 "recent_ts_mode": "taken",
                 "recent_items": [[u, ts] for u, ts in recent_pairs],
                 "count": len(clean_urls),
@@ -901,6 +939,7 @@ class GooglePhotosMixin:
             files.extend(glob.glob(os.path.join(target_dir, ext.upper())))
         cleaned = []
         local_vids = set()
+        local_mtimes: Dict[str, int] = {}
         for fpath in sorted(list(set(files))):
             low = fpath.lower()
             if any(low.endswith(f"{vext}.jpg") for vext in self.VIDEO_EXTENSIONS):
@@ -908,9 +947,17 @@ class GooglePhotosMixin:
             cleaned.append(fpath)
             if any(low.endswith(vext) for vext in self.VIDEO_EXTENSIONS):
                 local_vids.add(fpath)
-        if local_vids:
-            with self._sources_lock:
+            try:
+                mt = int(os.path.getmtime(fpath) * 1000)
+                if mt > 0:
+                    local_mtimes[fpath] = mt
+            except Exception:
+                pass
+        with self._sources_lock:
+            if local_vids:
                 self.video_bases.update(local_vids)
+            if local_mtimes:
+                self._item_added_ts.update(local_mtimes)
         return cleaned
 
     def refresh_sources(self):
@@ -976,6 +1023,8 @@ class GooglePhotosMixin:
             self.video_bases = set()
             self.current_index = 0
             self._item_added_ts = {}
+            self._shown_counts = {}
+            self._total_play_events = 0
             self._recent_sources = []
             self._recent_index = 0
             self._recent_mode_until = 0.0

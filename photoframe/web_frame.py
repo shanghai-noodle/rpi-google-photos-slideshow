@@ -2720,6 +2720,10 @@ class WebFrameController:
                     continue
                 im = self._load_pil_image(src, max_edge=max_raw_edge)
                 if im is not None:
+                    try:
+                        setattr(im, "_source_url", src)
+                    except Exception:
+                        pass
                     return im
             return None
 
@@ -2765,12 +2769,16 @@ class WebFrameController:
         is_first_land = first_img.width >= first_img.height
 
         if landscape_mode == "single" and not style_override:
+            if hasattr(pm, "record_media_shown") and getattr(first_img, "_source_url", None):
+                pm.record_media_shown([str(getattr(first_img, "_source_url"))])
             return self._compose_single_for_size(pm, first_img, target_w, target_h, photo_fit)
 
         if not style_override and landscape_mode in ("collage", "random", "auto"):
             if (is_horiz and is_first_land and random.random() < 0.25) or (
                 not is_horiz and not is_first_land and random.random() < 0.50
             ):
+                if hasattr(pm, "record_media_shown") and getattr(first_img, "_source_url", None):
+                    pm.record_media_shown([str(getattr(first_img, "_source_url"))])
                 return self._compose_single_for_size(pm, first_img, target_w, target_h, photo_fit)
 
         style = style_override or self._pick_collage_style(landscape_mode, is_horiz, is_first_land, effective_profile)
@@ -2814,6 +2822,8 @@ class WebFrameController:
                 cells = self._compute_cells_for_size(pm, two_style, target_w, target_h)
                 chosen_tiles = all_pool[: len(cells)]
             else:
+                if hasattr(pm, "record_media_shown") and getattr(first_img, "_source_url", None):
+                    pm.record_media_shown([str(getattr(first_img, "_source_url"))])
                 return self._compose_single_for_size(pm, first_img, target_w, target_h, photo_fit)
         else:
             chosen_tiles = []
@@ -2826,6 +2836,15 @@ class WebFrameController:
                 else:
                     chosen_tiles.append(p_imgs[pi])
                     pi += 1
+
+        if hasattr(pm, "record_media_shown"):
+            wf_shown = [
+                str(getattr(t_im, "_source_url", "") or "")
+                for t_im in chosen_tiles
+                if t_im is not None and getattr(t_im, "_source_url", None)
+            ]
+            if wf_shown:
+                pm.record_media_shown(wf_shown)
 
         canvas = self._make_bokeh_for_size(first_img, target_w, target_h, brightness=0.32)
         radius = 6 if effective_profile == "legacy" else 10

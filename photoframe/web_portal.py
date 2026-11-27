@@ -534,6 +534,131 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
     display: inline-flex; align-items: center; gap: 8px; min-width: 0;
   }
 
+  /* Photo Creation Timeline Heat Map */
+  .heatmap-summary-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px; margin-bottom: 14px;
+  }
+  .heatmap-legend-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
+    font-size: 0.78rem; color: var(--md-sys-color-on-surface-variant);
+  }
+  .heatmap-legend-items {
+    display: inline-flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .heatmap-legend-item {
+    display: inline-flex; align-items: center; gap: 6px; font-weight: 600;
+  }
+  .heatmap-swatch {
+    width: 12px; height: 12px; border-radius: 3px; display: inline-block;
+  }
+  .heatmap-swatch.lib {
+    background: rgba(124, 154, 255, 0.25);
+    border: 1.5px solid rgba(124, 154, 255, 0.55);
+  }
+  .heatmap-swatch.shown-1 { background: #38BDF8; }
+  .heatmap-swatch.shown-2 { background: #F59E0B; }
+  .heatmap-swatch.shown-3 { background: #F97316; }
+  .heatmap-swatch.shown-4 { background: #EF4444; }
+  .heatmap-spectrum-wrap {
+    background: var(--md-sys-color-surface-container-low);
+    border: 1.5px solid var(--md-sys-color-subtle-border);
+    border-radius: 14px; padding: 14px 14px 10px;
+    overflow-x: auto;
+  }
+  .heatmap-bars-track {
+    display: flex; align-items: flex-end; gap: 3px;
+    height: 118px; min-width: 100%; width: max-content;
+    padding-bottom: 4px; border-bottom: 1.5px solid var(--md-sys-color-subtle-border);
+  }
+  .heatmap-bar-col {
+    flex: 1 0 7px; max-width: 28px; height: 100%;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    position: relative; cursor: pointer; border-radius: 4px 4px 0 0;
+  }
+  .heatmap-bar-col:hover, .heatmap-bar-col:focus-visible {
+    background: rgba(124, 154, 255, 0.10);
+    outline: none;
+  }
+  .heatmap-bar-lib {
+    width: 100%; border-radius: 3px 3px 0 0;
+    background: rgba(124, 154, 255, 0.22);
+    border-top: 1.5px solid rgba(124, 154, 255, 0.50);
+    position: relative; overflow: hidden;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    transition: height 0.2s ease;
+  }
+  .heatmap-bar-col.empty-bucket .heatmap-bar-lib {
+    background: transparent; border-top: 1px dashed rgba(148, 163, 184, 0.22);
+  }
+  .heatmap-bar-shown {
+    width: 100%; border-radius: 2px 2px 0 0;
+    transition: height 0.2s ease, background-color 0.2s ease;
+  }
+  .heatmap-heat-0 { background: transparent; }
+  .heatmap-heat-1 { background: linear-gradient(180deg, #38BDF8, #0284C7); }
+  .heatmap-heat-2 { background: linear-gradient(180deg, #FBBF24, #D97706); }
+  .heatmap-heat-3 { background: linear-gradient(180deg, #FB923C, #EA580C); }
+  .heatmap-heat-4 { background: linear-gradient(180deg, #F87171, #DC2626); }
+  .heatmap-axis-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 6px; font-size: 0.74rem; font-weight: 600;
+    color: var(--md-sys-color-on-surface-variant);
+  }
+  .heatmap-Matrix-title {
+    font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--md-sys-color-on-surface-variant); margin: 12px 0 8px;
+  }
+  .heatmap-matrix-wrap {
+    overflow-x: auto;
+    background: var(--md-sys-color-surface-container-low);
+    border: 1.5px solid var(--md-sys-color-subtle-border);
+    border-radius: 14px; padding: 10px 12px;
+  }
+  .heatmap-matrix-table {
+    width: 100%; border-collapse: separate; border-spacing: 4px;
+    font-size: 0.74rem; min-width: 420px;
+  }
+  .heatmap-matrix-table th {
+    text-align: center; font-weight: 700; color: var(--md-sys-color-on-surface-variant);
+    padding: 2px 4px;
+  }
+  .heatmap-matrix-table th.yr-col {
+    text-align: left; width: 48px;
+  }
+  .heatmap-cell {
+    height: 22px; border-radius: 5px; text-align: center; vertical-align: middle;
+    font-size: 0.68rem; font-weight: 700; cursor: pointer;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    transition: transform 0.12s ease, border-color 0.12s ease;
+  }
+  .heatmap-cell:hover, .heatmap-cell:focus-visible {
+    transform: scale(1.08);
+    border-color: var(--md-sys-color-accent-text);
+    outline: none;
+  }
+  .heatmap-cell.cell-none {
+    background: rgba(148, 163, 184, 0.06); color: transparent; border-color: transparent;
+  }
+  .heatmap-cell.cell-unshown {
+    background: rgba(124, 154, 255, 0.16);
+    border-color: rgba(124, 154, 255, 0.35);
+    color: var(--md-sys-color-on-surface-variant);
+  }
+  .heatmap-cell.cell-h1 { background: rgba(56, 189, 248, 0.32); border-color: #38BDF8; color: var(--md-sys-color-on-surface); }
+  .heatmap-cell.cell-h2 { background: rgba(245, 158, 11, 0.38); border-color: #F59E0B; color: var(--md-sys-color-on-surface); }
+  .heatmap-cell.cell-h3 { background: rgba(249, 115, 22, 0.48); border-color: #F97316; color: #FFFFFF; }
+  .heatmap-cell.cell-h4 { background: rgba(239, 68, 68, 0.62); border-color: #EF4444; color: #FFFFFF; }
+  .heatmap-detail-pill {
+    margin-top: 10px; padding: 9px 13px; border-radius: 12px;
+    background: var(--md-sys-color-surface-container-high);
+    border: 1.5px solid var(--md-sys-color-subtle-border);
+    font-size: 0.82rem; font-weight: 600;
+    color: var(--md-sys-color-on-surface);
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  }
+
   /* Forms & Outlined Inputs */
   .form-grid {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
@@ -1165,6 +1290,57 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
           </div>
         </div>
 
+        <div class="m3-card" id="timeline-heatmap-card">
+          <div class="card-header">
+            <h2><svg class="m3-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg><span data-i18n="sec_timeline_heatmap">Photo Creation Timeline Heat Map</span></h2>
+            <span id="heatmap-coverage-badge" class="badge">0%</span>
+          </div>
+          <p class="card-sub-desc" data-i18n="heatmap_desc">
+            Full-spectrum distribution of photos shown in slideshows versus your complete available photo timeline by creation date.
+          </p>
+          <div class="heatmap-summary-grid">
+            <div class="stat-box">
+              <div class="stat-label" data-i18n="stat_hm_span">Timeline Span</div>
+              <div class="stat-val" id="stat-hm-span">—</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label" data-i18n="stat_hm_dated">Dated Library</div>
+              <div class="stat-val" id="stat-hm-dated">—</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label" data-i18n="stat_hm_shown">Unique Shown</div>
+              <div class="stat-val" id="stat-hm-shown">—</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label" data-i18n="stat_hm_plays">Total Displays</div>
+              <div class="stat-val" id="stat-hm-plays">—</div>
+            </div>
+          </div>
+          <div class="heatmap-legend-row">
+            <div class="heatmap-legend-items">
+              <span class="heatmap-legend-item"><span class="heatmap-swatch lib"></span><span data-i18n="hm_legend_lib">Available Timeline</span></span>
+              <span class="heatmap-legend-item"><span class="heatmap-swatch shown-1"></span><span data-i18n="hm_legend_low">Shown (Low)</span></span>
+              <span class="heatmap-legend-item"><span class="heatmap-swatch shown-2"></span><span data-i18n="hm_legend_med">Medium</span></span>
+              <span class="heatmap-legend-item"><span class="heatmap-swatch shown-4"></span><span data-i18n="hm_legend_high">High Heat</span></span>
+            </div>
+            <span id="heatmap-bucket-count"></span>
+          </div>
+          <div class="heatmap-spectrum-wrap">
+            <div id="heatmap-bars-track" class="heatmap-bars-track" role="img" aria-label="Photo Creation Timeline Heat Map"></div>
+            <div class="heatmap-axis-row">
+              <span id="heatmap-axis-start">—</span>
+              <span id="heatmap-axis-mid">—</span>
+              <span id="heatmap-axis-end">—</span>
+            </div>
+          </div>
+          <div id="heatmap-detail-pill" class="heatmap-detail-pill">
+            <span id="heatmap-detail-text" data-i18n="hm_hover_hint">Tap or hover any timeline bar or calendar cell to inspect creation-date coverage.</span>
+          </div>
+          <div id="heatmap-matrix-section" class="hidden">
+            <div class="heatmap-Matrix-title" data-i18n="hm_matrix_title">Year × Month Creation-Date Heat Grid</div>
+            <div class="heatmap-matrix-wrap" id="heatmap-matrix-wrap"></div>
+          </div>
+        </div>
       </section>
 
       <!-- TAB 2: SETTINGS -->
@@ -1800,7 +1976,22 @@ const I18N = {
     lbl_dark_theme_switch: "Dark theme",
     btn_theme_light: "Light",
     btn_theme_dark: "Dark",
-    title_toggle_theme: "Toggle Dark Theme"
+    title_toggle_theme: "Toggle Dark Theme",
+    sec_timeline_heatmap: "Photo Creation Timeline Heat Map",
+    heatmap_desc: "Full-spectrum distribution of photos shown in slideshows versus your complete available photo timeline by creation date.",
+    stat_hm_span: "Timeline Span",
+    stat_hm_dated: "Dated Library",
+    stat_hm_shown: "Unique Shown",
+    stat_hm_plays: "Total Displays",
+    hm_legend_lib: "Available Timeline",
+    hm_legend_low: "Shown (Low)",
+    hm_legend_med: "Medium",
+    hm_legend_high: "High Heat",
+    hm_matrix_title: "Year × Month Creation-Date Heat Grid",
+    hm_hover_hint: "Tap or hover any timeline bar or calendar cell to inspect creation-date coverage.",
+    hm_empty_library: "Waiting for dated photo metadata… Syncing album timeline.",
+    hm_bucket_detail_fmt: "{period}: {shown} / {total} photos shown ({pct}%) • {plays} slideshow plays",
+    hm_undated_fmt: "{dated} dated ({undated} undated)"
   },
   zh: {
     skip_to_main: "跳至主要内容",
@@ -1992,7 +2183,22 @@ const I18N = {
     lbl_dark_theme_switch: "深色主题",
     btn_theme_light: "浅色",
     btn_theme_dark: "深色",
-    title_toggle_theme: "切换深色主题"
+    title_toggle_theme: "切换深色主题",
+    sec_timeline_heatmap: "照片拍摄时间轴热力图",
+    heatmap_desc: "按照片创建/拍摄日期展示幻灯片已播放照片在完整相册时间轴上的全谱系分布。",
+    stat_hm_span: "时间轴跨度",
+    stat_hm_dated: "含日期媒体",
+    stat_hm_shown: "已展示照片",
+    stat_hm_plays: "累计展示次数",
+    hm_legend_lib: "相册时间轴总量",
+    hm_legend_low: "已播放 (低频)",
+    hm_legend_med: "中频",
+    hm_legend_high: "高频热力",
+    hm_matrix_title: "年份 × 月份 拍摄日期热力网格",
+    hm_hover_hint: "点击或悬停任意时间柱或月份方格，查看该时段的展示覆盖率。",
+    hm_empty_library: "正在索引照片拍摄日期元数据…",
+    hm_bucket_detail_fmt: "{period}：已展示 {shown} / {total} 张 ({pct}%) • 累计播放 {plays} 次",
+    hm_undated_fmt: "{dated} 张含日期（{undated} 张无日期）"
   },
   ja: {
     skip_to_main: "メインコンテンツへスキップ",
@@ -2184,7 +2390,22 @@ const I18N = {
     lbl_dark_theme_switch: "ダークテーマ",
     btn_theme_light: "ライト",
     btn_theme_dark: "ダーク",
-    title_toggle_theme: "ダークテーマを切り替え"
+    title_toggle_theme: "ダークテーマを切り替え",
+    sec_timeline_heatmap: "撮影日タイムライン・ヒートマップ",
+    heatmap_desc: "アルバム全体の撮影日タイムラインに対するスライドショー表示済み写真の分布ヒートマップです。",
+    stat_hm_span: "タイムライン期間",
+    stat_hm_dated: "日付ありメディア",
+    stat_hm_shown: "表示済み枚数",
+    stat_hm_plays: "累計表示回数",
+    hm_legend_lib: "全体枚数",
+    hm_legend_low: "表示済 (低)",
+    hm_legend_med: "中",
+    hm_legend_high: "高ヒート",
+    hm_matrix_title: "年 × 月 撮影日ヒートグリッド",
+    hm_hover_hint: "バーまたは月セルをタップ/ホバーすると期間ごとの表示率を確認できます。",
+    hm_empty_library: "撮影日メタデータを読み込み中…",
+    hm_bucket_detail_fmt: "{period}: {shown} / {total} 枚表示 ({pct}%) • 再生 {plays} 回",
+    hm_undated_fmt: "{dated} 件 ({undated} 件日付なし)"
   },
   ko: {
     skip_to_main: "본문으로 바로가기",
@@ -2376,7 +2597,22 @@ const I18N = {
     lbl_dark_theme_switch: "다크 테마",
     btn_theme_light: "라이트",
     btn_theme_dark: "다크",
-    title_toggle_theme: "다크 테마 전환"
+    title_toggle_theme: "다크 테마 전환",
+    sec_timeline_heatmap: "사진 촬영일 타임라인 히트맵",
+    heatmap_desc: "전체 사진 타임라인 대비 슬라이드쇼에 표시된 사진의 생성일 분포 히트맵입니다.",
+    stat_hm_span: "타임라인 기간",
+    stat_hm_dated: "날짜 보유 미디어",
+    stat_hm_shown: "표시된 사진",
+    stat_hm_plays: "누적 재생 횟수",
+    hm_legend_lib: "전체 타임라인",
+    hm_legend_low: "표시됨 (낮음)",
+    hm_legend_med: "보통",
+    hm_legend_high: "높은 빈도",
+    hm_matrix_title: "연도 × 월 촬영일 히트 그리드",
+    hm_hover_hint: "타임라인 막대나 월별 셀을 탭하거나 마우스를 올려 기간별 표시 현황을 확인하세요.",
+    hm_empty_library: "사진 촬영일 메타데이터를 불러오는 중…",
+    hm_bucket_detail_fmt: "{period}: {shown} / {total}장 표시됨 ({pct}%) • 총 {plays}회 재생",
+    hm_undated_fmt: "{dated}장 ({undated}장 날짜 없음)"
   },
   es: {
     skip_to_main: "Ir al contenido principal",
@@ -2568,7 +2804,22 @@ const I18N = {
     lbl_dark_theme_switch: "Tema oscuro",
     btn_theme_light: "Claro",
     btn_theme_dark: "Oscuro",
-    title_toggle_theme: "Alternar tema oscuro"
+    title_toggle_theme: "Alternar tema oscuro",
+    sec_timeline_heatmap: "Mapa de Calor de Línea de Tiempo",
+    heatmap_desc: "Distribución en todo el espectro temporal de las fotos mostradas en la presentación según su fecha de creación.",
+    stat_hm_span: "Rango Temporal",
+    stat_hm_dated: "Con Fecha",
+    stat_hm_shown: "Únicas Mostradas",
+    stat_hm_plays: "Total Mostradas",
+    hm_legend_lib: "Biblioteca Disponible",
+    hm_legend_low: "Mostradas (Bajo)",
+    hm_legend_med: "Medio",
+    hm_legend_high: "Alto",
+    hm_matrix_title: "Cuadrícula de Calor Año × Mes",
+    hm_hover_hint: "Toca o pasa el cursor por cualquier barra o celda para ver el detalle por fecha de creación.",
+    hm_empty_library: "Indexando fechas de creación del álbum…",
+    hm_bucket_detail_fmt: "{period}: {shown} / {total} fotos mostradas ({pct}%) • {plays} reproducciones",
+    hm_undated_fmt: "{dated} con fecha ({undated} sin fecha)"
   },
   de: {
     skip_to_main: "Zum Hauptinhalt springen",
@@ -2760,7 +3011,22 @@ const I18N = {
     lbl_dark_theme_switch: "Dunkles Design",
     btn_theme_light: "Hell",
     btn_theme_dark: "Dunkel",
-    title_toggle_theme: "Dunkles Design umschalten"
+    title_toggle_theme: "Dunkles Design umschalten",
+    sec_timeline_heatmap: "Aufnahmedatum-Zeitachsen-Heatmap",
+    heatmap_desc: "Verteilung der in der Diashow gezeigten Fotos über das gesamte verfügbare Aufnahmedatum-Spektrum.",
+    stat_hm_span: "Zeitraum",
+    stat_hm_dated: "Mit Datum",
+    stat_hm_shown: "Einzeln Gezeigt",
+    stat_hm_plays: "Anzeigen Gesamt",
+    hm_legend_lib: "Verfügbare Fotos",
+    hm_legend_low: "Gezeigt (Niedrig)",
+    hm_legend_med: "Mittel",
+    hm_legend_high: "Hoch",
+    hm_matrix_title: "Jahr × Monat Aufnahmedatum-Raster",
+    hm_hover_hint: "Tippen oder bewegen Sie die Maus über einen Balken oder ein Monatsfeld für Details.",
+    hm_empty_library: "Aufnahmedaten werden indiziert…",
+    hm_bucket_detail_fmt: "{period}: {shown} / {total} Fotos gezeigt ({pct}%) • {plays} Wiedergaben",
+    hm_undated_fmt: "{dated} mit Datum ({undated} ohne Datum)"
   }
 };
 
@@ -3811,6 +4077,8 @@ function updateDynamicFormVisibility() {
   if (wfCard) wfCard.classList.toggle('hidden', isAll || manageMode);
   const statsGrid = document.getElementById('stats-grid');
   if (statsGrid) statsGrid.classList.toggle('hidden', isAll);
+  const hmCard = document.getElementById('timeline-heatmap-card');
+  if (hmCard) hmCard.classList.toggle('hidden', isAll);
   const adminNote = document.getElementById('broadcast-admin-note');
   if (adminNote) adminNote.classList.toggle('hidden', !isAll || manageMode);
 
@@ -4136,6 +4404,202 @@ function renderStatusSnapshot(st) {
   const rem = Number(st.recent_mode_remaining_sec || 0);
   recentCountdownEndMs = (st.recent_mode_active && rem > 0) ? (Date.now() + rem * 1000) : 0;
   updateRecentStreamUI();
+  renderTimelineHeatmap(st.timeline_heatmap || null);
+}
+
+let lastSelectedHeatmapBucket = null;
+
+function selectHeatmapBucket(label, total, shown, plays) {
+  lastSelectedHeatmapBucket = label;
+  const detailEl = document.getElementById('heatmap-detail-text');
+  if (!detailEl) return;
+  const pct = total > 0 ? Math.round((shown / total) * 100) : 0;
+  detailEl.textContent = t('hm_bucket_detail_fmt', {
+    period: label,
+    shown: shown,
+    total: total,
+    pct: pct,
+    plays: plays
+  });
+}
+
+function computeHeatTier(shown, plays, total, maxPlays) {
+  if (!shown || shown <= 0) return 0;
+  const cov = total > 0 ? (shown / total) : 0;
+  const rel = maxPlays > 0 ? (plays / maxPlays) : 0;
+  const score = Math.max(cov, rel);
+  if (score >= 0.72) return 4;
+  if (score >= 0.42) return 3;
+  if (score >= 0.18) return 2;
+  return 1;
+}
+
+function renderTimelineHeatmap(hm) {
+  const spanEl = document.getElementById('stat-hm-span');
+  const datedEl = document.getElementById('stat-hm-dated');
+  const shownEl = document.getElementById('stat-hm-shown');
+  const playsEl = document.getElementById('stat-hm-plays');
+  const badgeEl = document.getElementById('heatmap-coverage-badge');
+  const trackEl = document.getElementById('heatmap-bars-track');
+  const axisStart = document.getElementById('heatmap-axis-start');
+  const axisMid = document.getElementById('heatmap-axis-mid');
+  const axisEnd = document.getElementById('heatmap-axis-end');
+  const detailEl = document.getElementById('heatmap-detail-text');
+  const bucketCntEl = document.getElementById('heatmap-bucket-count');
+  const matrixSec = document.getElementById('heatmap-matrix-section');
+  const matrixWrap = document.getElementById('heatmap-matrix-wrap');
+  if (!trackEl) return;
+
+  if (!hm || typeof hm !== 'object' || !Array.isArray(hm.buckets) || hm.buckets.length === 0) {
+    const tot = (hm && hm.total_library) ? Number(hm.total_library) : 0;
+    const shn = (hm && hm.shown_unique) ? Number(hm.shown_unique) : 0;
+    const pls = (hm && hm.total_plays) ? Number(hm.total_plays) : 0;
+    if (spanEl) spanEl.textContent = '—';
+    if (datedEl) datedEl.textContent = tot > 0 ? `0 / ${tot}` : '0';
+    if (shownEl) shownEl.textContent = tot > 0 ? `${shn} / ${tot}` : String(shn);
+    if (playsEl) playsEl.textContent = String(pls);
+    if (badgeEl) badgeEl.textContent = tot > 0 ? `${Math.round((shn / tot) * 100)}%` : '0%';
+    trackEl.innerHTML = `<div style="width:100%; text-align:center; align-self:center; font-size:0.84rem; color:var(--md-sys-color-on-surface-variant);">${escapeHtml(t('hm_empty_library'))}</div>`;
+    if (axisStart) axisStart.textContent = '—';
+    if (axisMid) axisMid.textContent = '—';
+    if (axisEnd) axisEnd.textContent = '—';
+    if (bucketCntEl) bucketCntEl.textContent = '';
+    if (matrixSec) matrixSec.classList.add('hidden');
+    return;
+  }
+
+  const totalLib = Number(hm.total_library || 0);
+  const datedCnt = Number(hm.dated_count || 0);
+  const undatedCnt = Number(hm.undated_count || 0);
+  const shownUnique = Number(hm.shown_unique || 0);
+  const totalPlays = Number(hm.total_plays || 0);
+  const covPct = totalLib > 0 ? Math.min(100, Math.round((shownUnique / totalLib) * 100)) : 0;
+
+  if (spanEl) {
+    spanEl.textContent = (hm.earliest_date && hm.latest_date)
+      ? `${hm.earliest_date} → ${hm.latest_date}`
+      : '—';
+  }
+  if (datedEl) {
+    datedEl.textContent = undatedCnt > 0
+      ? t('hm_undated_fmt', {dated: datedCnt, undated: undatedCnt})
+      : `${datedCnt}`;
+  }
+  if (shownEl) shownEl.textContent = `${shownUnique} / ${totalLib} (${covPct}%)`;
+  if (playsEl) playsEl.textContent = `${totalPlays}`;
+  if (badgeEl) {
+    badgeEl.textContent = `${covPct}%`;
+    badgeEl.className = covPct > 0 ? 'badge active' : 'badge';
+  }
+
+  const buckets = hm.buckets;
+  let maxTotal = 1;
+  let maxPlays = 1;
+  let activeBuckets = 0;
+  for (const b of buckets) {
+    const bt = Number(b.total || 0);
+    const bp = Number(b.plays || 0);
+    if (bt > maxTotal) maxTotal = bt;
+    if (bp > maxPlays) maxPlays = bp;
+    if (bt > 0) activeBuckets++;
+  }
+  if (bucketCntEl) {
+    bucketCntEl.textContent = `${activeBuckets} / ${buckets.length} ${hm.granularity === 'year' ? 'yrs' : 'mos'}`;
+  }
+
+  const barsHtml = buckets.map(b => {
+    const lbl = String(b.label || '');
+    const tot = Number(b.total || 0);
+    const shn = Number(b.shown || 0);
+    const pls = Number(b.plays || 0);
+    if (tot <= 0) {
+      return `<div class="heatmap-bar-col empty-bucket" title="${escapeHtml(lbl)}: 0"><div class="heatmap-bar-lib" style="height:4px;"></div></div>`;
+    }
+    const libHeightPct = Math.max(12, Math.round((Math.sqrt(tot) / Math.sqrt(maxTotal)) * 100));
+    const shownRatio = Math.min(1, shn / tot);
+    const shownHeightPct = shn > 0 ? Math.max(22, Math.round(shownRatio * 100)) : 0;
+    const tier = computeHeatTier(shn, pls, tot, maxPlays);
+    const pct = Math.round(shownRatio * 100);
+    const tip = t('hm_bucket_detail_fmt', {period: lbl, shown: shn, total: tot, pct: pct, plays: pls});
+    const safeLbl = escapeHtml(lbl);
+    return `<div class="heatmap-bar-col" tabindex="0" role="button" aria-label="${escapeHtml(tip)}" title="${escapeHtml(tip)}" onmouseenter="selectHeatmapBucket('${safeLbl}', ${tot}, ${shn}, ${pls})" onfocus="selectHeatmapBucket('${safeLbl}', ${tot}, ${shn}, ${pls})" onclick="selectHeatmapBucket('${safeLbl}', ${tot}, ${shn}, ${pls})">
+      <div class="heatmap-bar-lib" style="height:${libHeightPct}%;">
+        <div class="heatmap-bar-shown heatmap-heat-${tier}" style="height:${shownHeightPct}%;"></div>
+      </div>
+    </div>`;
+  }).join('');
+  trackEl.innerHTML = barsHtml;
+
+  if (axisStart) axisStart.textContent = buckets[0]?.label || '';
+  if (axisMid) axisMid.textContent = buckets[Math.floor(buckets.length / 2)]?.label || '';
+  if (axisEnd) axisEnd.textContent = buckets[buckets.length - 1]?.label || '';
+
+  if (lastSelectedHeatmapBucket) {
+    const found = buckets.find(b => b.label === lastSelectedHeatmapBucket);
+    if (found) {
+      selectHeatmapBucket(found.label, Number(found.total || 0), Number(found.shown || 0), Number(found.plays || 0));
+    }
+  } else if (detailEl) {
+    const latestShown = [...buckets].reverse().find(b => Number(b.shown || 0) > 0);
+    if (latestShown) {
+      selectHeatmapBucket(latestShown.label, Number(latestShown.total || 0), Number(latestShown.shown || 0), Number(latestShown.plays || 0));
+    } else {
+      detailEl.textContent = t('hm_hover_hint');
+    }
+  }
+
+  if (matrixSec && matrixWrap) {
+    if (hm.granularity === 'month') {
+      const byYearMonth = {};
+      const yearsSet = new Set();
+      for (const b of buckets) {
+        const parts = String(b.label || '').split('-');
+        if (parts.length === 2) {
+          const yr = parts[0];
+          const mo = parseInt(parts[1], 10);
+          yearsSet.add(yr);
+          if (!byYearMonth[yr]) byYearMonth[yr] = {};
+          byYearMonth[yr][mo] = b;
+        }
+      }
+      const years = Array.from(yearsSet).sort().reverse();
+      if (years.length > 0) {
+        matrixSec.classList.remove('hidden');
+        let tbl = `<table class="heatmap-matrix-table"><thead><tr><th class="yr-col">Year</th>`;
+        for (let m = 1; m <= 12; m++) {
+          tbl += `<th>${String(m).padStart(2, '0')}</th>`;
+        }
+        tbl += `</tr></thead><tbody>`;
+        for (const yr of years) {
+          tbl += `<tr><th class="yr-col">${escapeHtml(yr)}</th>`;
+          for (let m = 1; m <= 12; m++) {
+            const b = byYearMonth[yr] && byYearMonth[yr][m];
+            const tot = b ? Number(b.total || 0) : 0;
+            const shn = b ? Number(b.shown || 0) : 0;
+            const pls = b ? Number(b.plays || 0) : 0;
+            const lbl = `${yr}-${String(m).padStart(2, '0')}`;
+            if (tot <= 0) {
+              tbl += `<td class="heatmap-cell cell-none" title="${escapeHtml(lbl)}: 0">·</td>`;
+            } else {
+              const tier = computeHeatTier(shn, pls, tot, maxPlays);
+              const cls = tier > 0 ? `cell-h${tier}` : 'cell-unshown';
+              const pct = Math.round((shn / tot) * 100);
+              const tip = t('hm_bucket_detail_fmt', {period: lbl, shown: shn, total: tot, pct: pct, plays: pls});
+              const cellText = shn > 0 ? `${shn}/${tot}` : `${tot}`;
+              tbl += `<td class="heatmap-cell ${cls}" tabindex="0" title="${escapeHtml(tip)}" onmouseenter="selectHeatmapBucket('${escapeHtml(lbl)}', ${tot}, ${shn}, ${pls})" onclick="selectHeatmapBucket('${escapeHtml(lbl)}', ${tot}, ${shn}, ${pls})">${escapeHtml(cellText)}</td>`;
+            }
+          }
+          tbl += `</tr>`;
+        }
+        tbl += `</tbody></table>`;
+        matrixWrap.innerHTML = tbl;
+      } else {
+        matrixSec.classList.add('hidden');
+      }
+    } else {
+      matrixSec.classList.add('hidden');
+    }
+  }
 }
 
 async function toggleWebFramePower() {

@@ -451,6 +451,51 @@ class TestGooglePhotosScraperAndCache(unittest.TestCase):
             recent = pm.quick_refresh_recent(max_items=10)
         self.assertEqual([u.split("=")[0] for u in recent], [p_b, p_shared, p_a])
 
+    def test_timeline_heatmap_aggregates_creation_dates_and_shown_counts(self):
+        u_jan = "https://lh3.googleusercontent.com/pw/AP1GczJan2024_1234567890"
+        u_mar = "https://lh3.googleusercontent.com/pw/AP1GczMar2024_1234567890"
+        u_mar2 = "https://lh3.googleusercontent.com/pw/AP1GczMar2024B_123456789"
+        cdn = f"=w{self.pm.cdn_w}-h{self.pm.cdn_h}"
+
+        self.pm.photo_sources = [f"{u_jan}{cdn}", f"{u_mar}{cdn}", f"{u_mar2}{cdn}"]
+        self.pm._item_added_ts = {
+            u_jan: 1705276800000,   # 2024-01-15 UTC (ms)
+            u_mar: 1710460800000,   # 2024-03-15 UTC (ms)
+            u_mar2: 1711065600000,  # 2024-03-22 UTC (ms)
+        }
+        self.pm.record_media_shown([f"{u_jan}{cdn}", f"{u_mar}{cdn}", f"{u_mar}{cdn}"])
+
+        hm = self.pm.get_timeline_heatmap()
+        self.assertEqual(hm["granularity"], "month")
+        self.assertEqual(hm["total_library"], 3)
+        self.assertEqual(hm["dated_count"], 3)
+        self.assertEqual(hm["shown_unique"], 2)
+        self.assertEqual(hm["total_plays"], 3)
+        self.assertEqual(hm["earliest_date"], "2024-01-15")
+        self.assertEqual(hm["latest_date"], "2024-03-22")
+
+        by_lbl = {b["label"]: b for b in hm["buckets"]}
+        self.assertEqual(list(by_lbl.keys()), ["2024-01", "2024-02", "2024-03"])
+        self.assertEqual(by_lbl["2024-01"], {"label": "2024-01", "total": 1, "shown": 1, "plays": 1})
+        self.assertEqual(by_lbl["2024-02"], {"label": "2024-02", "total": 0, "shown": 0, "plays": 0})
+        self.assertEqual(by_lbl["2024-03"], {"label": "2024-03", "total": 2, "shown": 1, "plays": 2})
+
+        # Verify cache roundtrip persists full item_timestamps and shown_counts
+        self.pm._save_cached_photos([u_jan, u_mar, u_mar2], [])
+        pm_reloaded = PhotoManager(
+            1920,
+            1080,
+            album_url="https://photos.app.goo.gl/TestAlbum999",
+            cache_file=self.cache_path,
+            auto_refresh=False,
+        )
+        loaded_urls, _, has_full = pm_reloaded._load_cached_photos()
+        self.assertTrue(has_full)
+        pm_reloaded.photo_sources = loaded_urls
+        hm_reloaded = pm_reloaded.get_timeline_heatmap()
+        self.assertEqual(hm_reloaded["shown_unique"], 2)
+        self.assertEqual(hm_reloaded["total_plays"], 3)
+
 
 if __name__ == "__main__":
     unittest.main()

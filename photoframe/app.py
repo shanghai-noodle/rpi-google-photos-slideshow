@@ -1728,6 +1728,11 @@ class SlideshowApp:
             with self.photo_manager._sources_lock:
                 items_count = len(self.photo_manager.photo_sources)
                 videos_count = len(self.photo_manager.video_bases)
+        timeline_heatmap = (
+            self.photo_manager.get_timeline_heatmap()
+            if self.photo_manager and hasattr(self.photo_manager, "get_timeline_heatmap")
+            else {}
+        )
         from . import _load_version_info
         ver_str, build_num = _load_version_info()
         wf_status = self.web_frame.get_status_dict() if hasattr(self, "web_frame") and self.web_frame else {
@@ -1768,6 +1773,7 @@ class SlideshowApp:
             "web_port": int(getattr(self.args, "web_port", 8080) or 8080),
             "edition": "gphotos",
             "platform": "linux",
+            "timeline_heatmap": timeline_heatmap,
             **recent_status,
             **wf_status,
         }
