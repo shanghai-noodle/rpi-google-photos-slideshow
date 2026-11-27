@@ -974,7 +974,7 @@ class PhotoManager(GooglePhotosMixin):
         latest_date = max_dt.strftime("%Y-%m-%d")
 
         total_months = (max_dt.year - min_dt.year) * 12 + (max_dt.month - min_dt.month) + 1
-        granularity = "year" if total_months > 180 else "month"
+        granularity = "year" if total_months > 360 else "month"
 
         bucket_totals: Dict[str, int] = {}
         bucket_shown: Dict[str, int] = {}
