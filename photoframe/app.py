@@ -1231,6 +1231,45 @@ class SlideshowApp:
         "de": ("Diashow Pausiert", "Bildschirm antippen oder Leertaste zum Fortsetzen"),
     }
 
+    _QR_PILL_I18N = {
+        "en": (
+            "Demo Showcase Mode",
+            "Admin Web Control Portal",
+            "Configure at {url}",
+            "Fallback IP: {ip_url}  /  Scan QR",
+        ),
+        "zh": (
+            "演示展示模式",
+            "网页管理控制后台",
+            "设置网址: {url}",
+            "备用 IP: {ip_url}  /  扫码管理",
+        ),
+        "ja": (
+            "デモショーケースモード",
+            "管理ウェブポータル",
+            "設定URL: {url}",
+            "予備 IP: {ip_url}  /  QRスキャン",
+        ),
+        "ko": (
+            "데모 쇼케이스 모드",
+            "관리자 웹 제어 포털",
+            "설정 주소: {url}",
+            "대체 IP: {ip_url}  /  QR 스캔",
+        ),
+        "es": (
+            "Modo de Demostración",
+            "Portal Web de Control",
+            "Configurar en {url}",
+            "IP alternativa: {ip_url}  /  Escanear QR",
+        ),
+        "de": (
+            "Demo-Showcase-Modus",
+            "Admin-Web-Steuerportal",
+            "Konfigurieren unter {url}",
+            "Fallback-IP: {ip_url}  /  QR scannen",
+        ),
+    }
+
     _LATIN_BOLD_FONT_CANDIDATES = (
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
@@ -1424,24 +1463,23 @@ class SlideshowApp:
             ip_str = self._get_local_ip()
             port = int(getattr(self.args, "web_port", 8080) or 8080)
             mdns_host = get_active_mdns_hostname()
-            cache_key = (is_demo, ip_str, port, mdns_host)
+            lang = str(getattr(self.args, "language", "en") or "en").strip().lower()[:2]
+            if lang not in self._QR_PILL_I18N:
+                lang = "en"
+            cache_key = (is_demo, ip_str, port, mdns_host, lang)
             if (
                 not hasattr(self, "_cached_demo_pill")
                 or self._cached_demo_pill is None
                 or getattr(self, "_cached_demo_pill_key", None) != cache_key
             ):
-                pygame.font.init()
-                title_font = pygame.font.SysFont("dejavusans,arial,sans-serif", 17, bold=True)
-                url_font = pygame.font.SysFont("dejavusans,arial,sans-serif", 20, bold=True)
-                sub_font = pygame.font.SysFont("dejavusans,arial,sans-serif", 16, bold=False)
+                demo_lbl, portal_lbl, cfg_fmt, ip_fmt = self._QR_PILL_I18N[lang]
+                line1 = demo_lbl if is_demo else portal_lbl
+                line2 = cfg_fmt.format(url=f"http://{mdns_host}:{port}")
+                line3 = ip_fmt.format(ip_url=f"http://{ip_str}:{port}")
 
-                line1 = "Demo Showcase Mode" if is_demo else "Admin Web Control Portal"
-                line2 = f"Configure at http://{mdns_host}:{port}"
-                line3 = f"Fallback IP: http://{ip_str}:{port}  •  Scan QR →"
-
-                s1 = title_font.render(line1, True, (56, 189, 248))
-                s2 = url_font.render(line2, True, (248, 250, 252))
-                s3 = sub_font.render(line3, True, (148, 163, 184))
+                s1 = self._render_multilingual_text(line1, 17, (56, 189, 248), bold=True)
+                s2 = self._render_multilingual_text(line2, 20, (248, 250, 252), bold=True)
+                s3 = self._render_multilingual_text(line3, 16, (148, 163, 184), bold=False)
 
                 text_w = max(s1.get_width(), s2.get_width(), s3.get_width())
                 qr_size = 84  # ~1x1 inch QR code
@@ -1557,11 +1595,15 @@ class SlideshowApp:
 
         show_overlay = self._should_show_portal_overlay()
         if show_overlay:
+            lang = str(getattr(self.args, "language", "en") or "en").strip().lower()[:2]
+            if lang not in self._QR_PILL_I18N:
+                lang = "en"
             expected_pill_key = (
                 bool(self.photo_manager and self.photo_manager.is_demo_mode),
                 self._get_local_ip(),
                 int(getattr(self.args, "web_port", 8080) or 8080),
                 get_active_mdns_hostname(),
+                lang,
             )
             if getattr(self, "_cached_demo_pill_key", None) != expected_pill_key:
                 self.full_redraw_needed = True
@@ -2096,6 +2138,7 @@ class SlideshowApp:
                     self.full_redraw_needed = True
                 if "language" in payload:
                     self._cached_pause_banner = None
+                    self._cached_demo_pill = None
                     self.full_redraw_needed = True
                 raw_trans = str(getattr(self.args, "transition", "none") or "none").strip().lower()
                 self.transition = raw_trans if raw_trans in self.VALID_TRANSITIONS else "none"

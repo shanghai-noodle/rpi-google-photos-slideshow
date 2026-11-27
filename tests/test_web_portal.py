@@ -735,6 +735,18 @@ class TestFrameConfigStoreAndWebPortal(unittest.TestCase):
             saved_single = self.store.get_settings()
             self.assertEqual(saved_single["albums"], ["https://photos.app.goo.gl/LegacySingle"])
 
+    def test_qr_pill_localization_and_cache_invalidation(self):
+        args = parse_args(["--album", "demo", "--log-file", "none"])
+        app = SlideshowApp(args, hw_profile=HARDWARE_PROFILES["standard"], config_store=self.store)
+        for lang_code in ("en", "zh", "ja", "ko", "es", "de"):
+            self.assertIn(lang_code, app._QR_PILL_I18N)
+            self.assertEqual(len(app._QR_PILL_I18N[lang_code]), 4)
+        app._cached_demo_pill = object()
+        app.update_and_persist_settings({"language": "zh"})
+        app._process_web_actions()
+        self.assertIsNone(app._cached_demo_pill)
+        self.assertEqual(app.args.language, "zh")
+
 
 if __name__ == "__main__":
     unittest.main()
