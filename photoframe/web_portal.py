@@ -1827,6 +1827,8 @@ const I18N = {
     sec_advanced_options: "Advanced Display & Network Options",
     lbl_album: "Google Photos Shared Album URL (leave blank or 'demo' for Demo Showcase Pack)",
     ph_album: "https://photos.app.goo.gl/... (or leave blank for Demo Showcase)",
+    lbl_album_baidu: "Baidu Pan Shared Folder URL or Share Text (leave blank or 'demo' for Demo Showcase Pack)",
+    ph_album_baidu: "https://pan.baidu.com/s/1... or ?pwd=xxxx (or leave blank for Demo Showcase)",
     lbl_device_name: "Device Hostname (.local — auto-numbers on conflict)",
     ph_device_name: "photoframe (or e.g. living-room)",
     lbl_language: "Language",
@@ -2036,8 +2038,10 @@ const I18N = {
     recent_refreshing: "正在获取最近拍摄照片...",
     sec_settings: "相册、拼图与定时设置",
     sec_advanced_options: "高级显示与网络选项",
-    lbl_album: "相册或网盘共享链接（留空或填 'demo' 播放内置演示）",
+    lbl_album: "Google 相册共享链接（留空或填 'demo' 播放内置演示）",
     ph_album: "https://photos.app.goo.gl/...（留空则播放演示）",
+    lbl_album_baidu: "百度网盘共享文件夹链接或口令（留空或填 'demo' 播放内置演示）",
+    ph_album_baidu: "https://pan.baidu.com/s/1... 或含 ?pwd=提取码（留空则播放演示）",
     lbl_device_name: "局域网主机名 (.local — 冲突时自动编号)",
     ph_device_name: "photoframe（例如 living-room）",
     lbl_language: "界面语言",
@@ -2247,8 +2251,10 @@ const I18N = {
     recent_refreshing: "最新の写真を確認中...",
     sec_settings: "アルバム・コラージュ・予定設定",
     sec_advanced_options: "高度な表示・ネットワーク設定",
-    lbl_album: "共有アルバム URL（空欄または 'demo' で内蔵デモ再生）",
+    lbl_album: "Google フォト共有アルバム URL（空欄または 'demo' で内蔵デモ再生）",
     ph_album: "https://photos.app.goo.gl/...（空欄でデモ再生）",
+    lbl_album_baidu: "Baidu Pan 共有フォルダ URL（空欄または 'demo' で内蔵デモ再生）",
+    ph_album_baidu: "https://pan.baidu.com/s/1... または ?pwd=xxxx（空欄でデモ再生）",
     lbl_device_name: "デバイスホスト名 (.local — 重複時は自動採番)",
     ph_device_name: "photoframe（例: living-room）",
     lbl_language: "表示言語",
@@ -2458,8 +2464,10 @@ const I18N = {
     recent_refreshing: "최신 사진을 확인하는 중...",
     sec_settings: "앨범, 콜라주 및 일정 설정",
     sec_advanced_options: "고급 화면 및 네트워크 옵션",
-    lbl_album: "공유 앨범 URL (비워두거나 'demo' 입력 시 데모 팩 재생)",
+    lbl_album: "Google 포토 공유 앨범 URL (비워두거나 'demo' 입력 시 데모 팩 재생)",
     ph_album: "https://photos.app.goo.gl/... (비워두면 데모 재생)",
+    lbl_album_baidu: "바이두 클라우드(Baidu Pan) 공유 폴더 URL (비워두거나 'demo' 입력 시 데모 팩 재생)",
+    ph_album_baidu: "https://pan.baidu.com/s/1... 또는 ?pwd=xxxx (비워두면 데모 재생)",
     lbl_device_name: "기기 호스트 이름 (.local — 충돌 시 자동 번호 부여)",
     ph_device_name: "photoframe (예: living-room)",
     lbl_language: "언어",
@@ -2669,8 +2677,10 @@ const I18N = {
     recent_refreshing: "Buscando fotos nuevas...",
     sec_settings: "Álbum, Collage y Horario",
     sec_advanced_options: "Opciones Avanzadas de Pantalla y Red",
-    lbl_album: "URL del Álbum Compartido (dejar vacío o 'demo' para el paquete Demo)",
+    lbl_album: "URL del Álbum Compartido de Google Photos (dejar vacío o 'demo' para el paquete Demo)",
     ph_album: "https://photos.app.goo.gl/... (o vacío para Demo)",
+    lbl_album_baidu: "URL de Carpeta Compartida de Baidu Pan (dejar vacío o 'demo' para el paquete Demo)",
+    ph_album_baidu: "https://pan.baidu.com/s/1... o ?pwd=xxxx (o vacío para Demo)",
     lbl_device_name: "Nombre de Host (.local — numeración automática si hay conflicto)",
     ph_device_name: "photoframe (ej. sala-estar)",
     lbl_language: "Idioma",
@@ -2880,8 +2890,10 @@ const I18N = {
     recent_refreshing: "Suche nach neuen Fotos...",
     sec_settings: "Album, Collagen & Zeitplan",
     sec_advanced_options: "Erweiterte Anzeige- & Netzwerkoptionen",
-    lbl_album: "Geteilte Album-URL (leer oder 'demo' für Demo-Paket)",
+    lbl_album: "Geteilte Google Fotos Album-URL (leer oder 'demo' für Demo-Paket)",
     ph_album: "https://photos.app.goo.gl/... (oder leer für Demo)",
+    lbl_album_baidu: "Geteilte Baidu Pan Ordner-URL (leer oder 'demo' für Demo-Paket)",
+    ph_album_baidu: "https://pan.baidu.com/s/1... oder ?pwd=xxxx (oder leer für Demo)",
     lbl_device_name: "Geräte-Hostname (.local — automatische Nummerierung)",
     ph_device_name: "photoframe (z. B. wohnzimmer)",
     lbl_language: "Sprache",
@@ -3910,6 +3922,7 @@ function setLanguage(lang, syncSelectors = true, userPicked = false) {
     renderFleetBar(fleetNodes);
   } else {
     updateFleetCardVisibility();
+    updateDynamicFormVisibility();
   }
   renderActiveAlbumsBar();
   renderSavedAlbums(savedAlbumsList, lastActiveAlbumUrl, lastActiveAlbumTitle, activeAlbumsSelection, activeAlbumTitlesMap);
@@ -4058,8 +4071,19 @@ function updateDynamicFormVisibility() {
 
   const albumGroup = document.getElementById('group-album');
   if (albumGroup) albumGroup.classList.toggle('hidden', isAll);
+  const albumLbl = document.getElementById('lbl-album-dynamic');
+  if (albumLbl) {
+    const albLblKey = (activeTargetEdition === 'baidupan') ? 'lbl_album_baidu' : 'lbl_album';
+    albumLbl.setAttribute('data-i18n', albLblKey);
+    albumLbl.textContent = t(albLblKey);
+  }
   const albumInput = document.getElementById('cfg-album');
-  if (albumInput) albumInput.disabled = isAll;
+  if (albumInput) {
+    albumInput.disabled = isAll;
+    const albPhKey = (activeTargetEdition === 'baidupan') ? 'ph_album_baidu' : 'ph_album';
+    albumInput.setAttribute('data-i18n-placeholder', albPhKey);
+    albumInput.setAttribute('placeholder', t(albPhKey));
+  }
   const addAlbumBtn = document.getElementById('btn-add-album');
   if (addAlbumBtn) addAlbumBtn.disabled = isAll;
 
