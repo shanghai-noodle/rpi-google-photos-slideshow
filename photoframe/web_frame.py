@@ -1293,6 +1293,19 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
   var fetchTimeoutTimer = null;
   var SLIDE_FETCH_TIMEOUT_MS = 35000;
   var loadedAppVersion = "";
+  var isPollingState = false;
+  var pollStartedAt = 0;
+  var activePollXhr = null;
+  var pollTimeoutTimer = null;
+  var statePollTimer = null;
+  var POLL_STATE_INTERVAL_MS = 3000;
+  var POLL_STATE_TIMEOUT_MS = 8000;
+  var pollBootstrapped = false;
+  var weatherInFlight = false;
+  var weatherTimeoutTimer = null;
+  var activeWeatherXhr = null;
+  var lastWeatherAttemptAt = 0;
+  var WEATHER_RETRY_MIN_MS = 60000;
   var lastSlideShownAt = 0;
   var lastLoadedVp = { w: 0, h: 0 };
   var slideTimer = null;
@@ -1575,7 +1588,7 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
     clientLang = (val && (val === "auto" || I18N_DATE[val])) ? val : "auto";
     try { localStorage.setItem("webframe_lang", clientLang); } catch (e) {}
     applyFrameI18n();
-    fetchWeather();
+    fetchWeather(true);
     resetHudTimer();
   };
 
@@ -1642,7 +1655,7 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
     try { localStorage.setItem("webframe_weather_unit", clientWeatherUnit); } catch (e) {}
     applyClockAppearance();
     if (clientWeatherUnit !== "off" && !lastWeatherData) {
-      fetchWeather();
+      fetchWeather(true);
     }
     resetHudTimer();
   };
@@ -1651,7 +1664,7 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
     var inp = document.getElementById("hud-weather-city");
     clientWeatherCity = inp ? inp.value.replace(/^\\s+|\\s+$/g, "") : "";
     try { localStorage.setItem("webframe_weather_city", clientWeatherCity); } catch (e) {}
-    fetchWeather();
+    fetchWeather(true);
     resetHudTimer();
   };
 
@@ -1660,7 +1673,7 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
     try { localStorage.setItem("webframe_profile", profileOverride); } catch (e) {}
     pollState(function() {
       loadSlide("next");
-    });
+    }, true);
   };
 
   function getViewportSize() {
@@ -1759,6 +1772,15 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
 
     var pill = document.getElementById("clock-pill");
     if (pill) pill.innerHTML = hStr + ":" + mStr;
+
+    if (pollBootstrapped) {
+      var nowClkMs = now.getTime();
+      if (isPollingState && pollStartedAt > 0 && (nowClkMs - pollStartedAt) >= (POLL_STATE_TIMEOUT_MS + 4000)) {
+        pollState(null, true);
+      } else if (!isPollingState && !statePollTimer) {
+        pollState(null, false);
+      }
+    }
   }
 
   function effectiveTemperatureUnit() {
@@ -1785,16 +1807,59 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
     updateClock();
   }
 
-  function fetchWeather() {
+  function abortWeatherFetch() {
+    if (weatherTimeoutTimer) {
+      clearTimeout(weatherTimeoutTimer);
+      weatherTimeoutTimer = null;
+    }
+    if (activeWeatherXhr) {
+      try {
+        activeWeatherXhr.onreadystatechange = null;
+        activeWeatherXhr.ontimeout = null;
+        activeWeatherXhr.onerror = null;
+        activeWeatherXhr.abort();
+      } catch (e) {}
+      activeWeatherXhr = null;
+    }
+    weatherInFlight = false;
+  }
+
+  function fetchWeather(force) {
     if (clientWeatherUnit === "off") return;
+    var nowMs = new Date().getTime();
+    if (weatherInFlight) {
+      if (force) {
+        abortWeatherFetch();
+      } else {
+        return;
+      }
+    }
+    if (!force && lastWeatherAttemptAt > 0 && (nowMs - lastWeatherAttemptAt) < WEATHER_RETRY_MIN_MS) {
+      return;
+    }
+    weatherInFlight = true;
+    lastWeatherAttemptAt = nowMs;
     var cityToUse = clientWeatherCity || serverWeatherCity || "";
     var url = "/api/webframe/weather?city=" + encodeURIComponent(cityToUse)
       + "&lang=" + encodeURIComponent(frameLang)
-      + "&t=" + (new Date().getTime());
+      + "&t=" + nowMs;
     var xhr = new XMLHttpRequest();
+    activeWeatherXhr = xhr;
     xhr.open("GET", url, true);
+    try { xhr.timeout = 8000; } catch (e) {}
+    weatherTimeoutTimer = setTimeout(function() {
+      if (activeWeatherXhr === xhr) {
+        abortWeatherFetch();
+      }
+    }, 9000);
     xhr.onreadystatechange = function() {
-      if (xhr.readyState !== 4) return;
+      if (xhr !== activeWeatherXhr || xhr.readyState !== 4) return;
+      if (weatherTimeoutTimer) {
+        clearTimeout(weatherTimeoutTimer);
+        weatherTimeoutTimer = null;
+      }
+      activeWeatherXhr = null;
+      weatherInFlight = false;
       if (xhr.status === 200) {
         try {
           var d = JSON.parse(xhr.responseText || "{}");
@@ -1805,7 +1870,11 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
         } catch (e) {}
       }
     };
-    xhr.send(null);
+    try {
+      xhr.send(null);
+    } catch (e) {
+      abortWeatherFetch();
+    }
   }
 
   function syncPauseBanner() {
@@ -2093,19 +2162,80 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
     }, waitMs);
   }
 
-  function pollState(callback) {
+  function abortStatePoll() {
+    if (pollTimeoutTimer) {
+      clearTimeout(pollTimeoutTimer);
+      pollTimeoutTimer = null;
+    }
+    if (activePollXhr) {
+      try {
+        activePollXhr.onreadystatechange = null;
+        activePollXhr.ontimeout = null;
+        activePollXhr.onerror = null;
+        activePollXhr.abort();
+      } catch (e) {}
+      activePollXhr = null;
+    }
+    isPollingState = false;
+    pollStartedAt = 0;
+  }
+
+  function scheduleNextStatePoll(delayMs) {
+    if (statePollTimer) {
+      clearTimeout(statePollTimer);
+      statePollTimer = null;
+    }
+    var waitMs = (delayMs !== undefined && delayMs !== null) ? delayMs : POLL_STATE_INTERVAL_MS;
+    statePollTimer = setTimeout(function() {
+      statePollTimer = null;
+      pollState(null, false);
+    }, waitMs);
+  }
+
+  function pollState(callback, force) {
+    var nowPollStart = new Date().getTime();
+    if (isPollingState) {
+      if (force || (pollStartedAt > 0 && (nowPollStart - pollStartedAt) >= POLL_STATE_TIMEOUT_MS)) {
+        abortStatePoll();
+      } else {
+        if (callback) callback();
+        return;
+      }
+    }
+    if (statePollTimer) {
+      clearTimeout(statePollTimer);
+      statePollTimer = null;
+    }
+    isPollingState = true;
+    pollStartedAt = nowPollStart;
+
     var vp = getViewportSize();
     var xhr = new XMLHttpRequest();
+    activePollXhr = xhr;
     var url = "/api/webframe/state?cid=" + encodeURIComponent(clientId)
       + "&w=" + vp.w
       + "&h=" + vp.h
       + "&profile=" + encodeURIComponent(profileOverride)
-      + "&t=" + (new Date().getTime());
+      + "&t=" + nowPollStart;
 
     xhr.open("GET", url, true);
-    try { xhr.timeout = 10000; } catch (e) {}
+    try { xhr.timeout = POLL_STATE_TIMEOUT_MS; } catch (e) {}
+    pollTimeoutTimer = setTimeout(function() {
+      if (activePollXhr === xhr) {
+        abortStatePoll();
+        if (callback) callback();
+        scheduleNextStatePoll(POLL_STATE_INTERVAL_MS);
+      }
+    }, POLL_STATE_TIMEOUT_MS + 1000);
     xhr.onreadystatechange = function() {
-      if (xhr.readyState !== 4) return;
+      if (xhr !== activePollXhr || xhr.readyState !== 4) return;
+      if (pollTimeoutTimer) {
+        clearTimeout(pollTimeoutTimer);
+        pollTimeoutTimer = null;
+      }
+      activePollXhr = null;
+      isPollingState = false;
+      pollStartedAt = 0;
       if (xhr.status === 200 || xhr.status === 403) {
         try {
           var data = JSON.parse(xhr.responseText || "{}");
@@ -2184,8 +2314,10 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
           if (frameLang !== prevEffectiveLang) {
             langOrCityChanged = true;
           }
-          if (langOrCityChanged || !lastWeatherData) {
-            fetchWeather();
+          if (langOrCityChanged) {
+            fetchWeather(true);
+          } else if (!lastWeatherData) {
+            fetchWeather(false);
           }
 
           var hostEl = document.getElementById("hud-host");
@@ -2234,8 +2366,15 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
         } catch (e) {}
       }
       if (callback) callback();
+      scheduleNextStatePoll(POLL_STATE_INTERVAL_MS);
     };
-    xhr.send(null);
+    try {
+      xhr.send(null);
+    } catch (e) {
+      abortStatePoll();
+      if (callback) callback();
+      scheduleNextStatePoll(POLL_STATE_INTERVAL_MS);
+    }
   }
 
   var resizeDebounce = null;
@@ -2254,13 +2393,26 @@ WEB_FRAME_HTML = r"""<!DOCTYPE html>
   initProfile();
   updateClock();
   setInterval(updateClock, 15000);
-  setInterval(fetchWeather, 900000);
+  setInterval(function() { fetchWeather(false); }, 900000);
+  pollBootstrapped = true;
   pollState(function() {
     if (isEnabled && !isNightMode) {
       loadSlide("next");
     }
-  });
-  setInterval(function() { pollState(null); }, 3000);
+  }, false);
+
+  function triggerRecoveryPoll() {
+    if (document.hidden) return;
+    pollState(null, true);
+  }
+  if (window.addEventListener) {
+    window.addEventListener("online", triggerRecoveryPoll, false);
+    window.addEventListener("focus", triggerRecoveryPoll, false);
+    window.addEventListener("pageshow", triggerRecoveryPoll, false);
+  }
+  if (document.addEventListener) {
+    document.addEventListener("visibilitychange", triggerRecoveryPoll, false);
+  }
 })();
 </script>
 </body>
@@ -2334,6 +2486,10 @@ class WebFrameController:
             except Exception:
                 pass
         return False
+
+    def on_night_schedule_transition(self, in_schedule: bool) -> None:
+        """Clears any manual Web Frame night-mode override when a scheduled boundary is crossed."""
+        self.night_mode_override = None
 
     def handle_action(self, action: str) -> Optional[str]:
         if action in ("web_frame_on", "web_frame_off", "web_frame_toggle"):
@@ -2981,7 +3137,12 @@ class WebFrameController:
         if self.enabled:
             self._touch_session(client_id, effective_profile, (target_w, target_h))
 
-        st = self.app.get_status_snapshot() if hasattr(self.app, "get_status_snapshot") else {}
+        st = {}
+        if hasattr(self.app, "get_status_snapshot"):
+            try:
+                st = self.app.get_status_snapshot(include_heatmap=False)
+            except TypeError:
+                st = self.app.get_status_snapshot()
         args_obj = getattr(self.app, "args", None)
         lang = str(getattr(args_obj, "language", "en") or "en") if args_obj else "en"
         w_city = str(getattr(args_obj, "weather_city", "") or "") if args_obj else ""

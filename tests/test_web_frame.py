@@ -764,6 +764,77 @@ class TestWebFrameUnit(unittest.TestCase):
         self.assertEqual(html.count("lbl_video_audio:"), 6)
         self.assertEqual(html.count("lbl_video_volume:"), 6)
 
+    def test_hot_polls_skip_heatmap_es5_polling_and_night_schedule_override_reset(self):
+        import datetime as _dt
+        import re
+        from photoframe.fleet import FleetManager
+
+        with mock.patch.object(self.app.photo_manager, "get_timeline_heatmap", return_value={"total_library": 5}) as mock_hm:
+            wf_state = self.app.web_frame.build_state_payload()
+            mock_hm.assert_not_called()
+            self.assertIn("is_night_mode", wf_state)
+
+            fleet_mgr = FleetManager(app=self.app, config_store=self.store, port=8080, enable_background_scan=False)
+            ping = fleet_mgr.build_ping_payload()
+            mock_hm.assert_not_called()
+            self.assertTrue(ping["photoframe"])
+
+            snap_full = self.app.get_status_snapshot()
+            mock_hm.assert_called_once()
+            self.assertEqual(snap_full["timeline_heatmap"], {"total_library": 5})
+
+        html = web_frame_mod.WEB_FRAME_HTML
+        for token in (
+            "isPollingState",
+            "abortStatePoll",
+            "scheduleNextStatePoll",
+            "POLL_STATE_TIMEOUT_MS",
+            "triggerRecoveryPoll",
+            "visibilitychange",
+            "weatherInFlight",
+        ):
+            self.assertIn(token, html)
+        self.assertNotIn("setInterval(function() { pollState(null); }, 3000)", html)
+        m_script = re.search(r"<script[^>]*>(.*?)</script>", html, re.DOTALL | re.IGNORECASE)
+        self.assertIsNotNone(m_script)
+        script_body = m_script.group(1)
+        self.assertNotRegex(script_body, r"\b(?:const|let)\s+[A-Za-z_$]")
+        self.assertNotIn("=>", script_body)
+
+        self.app.night_mode_enabled = True
+        self.app.night_start_time = _dt.time(22, 0)
+        self.app.night_end_time = _dt.time(6, 0)
+        self.app._last_schedule_check_minute = -1
+
+        class _FakeDt(_dt.datetime):
+            current = _dt.datetime(2026, 11, 27, 21, 59, 0)
+
+            @classmethod
+            def now(cls, tz=None):
+                return cls.current
+
+        with mock.patch("photoframe.app.datetime.datetime", _FakeDt):
+            self.app.check_night_mode_schedule()
+            self.app.web_frame.night_mode_override = False
+            _FakeDt.current = _dt.datetime(2026, 11, 27, 22, 0, 0)
+            self.app.check_night_mode_schedule()
+            self.assertIsNone(self.app.web_frame.night_mode_override)
+            self.assertTrue(self.app.web_frame.is_effective_night_mode())
+
+            self.app.web_frame.night_mode_override = True
+            _FakeDt.current = _dt.datetime(2026, 11, 28, 5, 59, 0)
+            self.app.check_night_mode_schedule()
+            self.assertTrue(self.app.web_frame.night_mode_override)
+            _FakeDt.current = _dt.datetime(2026, 11, 28, 6, 0, 0)
+            self.app.check_night_mode_schedule()
+            self.assertIsNone(self.app.web_frame.night_mode_override)
+            self.assertFalse(self.app.web_frame.is_effective_night_mode())
+
+        self.app.web_frame.night_mode_override = True
+        self.app.update_and_persist_settings({"night_mode_enabled": False})
+        self.app._process_web_actions()
+        self.assertIsNone(self.app.web_frame.night_mode_override)
+
 
 if __name__ == "__main__":
     unittest.main()

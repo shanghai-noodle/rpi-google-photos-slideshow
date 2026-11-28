@@ -368,7 +368,10 @@ class FleetManager:
 
     def build_ping_payload(self, peer_authorized: Optional[bool] = None) -> Dict[str, Any]:
         my_ip = self._get_my_ip()
-        st = self.app.get_status_snapshot()
+        try:
+            st = self.app.get_status_snapshot(include_heatmap=False)
+        except TypeError:
+            st = self.app.get_status_snapshot()
         cfg = self.app.get_current_settings_dict()
         hostname = st.get("mdns_hostname") or get_active_mdns_hostname()
         payload = {

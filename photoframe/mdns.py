@@ -170,6 +170,20 @@ def build_mdns_a_response(tx_id: int, ip_str: str, hostname: str = MDNS_HOSTNAME
     return header + qname + rr_tail
 
 
+def build_mdns_aaaa_nsec_response(tx_id: int, hostname: str = MDNS_HOSTNAME) -> bytes:
+    """
+    Builds an RFC 6762 Section 6.1 NSEC negative response proving that `hostname`
+    exists only with an IPv4 A record (type 1) and has no IPv6 AAAA record (type 28).
+    Prevents Apple/mDNSResponder clients from stalling 5.0 seconds waiting for AAAA.
+    """
+    header = struct.pack("!HHHHHH", tx_id & 0xFFFF, 0x8400, 0, 1, 0, 0)
+    qname = _encode_dns_name(hostname)
+    # RDATA: Next Domain Name (self) + Type Bit Map (Window 0, Len 1, Bit 1 = A => 0x40)
+    rdata = qname + b"\x00\x01\x40"
+    rr_tail = struct.pack("!HHIH", 47, 0x8001, 120, len(rdata)) + rdata
+    return header + qname + rr_tail
+
+
 def parse_mdns_a_records(data: bytes) -> List[Tuple[str, str]]:
     """
     Extracts all (hostname_lower, ipv4_str) A-records from an mDNS response packet (QR=1).
@@ -338,6 +352,8 @@ def start_mdns_responder(
                     latest_base = _DESIRED_BASE_NAME
 
                 cur_ip = ip_provider()
+                if cur_ip in ("127.0.0.1", "localhost", "0.0.0.0"):
+                    last_probed_ip = ""
                 ip_became_valid = (
                     cur_ip not in ("127.0.0.1", "localhost", "0.0.0.0")
                     and cur_ip != last_probed_ip
@@ -347,6 +363,11 @@ def start_mdns_responder(
                     seen_gen = latest_gen
                     cur_base = latest_base
                     my_ip = cur_ip
+                    if ip_became_valid:
+                        try:
+                            sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+                        except OSError:
+                            pass
                     if my_ip not in ("127.0.0.1", "localhost", "0.0.0.0"):
                         last_probed_ip = my_ip
                     active_host, cur_idx = select_non_conflicting_hostname(
@@ -415,6 +436,19 @@ def start_mdns_responder(
                     offset += 4
                     if qname.lower().strip(".") == target_lower and qtype in (1, 255):
                         resp = build_mdns_a_response(tx_id, my_ip, hostname=active_host)
+                        if resp:
+                            try:
+                                sock.sendto(resp, addr)
+                            except OSError:
+                                pass
+                            if not (qclass & 0x8000):
+                                try:
+                                    sock.sendto(resp, (MDNS_GROUP, MDNS_PORT))
+                                except OSError:
+                                    pass
+                        break
+                    elif qname.lower().strip(".") == target_lower and qtype == 28:
+                        resp = build_mdns_aaaa_nsec_response(tx_id, hostname=active_host)
                         if resp:
                             try:
                                 sock.sendto(resp, addr)

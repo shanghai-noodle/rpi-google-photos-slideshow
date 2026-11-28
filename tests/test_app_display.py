@@ -193,11 +193,14 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         `photoframe.local`, build version tracking, and the 60-second / Demo Mode
         portal overlay visibility rules.
         """
+        import struct
         import threading
         import time
         from photoframe.mdns import (
             MDNS_HOSTNAME,
+            _encode_dns_name,
             build_mdns_a_response,
+            build_mdns_aaaa_nsec_response,
             build_mdns_query,
             format_mdns_hostname,
             normalize_mdns_base_name,
@@ -225,6 +228,19 @@ class TestAppDisplayRotationAndNightMode(unittest.TestCase):
         q_pkt = build_mdns_query(0x0001, "photoframe-2.local")
         self.assertIn(b"\x0cphotoframe-2\x05local\x00", q_pkt)
         self.assertEqual(parse_mdns_a_records(q_pkt), [])
+
+        # Verify authoritative NSEC negative response for IPv6 AAAA queries
+        nsec_pkt = build_mdns_aaaa_nsec_response(0x1234, "pi2-us.local")
+        tx_id, flags, qd, an, ns, ar = struct.unpack("!HHHHHH", nsec_pkt[:12])
+        self.assertEqual((tx_id, flags, qd, an, ns, ar), (0x1234, 0x8400, 0, 1, 0, 0))
+        self.assertEqual(parse_mdns_a_records(nsec_pkt), [])
+        owner_wire = _encode_dns_name("pi2-us.local")
+        self.assertTrue(nsec_pkt[12:].startswith(owner_wire))
+        rr_off = 12 + len(owner_wire)
+        rtype, rclass, rttl, rdlen = struct.unpack("!HHIH", nsec_pkt[rr_off : rr_off + 10])
+        self.assertEqual((rtype, rclass, rttl), (47, 0x8001, 120))
+        rdata = nsec_pkt[rr_off + 10 : rr_off + 10 + rdlen]
+        self.assertEqual(rdata, owner_wire + b"\x00\x01\x40")
 
         # Verify base name normalization and auto-numbering format
         self.assertEqual(normalize_mdns_base_name(""), "photoframe")

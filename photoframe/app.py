@@ -393,6 +393,8 @@ class SlideshowApp:
         self._last_schedule_check_minute = now_dt.minute
         if in_sched != self._last_scheduled_state:
             self._last_scheduled_state = in_sched
+            if hasattr(self, "web_frame") and self.web_frame is not None and hasattr(self.web_frame, "on_night_schedule_transition"):
+                self.web_frame.on_night_schedule_transition(in_sched)
             if in_sched and not self.is_night_mode:
                 self.stop_video_playback()
                 self.is_night_mode = True
@@ -1884,7 +1886,7 @@ class SlideshowApp:
 
         threading.Thread(target=_keepalive_worker, name="WiFiKeepAliveThread", daemon=True).start()
 
-    def get_status_snapshot(self) -> Dict[str, Any]:
+    def get_status_snapshot(self, include_heatmap: bool = True) -> Dict[str, Any]:
         items_count = 0
         videos_count = 0
         is_demo = True
@@ -1903,7 +1905,7 @@ class SlideshowApp:
                 videos_count = len(self.photo_manager.video_bases)
         timeline_heatmap = (
             self.photo_manager.get_timeline_heatmap()
-            if self.photo_manager and hasattr(self.photo_manager, "get_timeline_heatmap")
+            if include_heatmap and self.photo_manager and hasattr(self.photo_manager, "get_timeline_heatmap")
             else {}
         )
         from . import _load_version_info
@@ -2298,6 +2300,9 @@ class SlideshowApp:
                     self.is_night_mode = False
                     self.last_slide_switch = time.time()
                     self.full_redraw_needed = True
+                if (not self.night_mode_enabled or not in_sched_now) and hasattr(self, "web_frame") and self.web_frame is not None:
+                    if getattr(self.web_frame, "night_mode_override", None) is True:
+                        self.web_frame.night_mode_override = None
 
                 new_rot = int(getattr(self.args, "rotate", 0)) % 360
                 if new_rot not in (0, 90, 180, 270):
